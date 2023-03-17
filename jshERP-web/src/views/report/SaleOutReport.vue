@@ -32,9 +32,6 @@
                 </span>
               </a-col>
               <a-col :md="8" :sm="24">
-                <a-form-item>
-                  注：本报表包含零售和销售数据
-                </a-form-item>
               </a-col>
             </a-row>
           </a-form>
