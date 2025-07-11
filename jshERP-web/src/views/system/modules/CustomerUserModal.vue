@@ -24,7 +24,7 @@
               @check="onCheck"
               :selectedKeys="selectedKeys"
               :checkedKeys="checkedKeys"
-              :treeData="roleFunctionTree"
+              :treeData="customerUserTree"
               :checkStrictly="checkStrictly"
               :expandedKeys="iExpandedKeys"
               :autoExpandParent="true"
@@ -50,7 +50,7 @@
         model: {},
         customerId: 0,
         iExpandedKeys: [],
-        roleFunctionTree: [],
+        customerUserTree: [],
         checkedKeys: [],
         selectedKeys: [],
         checkStrictly: false,
@@ -112,17 +112,17 @@
       loadTree(id) {
         let that = this
         that.treeData = []
-        that.roleFunctionTree = []
+        that.customerUserTree = []
         let params = {};
         params.id='';
-        getAction('/supplier/getCustomerUser?UBType=UserCustomer&UBValue='+id).then((res) => {
+        getAction('/user/getUserWithChecked?UBType=UserCustomer&UBValue='+id).then((res) => {
           if (res) {
             //机构全选后，再添加机构，选中数量增多
             this.allTreeKeys = [];
             for (let i = 0; i < res.length; i++) {
               let temp = res[i]
               that.treeData.push(temp)
-              that.roleFunctionTree.push(temp)
+              that.customerUserTree.push(temp)
               that.setThisExpandedKeys(temp)
               that.getAllKeys(temp);
             }
