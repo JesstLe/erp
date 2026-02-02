@@ -672,7 +672,7 @@ CREATE TABLE `jsh_platform_config`  (
 -- ----------------------------
 -- Records of jsh_platform_config
 -- ----------------------------
-INSERT INTO `jsh_platform_config` VALUES (1, 'platform_name', '平台名称', '管伊佳ERP');
+INSERT INTO `jsh_platform_config` VALUES (1, 'platform_name', '平台名称', '博足ERP');
 INSERT INTO `jsh_platform_config` VALUES (2, 'activation_code', '激活码', '');
 INSERT INTO `jsh_platform_config` VALUES (3, 'platform_url', '官方网站', 'http://www.gyjerp.com/');
 INSERT INTO `jsh_platform_config` VALUES (4, 'bill_print_flag', '三联打印启用标记', '0');
