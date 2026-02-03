@@ -191,7 +191,7 @@ export default {
       .seat-card {
         width: 150px;
         height: 100px;
-        background: #1890ff; // Blue for free
+        background: #1890ff;
         color: #fff;
         border-radius: 4px;
         cursor: pointer;
@@ -203,7 +203,7 @@ export default {
         box-shadow: 0 2px 8px rgba(0,0,0,0.15);
         
         &.occupied {
-          background: #52c41a; // Green for occupied
+          background: #52c41a;
         }
         
         &:hover {
