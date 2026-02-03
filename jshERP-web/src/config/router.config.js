@@ -58,6 +58,12 @@ export const constantRouterMap = [
     ]
   },
   {
+    path: '/cashier',
+    name: 'cashier',
+    component: () => import('@/views/cashier/Cashier'),
+    meta: { title: '收银', icon: 'pay-circle' }
+  },
+  {
     path: '/404',
     component: () => import(/* webpackChunkName: "fail" */ '@/views/exception/404')
   },

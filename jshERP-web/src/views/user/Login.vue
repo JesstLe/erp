@@ -61,14 +61,7 @@
         </a-button>
       </a-form-item>
 
-      <div class="login-copyright" v-if="device === 'mobile'">
-        <a-row>
-          <a-col>
-            © 2015-2030 Powered By
-            <a style="color:#00458a;" :href="systemUrl" target="_blank">官方网站</a>
-          </a-col>
-        </a-row>
-      </div>
+
     </a-form>
   </div>
 </template>

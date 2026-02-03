@@ -998,4 +998,19 @@ INSERT INTO `jsh_user_business` VALUES (67, 'UserRole', '131', '[17]', NULL, 63,
 INSERT INTO `jsh_user_business` VALUES (68, 'RoleFunctions', '16', '[210]', NULL, 63, '0');
 INSERT INTO `jsh_user_business` VALUES (69, 'RoleFunctions', '17', '[210][225][211][241][32][33][199][242][38][41][200][201][239][202][40][232][233][197][44][203][204][205][206][212]', '[{\"funId\":\"241\",\"btnStr\":\"1,2\"},{\"funId\":\"33\",\"btnStr\":\"1,2\"},{\"funId\":\"199\",\"btnStr\":\"1,2\"},{\"funId\":\"242\",\"btnStr\":\"1,2\"},{\"funId\":\"41\",\"btnStr\":\"1,2\"},{\"funId\":\"200\",\"btnStr\":\"1,2\"},{\"funId\":\"210\",\"btnStr\":\"1,2\"},{\"funId\":\"211\",\"btnStr\":\"1,2\"},{\"funId\":\"197\",\"btnStr\":\"1\"},{\"funId\":\"203\",\"btnStr\":\"1\"},{\"funId\":\"204\",\"btnStr\":\"1\"},{\"funId\":\"205\",\"btnStr\":\"1\"},{\"funId\":\"206\",\"btnStr\":\"1\"},{\"funId\":\"212\",\"btnStr\":\"1\"},{\"funId\":\"201\",\"btnStr\":\"1,2\"},{\"funId\":\"202\",\"btnStr\":\"1,2\"},{\"funId\":\"40\",\"btnStr\":\"1,2\"},{\"funId\":\"232\",\"btnStr\":\"1,2\"},{\"funId\":\"233\",\"btnStr\":\"1,2\"}]', 63, '0');
 
+-- ----------------------------
+-- Table structure for jsh_seat
+-- ----------------------------
+DROP TABLE IF EXISTS `jsh_seat`;
+CREATE TABLE `jsh_seat` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `name` varchar(50) DEFAULT NULL COMMENT '座席名称',
+  `status` tinyint(4) DEFAULT '0' COMMENT '状态 0空闲 1使用中 2预订',
+  `sort` varchar(10) DEFAULT NULL COMMENT '排序',
+  `depot_id` bigint(20) DEFAULT NULL COMMENT '门店id',
+  `tenant_id` bigint(20) DEFAULT NULL COMMENT '租户id',
+  `delete_flag` varchar(1) DEFAULT '0' COMMENT '删除标记，0未删除，1删除',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='座席表';
+
 SET FOREIGN_KEY_CHECKS = 1;

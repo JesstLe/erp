@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.SeatMapper">
+  <resultMap id="BaseResultMap" type="com.jsh.erp.datasource.entities.Seat">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="name" jdbcType="VARCHAR" property="name" />
+    <result column="status" jdbcType="INTEGER" property="status" />
+    <result column="sort" jdbcType="VARCHAR" property="sort" />
+    <result column="depot_id" jdbcType="BIGINT" property="depotId" />
+    <result column="tenant_id" jdbcType="BIGINT" property="tenantId" />
+    <result column="delete_flag" jdbcType="VARCHAR" property="deleteFlag" />
+  </resultMap>
+  
+  <sql id="Base_Column_List">
+    id, name, status, sort, depot_id, tenant_id, delete_flag
+  </sql>
+  
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select 
+    <include refid="Base_Column_List" />
+    from jsh_seat
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+  
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from jsh_seat
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+  
+  <insert id="insert" parameterType="com.jsh.erp.datasource.entities.Seat">
+    insert into jsh_seat (id, name, status, 
+      sort, depot_id, tenant_id, 
+      delete_flag)
+    values (#{id,jdbcType=BIGINT}, #{name,jdbcType=VARCHAR}, #{status,jdbcType=INTEGER}, 
+      #{sort,jdbcType=VARCHAR}, #{depotId,jdbcType=BIGINT}, #{tenantId,jdbcType=BIGINT}, 
+      #{deleteFlag,jdbcType=VARCHAR})
+  </insert>
+  
+  <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.Seat">
+    insert into jsh_seat
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        id,
+      </if>
+      <if test="name != null">
+        name,
+      </if>
+      <if test="status != null">
+        status,
+      </if>
+      <if test="sort != null">
+        sort,
+      </if>
+      <if test="depotId != null">
+        depot_id,
+      </if>
+      <if test="tenantId != null">
+        tenant_id,
+      </if>
+      <if test="deleteFlag != null">
+        delete_flag,
+      </if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        #{id,jdbcType=BIGINT},
+      </if>
+      <if test="name != null">
+        #{name,jdbcType=VARCHAR},
+      </if>
+      <if test="status != null">
+        #{status,jdbcType=INTEGER},
+      </if>
+      <if test="sort != null">
+        #{sort,jdbcType=VARCHAR},
+      </if>
+      <if test="depotId != null">
+        #{depotId,jdbcType=BIGINT},
+      </if>
+      <if test="tenantId != null">
+        #{tenantId,jdbcType=BIGINT},
+      </if>
+      <if test="deleteFlag != null">
+        #{deleteFlag,jdbcType=VARCHAR},
+      </if>
+    </trim>
+  </insert>
+  
+  <update id="updateByPrimaryKeySelective" parameterType="com.jsh.erp.datasource.entities.Seat">
+    update jsh_seat
+    <set>
+      <if test="name != null">
+        name = #{name,jdbcType=VARCHAR},
+      </if>
+      <if test="status != null">
+        status = #{status,jdbcType=INTEGER},
+      </if>
+      <if test="sort != null">
+        sort = #{sort,jdbcType=VARCHAR},
+      </if>
+      <if test="depotId != null">
+        depot_id = #{depotId,jdbcType=BIGINT},
+      </if>
+      <if test="tenantId != null">
+        tenant_id = #{tenantId,jdbcType=BIGINT},
+      </if>
+      <if test="deleteFlag != null">
+        delete_flag = #{deleteFlag,jdbcType=VARCHAR},
+      </if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+  
+  <update id="updateByPrimaryKey" parameterType="com.jsh.erp.datasource.entities.Seat">
+    update jsh_seat
+    set name = #{name,jdbcType=VARCHAR},
+      status = #{status,jdbcType=INTEGER},
+      sort = #{sort,jdbcType=VARCHAR},
+      depot_id = #{depotId,jdbcType=BIGINT},
+      tenant_id = #{tenantId,jdbcType=BIGINT},
+      delete_flag = #{deleteFlag,jdbcType=VARCHAR}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <select id="selectByCondition" resultMap="BaseResultMap">
+    select *
+    from jsh_seat
+    where 1=1
+    <if test="name != null and name != ''">
+        and name like concat('%', #{name}, '%')
+    </if>
+    <if test="depotId != null">
+        and depot_id = #{depotId}
+    </if>
+    and ifnull(delete_flag,'0') !='1'
+    <if test="offset != null and rows != null">
+        limit #{offset},#{rows}
+    </if>
+  </select>
+
+  <select id="countsByCondition" resultType="java.lang.Long">
+    select count(id)
+    from jsh_seat
+    where 1=1
+    <if test="name != null and name != ''">
+        and name like concat('%', #{name}, '%')
+    </if>
+    <if test="depotId != null">
+        and depot_id = #{depotId}
+    </if>
+    and ifnull(delete_flag,'0') !='1'
+  </select>
+</mapper>
