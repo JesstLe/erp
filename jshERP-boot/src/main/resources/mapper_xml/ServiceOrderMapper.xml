@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.ServiceOrderMapper">
+  <resultMap id="BaseResultMap" type="com.jsh.erp.datasource.entities.ServiceOrder">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="session_id" jdbcType="BIGINT" property="sessionId" />
+    <result column="technician_id" jdbcType="BIGINT" property="technicianId" />
+    <result column="status" jdbcType="VARCHAR" property="status" />
+    <result column="created_time" jdbcType="TIMESTAMP" property="createdTime" />
+    <result column="finished_time" jdbcType="TIMESTAMP" property="finishedTime" />
+    <result column="tenant_id" jdbcType="BIGINT" property="tenantId" />
+    <result column="remark" jdbcType="VARCHAR" property="remark" />
+    <result column="delete_flag" jdbcType="VARCHAR" property="deleteFlag" />
+  </resultMap>
+
+  <sql id="Base_Column_List">
+    id, session_id, technician_id, status, created_time, finished_time, tenant_id, remark, delete_flag
+  </sql>
+
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from jsh_service_order
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from jsh_service_order
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+
+  <insert id="insert" parameterType="com.jsh.erp.datasource.entities.ServiceOrder">
+    insert into jsh_service_order (id, session_id, technician_id, status, created_time, finished_time, remark, delete_flag)
+    values (#{id,jdbcType=BIGINT}, #{sessionId,jdbcType=BIGINT}, #{technicianId,jdbcType=BIGINT}, #{status,jdbcType=VARCHAR},
+      #{createdTime,jdbcType=TIMESTAMP}, #{finishedTime,jdbcType=TIMESTAMP}, #{remark,jdbcType=VARCHAR}, #{deleteFlag,jdbcType=VARCHAR})
+  </insert>
+
+  <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.ServiceOrder" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+    insert into jsh_service_order
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">id,</if>
+      <if test="sessionId != null">session_id,</if>
+      <if test="technicianId != null">technician_id,</if>
+      <if test="status != null">status,</if>
+      <if test="createdTime != null">created_time,</if>
+      <if test="finishedTime != null">finished_time,</if>
+      <if test="remark != null">remark,</if>
+      <if test="deleteFlag != null">delete_flag,</if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">#{id,jdbcType=BIGINT},</if>
+      <if test="sessionId != null">#{sessionId,jdbcType=BIGINT},</if>
+      <if test="technicianId != null">#{technicianId,jdbcType=BIGINT},</if>
+      <if test="status != null">#{status,jdbcType=VARCHAR},</if>
+      <if test="createdTime != null">#{createdTime,jdbcType=TIMESTAMP},</if>
+      <if test="finishedTime != null">#{finishedTime,jdbcType=TIMESTAMP},</if>
+      <if test="remark != null">#{remark,jdbcType=VARCHAR},</if>
+      <if test="deleteFlag != null">#{deleteFlag,jdbcType=VARCHAR},</if>
+    </trim>
+  </insert>
+
+  <update id="updateByPrimaryKeySelective" parameterType="com.jsh.erp.datasource.entities.ServiceOrder">
+    update jsh_service_order
+    <set>
+      <if test="sessionId != null">session_id = #{sessionId,jdbcType=BIGINT},</if>
+      <if test="technicianId != null">technician_id = #{technicianId,jdbcType=BIGINT},</if>
+      <if test="status != null">status = #{status,jdbcType=VARCHAR},</if>
+      <if test="createdTime != null">created_time = #{createdTime,jdbcType=TIMESTAMP},</if>
+      <if test="finishedTime != null">finished_time = #{finishedTime,jdbcType=TIMESTAMP},</if>
+      <if test="tenantId != null">tenant_id = #{tenantId,jdbcType=BIGINT},</if>
+      <if test="remark != null">remark = #{remark,jdbcType=VARCHAR},</if>
+      <if test="deleteFlag != null">delete_flag = #{deleteFlag,jdbcType=VARCHAR},</if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <update id="updateByPrimaryKey" parameterType="com.jsh.erp.datasource.entities.ServiceOrder">
+    update jsh_service_order
+    set session_id = #{sessionId,jdbcType=BIGINT},
+      technician_id = #{technicianId,jdbcType=BIGINT},
+      status = #{status,jdbcType=VARCHAR},
+      created_time = #{createdTime,jdbcType=TIMESTAMP},
+      finished_time = #{finishedTime,jdbcType=TIMESTAMP},
+      tenant_id = #{tenantId,jdbcType=BIGINT},
+      remark = #{remark,jdbcType=VARCHAR},
+      delete_flag = #{deleteFlag,jdbcType=VARCHAR}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <select id="selectBySessionId" resultMap="BaseResultMap">
+    select *
+    from jsh_service_order
+    where session_id = #{sessionId}
+      and ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+    order by created_time desc, id desc
+  </select>
+</mapper>

@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.ServiceOrderItemMapper">
+  <resultMap id="BaseResultMap" type="com.jsh.erp.datasource.entities.ServiceOrderItem">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="service_order_id" jdbcType="BIGINT" property="serviceOrderId" />
+    <result column="service_item_id" jdbcType="BIGINT" property="serviceItemId" />
+    <result column="qty" jdbcType="DECIMAL" property="qty" />
+    <result column="unit_price" jdbcType="DECIMAL" property="unitPrice" />
+    <result column="amount" jdbcType="DECIMAL" property="amount" />
+    <result column="commission_amount" jdbcType="DECIMAL" property="commissionAmount" />
+    <result column="tenant_id" jdbcType="BIGINT" property="tenantId" />
+    <result column="delete_flag" jdbcType="VARCHAR" property="deleteFlag" />
+  </resultMap>
+
+  <sql id="Base_Column_List">
+    id, service_order_id, service_item_id, qty, unit_price, amount, commission_amount, tenant_id, delete_flag
+  </sql>
+
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from jsh_service_order_item
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from jsh_service_order_item
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+
+  <insert id="insert" parameterType="com.jsh.erp.datasource.entities.ServiceOrderItem">
+    insert into jsh_service_order_item (id, service_order_id, service_item_id, qty, unit_price, amount,
+      commission_amount, delete_flag)
+    values (#{id,jdbcType=BIGINT}, #{serviceOrderId,jdbcType=BIGINT}, #{serviceItemId,jdbcType=BIGINT},
+      #{qty,jdbcType=DECIMAL}, #{unitPrice,jdbcType=DECIMAL}, #{amount,jdbcType=DECIMAL},
+      #{commissionAmount,jdbcType=DECIMAL}, #{deleteFlag,jdbcType=VARCHAR})
+  </insert>
+
+  <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.ServiceOrderItem" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+    insert into jsh_service_order_item
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">id,</if>
+      <if test="serviceOrderId != null">service_order_id,</if>
+      <if test="serviceItemId != null">service_item_id,</if>
+      <if test="qty != null">qty,</if>
+      <if test="unitPrice != null">unit_price,</if>
+      <if test="amount != null">amount,</if>
+      <if test="commissionAmount != null">commission_amount,</if>
+      <if test="deleteFlag != null">delete_flag,</if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">#{id,jdbcType=BIGINT},</if>
+      <if test="serviceOrderId != null">#{serviceOrderId,jdbcType=BIGINT},</if>
+      <if test="serviceItemId != null">#{serviceItemId,jdbcType=BIGINT},</if>
+      <if test="qty != null">#{qty,jdbcType=DECIMAL},</if>
+      <if test="unitPrice != null">#{unitPrice,jdbcType=DECIMAL},</if>
+      <if test="amount != null">#{amount,jdbcType=DECIMAL},</if>
+      <if test="commissionAmount != null">#{commissionAmount,jdbcType=DECIMAL},</if>
+      <if test="deleteFlag != null">#{deleteFlag,jdbcType=VARCHAR},</if>
+    </trim>
+  </insert>
+
+  <update id="updateByPrimaryKeySelective" parameterType="com.jsh.erp.datasource.entities.ServiceOrderItem">
+    update jsh_service_order_item
+    <set>
+      <if test="serviceOrderId != null">service_order_id = #{serviceOrderId,jdbcType=BIGINT},</if>
+      <if test="serviceItemId != null">service_item_id = #{serviceItemId,jdbcType=BIGINT},</if>
+      <if test="qty != null">qty = #{qty,jdbcType=DECIMAL},</if>
+      <if test="unitPrice != null">unit_price = #{unitPrice,jdbcType=DECIMAL},</if>
+      <if test="amount != null">amount = #{amount,jdbcType=DECIMAL},</if>
+      <if test="commissionAmount != null">commission_amount = #{commissionAmount,jdbcType=DECIMAL},</if>
+      <if test="tenantId != null">tenant_id = #{tenantId,jdbcType=BIGINT},</if>
+      <if test="deleteFlag != null">delete_flag = #{deleteFlag,jdbcType=VARCHAR},</if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <update id="updateByPrimaryKey" parameterType="com.jsh.erp.datasource.entities.ServiceOrderItem">
+    update jsh_service_order_item
+    set service_order_id = #{serviceOrderId,jdbcType=BIGINT},
+      service_item_id = #{serviceItemId,jdbcType=BIGINT},
+      qty = #{qty,jdbcType=DECIMAL},
+      unit_price = #{unitPrice,jdbcType=DECIMAL},
+      amount = #{amount,jdbcType=DECIMAL},
+      commission_amount = #{commissionAmount,jdbcType=DECIMAL},
+      tenant_id = #{tenantId,jdbcType=BIGINT},
+      delete_flag = #{deleteFlag,jdbcType=VARCHAR}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <select id="selectByOrderId" resultMap="BaseResultMap">
+    select *
+    from jsh_service_order_item
+    where service_order_id = #{serviceOrderId}
+      and ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+    order by id asc
+  </select>
+
+  <select id="sumAmountByDepotAndTime" resultType="java.util.HashMap">
+    select
+      sum(i.amount) as totalAmount,
+      sum(i.commission_amount) as totalCommission
+    from jsh_service_order_item i
+      left join jsh_service_order o on o.id = i.service_order_id
+      left join jsh_cashier_session s on s.id = o.session_id
+    where 1=1
+      <if test="depotId != null">
+        and s.depot_id = #{depotId}
+      </if>
+      <if test="startTime != null">
+        and o.created_time &gt;= #{startTime}
+      </if>
+      <if test="endTime != null">
+        and o.created_time &lt;= #{endTime}
+      </if>
+      and ifnull(i.delete_flag,'0') != '1'
+      and ifnull(o.delete_flag,'0') != '1'
+      and ifnull(s.delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and i.tenant_id = #{tenantId}
+      </if>
+  </select>
+</mapper>

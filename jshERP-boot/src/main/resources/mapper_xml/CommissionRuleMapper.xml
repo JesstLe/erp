@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.CommissionRuleMapper">
+  <resultMap id="BaseResultMap" type="com.jsh.erp.datasource.entities.CommissionRule">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="rule_scope" jdbcType="VARCHAR" property="ruleScope" />
+    <result column="technician_id" jdbcType="BIGINT" property="technicianId" />
+    <result column="service_item_id" jdbcType="BIGINT" property="serviceItemId" />
+    <result column="commission_type" jdbcType="VARCHAR" property="commissionType" />
+    <result column="commission_value" jdbcType="DECIMAL" property="commissionValue" />
+    <result column="enabled" jdbcType="BIT" property="enabled" />
+    <result column="tenant_id" jdbcType="BIGINT" property="tenantId" />
+    <result column="delete_flag" jdbcType="VARCHAR" property="deleteFlag" />
+  </resultMap>
+
+  <sql id="Base_Column_List">
+    id, rule_scope, technician_id, service_item_id, commission_type, commission_value, enabled, tenant_id, delete_flag
+  </sql>
+
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from jsh_commission_rule
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from jsh_commission_rule
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+
+  <insert id="insert" parameterType="com.jsh.erp.datasource.entities.CommissionRule">
+    insert into jsh_commission_rule (id, rule_scope, technician_id, service_item_id, commission_type, commission_value,
+      enabled, delete_flag)
+    values (#{id,jdbcType=BIGINT}, #{ruleScope,jdbcType=VARCHAR}, #{technicianId,jdbcType=BIGINT}, #{serviceItemId,jdbcType=BIGINT},
+      #{commissionType,jdbcType=VARCHAR}, #{commissionValue,jdbcType=DECIMAL}, #{enabled,jdbcType=BIT}, #{deleteFlag,jdbcType=VARCHAR})
+  </insert>
+
+  <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.CommissionRule">
+    insert into jsh_commission_rule
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">id,</if>
+      <if test="ruleScope != null">rule_scope,</if>
+      <if test="technicianId != null">technician_id,</if>
+      <if test="serviceItemId != null">service_item_id,</if>
+      <if test="commissionType != null">commission_type,</if>
+      <if test="commissionValue != null">commission_value,</if>
+      <if test="enabled != null">enabled,</if>
+      <if test="deleteFlag != null">delete_flag,</if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">#{id,jdbcType=BIGINT},</if>
+      <if test="ruleScope != null">#{ruleScope,jdbcType=VARCHAR},</if>
+      <if test="technicianId != null">#{technicianId,jdbcType=BIGINT},</if>
+      <if test="serviceItemId != null">#{serviceItemId,jdbcType=BIGINT},</if>
+      <if test="commissionType != null">#{commissionType,jdbcType=VARCHAR},</if>
+      <if test="commissionValue != null">#{commissionValue,jdbcType=DECIMAL},</if>
+      <if test="enabled != null">#{enabled,jdbcType=BIT},</if>
+      <if test="deleteFlag != null">#{deleteFlag,jdbcType=VARCHAR},</if>
+    </trim>
+  </insert>
+
+  <update id="updateByPrimaryKeySelective" parameterType="com.jsh.erp.datasource.entities.CommissionRule">
+    update jsh_commission_rule
+    <set>
+      <if test="ruleScope != null">rule_scope = #{ruleScope,jdbcType=VARCHAR},</if>
+      <if test="technicianId != null">technician_id = #{technicianId,jdbcType=BIGINT},</if>
+      <if test="serviceItemId != null">service_item_id = #{serviceItemId,jdbcType=BIGINT},</if>
+      <if test="commissionType != null">commission_type = #{commissionType,jdbcType=VARCHAR},</if>
+      <if test="commissionValue != null">commission_value = #{commissionValue,jdbcType=DECIMAL},</if>
+      <if test="enabled != null">enabled = #{enabled,jdbcType=BIT},</if>
+      <if test="tenantId != null">tenant_id = #{tenantId,jdbcType=BIGINT},</if>
+      <if test="deleteFlag != null">delete_flag = #{deleteFlag,jdbcType=VARCHAR},</if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <update id="updateByPrimaryKey" parameterType="com.jsh.erp.datasource.entities.CommissionRule">
+    update jsh_commission_rule
+    set rule_scope = #{ruleScope,jdbcType=VARCHAR},
+      technician_id = #{technicianId,jdbcType=BIGINT},
+      service_item_id = #{serviceItemId,jdbcType=BIGINT},
+      commission_type = #{commissionType,jdbcType=VARCHAR},
+      commission_value = #{commissionValue,jdbcType=DECIMAL},
+      enabled = #{enabled,jdbcType=BIT},
+      tenant_id = #{tenantId,jdbcType=BIGINT},
+      delete_flag = #{deleteFlag,jdbcType=VARCHAR}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <select id="selectEnabledRules" resultMap="BaseResultMap">
+    select *
+    from jsh_commission_rule
+    where enabled = b'1'
+      and ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+  </select>
+</mapper>

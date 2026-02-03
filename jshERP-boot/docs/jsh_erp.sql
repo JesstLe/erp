@@ -1015,4 +1015,149 @@ CREATE TABLE `jsh_seat` (
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='座席表';
 
+-- ----------------------------
+-- Table structure for jsh_cashier_session
+-- ----------------------------
+DROP TABLE IF EXISTS `jsh_cashier_session`;
+CREATE TABLE `jsh_cashier_session` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `seat_id` bigint(20) DEFAULT NULL COMMENT '座席id',
+  `depot_id` bigint(20) DEFAULT NULL COMMENT '门店id',
+  `member_id` bigint(20) DEFAULT NULL COMMENT '会员id(对应jsh_supplier.id)',
+  `status` varchar(20) DEFAULT 'OPEN' COMMENT '状态 OPEN/CLOSED/CANCELED',
+  `start_time` datetime DEFAULT NULL COMMENT '开始时间',
+  `end_time` datetime DEFAULT NULL COMMENT '结束时间',
+  `operator_user_id` bigint(20) DEFAULT NULL COMMENT '操作人用户id',
+  `tenant_id` bigint(20) DEFAULT NULL COMMENT '租户id',
+  `remark` varchar(200) DEFAULT NULL COMMENT '备注',
+  `delete_flag` varchar(1) DEFAULT '0' COMMENT '删除标记，0未删除，1删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_seat_status` (`seat_id`,`status`),
+  KEY `idx_depot_time` (`depot_id`,`start_time`),
+  KEY `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='收银会话(开台/清台)';
+
+-- ----------------------------
+-- Table structure for jsh_service_item
+-- ----------------------------
+DROP TABLE IF EXISTS `jsh_service_item`;
+CREATE TABLE `jsh_service_item` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `name` varchar(50) DEFAULT NULL COMMENT '项目名称',
+  `price` decimal(24,6) DEFAULT '0.000000' COMMENT '项目价格',
+  `duration_min` int(11) DEFAULT NULL COMMENT '时长(分钟)',
+  `enabled` bit(1) DEFAULT b'1' COMMENT '启用',
+  `sort` varchar(10) DEFAULT NULL COMMENT '排序',
+  `tenant_id` bigint(20) DEFAULT NULL COMMENT '租户id',
+  `delete_flag` varchar(1) DEFAULT '0' COMMENT '删除标记，0未删除，1删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='服务项目字典';
+
+-- ----------------------------
+-- Table structure for jsh_service_order
+-- ----------------------------
+DROP TABLE IF EXISTS `jsh_service_order`;
+CREATE TABLE `jsh_service_order` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `session_id` bigint(20) DEFAULT NULL COMMENT '收银会话id',
+  `technician_id` bigint(20) DEFAULT NULL COMMENT '技师id(对应jsh_person.id)',
+  `status` varchar(20) DEFAULT 'OPEN' COMMENT '状态 OPEN/FINISHED/CANCELED',
+  `created_time` datetime DEFAULT NULL COMMENT '创建时间',
+  `finished_time` datetime DEFAULT NULL COMMENT '完成时间',
+  `tenant_id` bigint(20) DEFAULT NULL COMMENT '租户id',
+  `remark` varchar(200) DEFAULT NULL COMMENT '备注',
+  `delete_flag` varchar(1) DEFAULT '0' COMMENT '删除标记，0未删除，1删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_session` (`session_id`),
+  KEY `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='服务下单(护理单)';
+
+-- ----------------------------
+-- Table structure for jsh_service_order_item
+-- ----------------------------
+DROP TABLE IF EXISTS `jsh_service_order_item`;
+CREATE TABLE `jsh_service_order_item` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `service_order_id` bigint(20) DEFAULT NULL COMMENT '服务单id',
+  `service_item_id` bigint(20) DEFAULT NULL COMMENT '服务项目id',
+  `qty` decimal(24,6) DEFAULT '1.000000' COMMENT '数量',
+  `unit_price` decimal(24,6) DEFAULT '0.000000' COMMENT '单价',
+  `amount` decimal(24,6) DEFAULT '0.000000' COMMENT '金额',
+  `commission_amount` decimal(24,6) DEFAULT '0.000000' COMMENT '提成金额(结算时固化)',
+  `tenant_id` bigint(20) DEFAULT NULL COMMENT '租户id',
+  `delete_flag` varchar(1) DEFAULT '0' COMMENT '删除标记，0未删除，1删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_order` (`service_order_id`),
+  KEY `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='服务单明细';
+
+-- ----------------------------
+-- Table structure for jsh_commission_rule
+-- ----------------------------
+DROP TABLE IF EXISTS `jsh_commission_rule`;
+CREATE TABLE `jsh_commission_rule` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `rule_scope` varchar(30) DEFAULT NULL COMMENT '规则范围 SERVICE_ITEM/TECHNICIAN_ITEM/TECHNICIAN_ALL',
+  `technician_id` bigint(20) DEFAULT NULL COMMENT '技师id(可空)',
+  `service_item_id` bigint(20) DEFAULT NULL COMMENT '项目id(可空)',
+  `commission_type` varchar(20) DEFAULT NULL COMMENT '提成类型 PERCENT/FIXED',
+  `commission_value` decimal(24,6) DEFAULT '0.000000' COMMENT '提成值(百分比或固定值)',
+  `enabled` bit(1) DEFAULT b'1' COMMENT '启用',
+  `tenant_id` bigint(20) DEFAULT NULL COMMENT '租户id',
+  `delete_flag` varchar(1) DEFAULT '0' COMMENT '删除标记，0未删除，1删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_scope` (`rule_scope`),
+  KEY `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='技师提成规则';
+
+-- ----------------------------
+-- Table structure for jsh_credit_bill
+-- ----------------------------
+DROP TABLE IF EXISTS `jsh_credit_bill`;
+CREATE TABLE `jsh_credit_bill` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `session_id` bigint(20) DEFAULT NULL COMMENT '收银会话id',
+  `member_id` bigint(20) DEFAULT NULL COMMENT '会员id(可空)',
+  `amount` decimal(24,6) DEFAULT '0.000000' COMMENT '挂账金额',
+  `status` varchar(20) DEFAULT 'OPEN' COMMENT '状态 OPEN/SETTLED/CANCELED',
+  `created_time` datetime DEFAULT NULL COMMENT '创建时间',
+  `settled_time` datetime DEFAULT NULL COMMENT '结清时间',
+  `tenant_id` bigint(20) DEFAULT NULL COMMENT '租户id',
+  `remark` varchar(200) DEFAULT NULL COMMENT '备注',
+  `delete_flag` varchar(1) DEFAULT '0' COMMENT '删除标记，0未删除，1删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='签单挂账(无需审批)';
+
+-- ----------------------------
+-- Table structure for jsh_cashier_shift
+-- ----------------------------
+DROP TABLE IF EXISTS `jsh_cashier_shift`;
+CREATE TABLE `jsh_cashier_shift` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `depot_id` bigint(20) DEFAULT NULL COMMENT '门店id',
+  `cashier_user_id` bigint(20) DEFAULT NULL COMMENT '收银员用户id',
+  `start_time` datetime DEFAULT NULL COMMENT '开班时间',
+  `end_time` datetime DEFAULT NULL COMMENT '交班时间',
+  `opening_amount` decimal(24,6) DEFAULT '0.000000' COMMENT '备用金/开班金额',
+  `closing_amount` decimal(24,6) DEFAULT '0.000000' COMMENT '交班实收金额(人工填)',
+  `total_amount` decimal(24,6) DEFAULT '0.000000' COMMENT '本班应收总额(系统算)',
+  `diff_amount` decimal(24,6) DEFAULT '0.000000' COMMENT '差额',
+  `remark` varchar(200) DEFAULT NULL COMMENT '备注',
+  `tenant_id` bigint(20) DEFAULT NULL COMMENT '租户id',
+  `delete_flag` varchar(1) DEFAULT '0' COMMENT '删除标记，0未删除，1删除',
+  PRIMARY KEY (`id`),
+  KEY `idx_depot_time` (`depot_id`,`start_time`),
+  KEY `idx_tenant` (`tenant_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COMMENT='收银交班(不强制拆分支付方式)';
+
+-- ----------------------------
+-- Records of jsh_service_item
+-- ----------------------------
+INSERT INTO `jsh_service_item` VALUES (1, '修脚', 68.000000, 60, b'1', '001', 63, '0');
+INSERT INTO `jsh_service_item` VALUES (2, '足浴', 88.000000, 70, b'1', '002', 63, '0');
+INSERT INTO `jsh_service_item` VALUES (3, '采耳', 58.000000, 40, b'1', '003', 63, '0');
+
 SET FOREIGN_KEY_CHECKS = 1;

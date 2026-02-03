@@ -114,6 +114,31 @@ const findStockByDepotAndBarCode = (params)=>getAction("/depotItem/findStockByDe
 const getBatchNumberList = (params)=>getAction("/depotItem/getBatchNumberList",params);
 const findFinancialDetailByNumber = (params)=>getAction("/accountHead/getDetailByNumber",params);
 
+const cashierOpenSession = (params)=>postAction("/cashier/session/open",params);
+const cashierCloseSession = (params)=>postAction("/cashier/session/close",params);
+const cashierCurrentSessionBySeat = (params)=>getAction("/cashier/session/currentBySeat",params);
+const cashierBindMember = (params)=>putAction("/cashier/session/bindMember",params);
+
+const cashierServiceItemList = (params)=>getAction("/cashier/serviceItem/list",params);
+const cashierAddServiceItem = (params)=>postAction("/cashier/serviceItem/add",params);
+const cashierUpdateServiceItem = (params)=>putAction("/cashier/serviceItem/update",params);
+const cashierDeleteServiceItem = (params)=>deleteAction("/cashier/serviceItem/delete",params);
+
+const cashierServiceOrderCreate = (params)=>postAction("/cashier/serviceOrder/create",params);
+const cashierServiceOrderAddItem = (params)=>postAction("/cashier/serviceOrder/addItem",params);
+const cashierServiceOrderListBySession = (params)=>getAction("/cashier/serviceOrder/listBySession",params);
+const cashierServiceOrderListItems = (params)=>getAction("/cashier/serviceOrder/listItems",params);
+const cashierServiceOrderFinish = (params)=>postAction("/cashier/serviceOrder/finish",params);
+
+const cashierCreditListOpen = (params)=>getAction("/cashier/credit/listOpen",params);
+const cashierCreditCreate = (params)=>postAction("/cashier/credit/create",params);
+const cashierCreditSettle = (params)=>postAction("/cashier/credit/settle",params);
+const cashierCreditCancel = (params)=>postAction("/cashier/credit/cancel",params);
+
+const cashierShiftCurrent = (params)=>getAction("/cashier/shift/current",params);
+const cashierShiftOpen = (params)=>postAction("/cashier/shift/open",params);
+const cashierShiftHandover = (params)=>postAction("/cashier/shift/handover",params);
+
 export {
   getBuyAndSaleStatistics,
   buyOrSalePrice,
@@ -206,7 +231,27 @@ export {
   batchAddDepotHeadAndDetail,
   findStockByDepotAndBarCode,
   getBatchNumberList,
-  findFinancialDetailByNumber
+  findFinancialDetailByNumber,
+  cashierOpenSession,
+  cashierCloseSession,
+  cashierCurrentSessionBySeat,
+  cashierBindMember,
+  cashierServiceItemList,
+  cashierAddServiceItem,
+  cashierUpdateServiceItem,
+  cashierDeleteServiceItem,
+  cashierServiceOrderCreate,
+  cashierServiceOrderAddItem,
+  cashierServiceOrderListBySession,
+  cashierServiceOrderListItems,
+  cashierServiceOrderFinish,
+  cashierCreditListOpen,
+  cashierCreditCreate,
+  cashierCreditSettle,
+  cashierCreditCancel,
+  cashierShiftCurrent,
+  cashierShiftOpen,
+  cashierShiftHandover
 }
 
 

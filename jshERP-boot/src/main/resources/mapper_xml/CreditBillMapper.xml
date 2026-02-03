@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.CreditBillMapper">
+  <resultMap id="BaseResultMap" type="com.jsh.erp.datasource.entities.CreditBill">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="session_id" jdbcType="BIGINT" property="sessionId" />
+    <result column="member_id" jdbcType="BIGINT" property="memberId" />
+    <result column="amount" jdbcType="DECIMAL" property="amount" />
+    <result column="status" jdbcType="VARCHAR" property="status" />
+    <result column="created_time" jdbcType="TIMESTAMP" property="createdTime" />
+    <result column="settled_time" jdbcType="TIMESTAMP" property="settledTime" />
+    <result column="tenant_id" jdbcType="BIGINT" property="tenantId" />
+    <result column="remark" jdbcType="VARCHAR" property="remark" />
+    <result column="delete_flag" jdbcType="VARCHAR" property="deleteFlag" />
+  </resultMap>
+
+  <sql id="Base_Column_List">
+    id, session_id, member_id, amount, status, created_time, settled_time, tenant_id, remark, delete_flag
+  </sql>
+
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from jsh_credit_bill
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from jsh_credit_bill
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+
+  <insert id="insert" parameterType="com.jsh.erp.datasource.entities.CreditBill">
+    insert into jsh_credit_bill (id, session_id, member_id, amount, status, created_time, settled_time, remark, delete_flag)
+    values (#{id,jdbcType=BIGINT}, #{sessionId,jdbcType=BIGINT}, #{memberId,jdbcType=BIGINT}, #{amount,jdbcType=DECIMAL},
+      #{status,jdbcType=VARCHAR}, #{createdTime,jdbcType=TIMESTAMP}, #{settledTime,jdbcType=TIMESTAMP},
+      #{remark,jdbcType=VARCHAR}, #{deleteFlag,jdbcType=VARCHAR})
+  </insert>
+
+  <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.CreditBill">
+    insert into jsh_credit_bill
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">id,</if>
+      <if test="sessionId != null">session_id,</if>
+      <if test="memberId != null">member_id,</if>
+      <if test="amount != null">amount,</if>
+      <if test="status != null">status,</if>
+      <if test="createdTime != null">created_time,</if>
+      <if test="settledTime != null">settled_time,</if>
+      <if test="remark != null">remark,</if>
+      <if test="deleteFlag != null">delete_flag,</if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">#{id,jdbcType=BIGINT},</if>
+      <if test="sessionId != null">#{sessionId,jdbcType=BIGINT},</if>
+      <if test="memberId != null">#{memberId,jdbcType=BIGINT},</if>
+      <if test="amount != null">#{amount,jdbcType=DECIMAL},</if>
+      <if test="status != null">#{status,jdbcType=VARCHAR},</if>
+      <if test="createdTime != null">#{createdTime,jdbcType=TIMESTAMP},</if>
+      <if test="settledTime != null">#{settledTime,jdbcType=TIMESTAMP},</if>
+      <if test="remark != null">#{remark,jdbcType=VARCHAR},</if>
+      <if test="deleteFlag != null">#{deleteFlag,jdbcType=VARCHAR},</if>
+    </trim>
+  </insert>
+
+  <update id="updateByPrimaryKeySelective" parameterType="com.jsh.erp.datasource.entities.CreditBill">
+    update jsh_credit_bill
+    <set>
+      <if test="sessionId != null">session_id = #{sessionId,jdbcType=BIGINT},</if>
+      <if test="memberId != null">member_id = #{memberId,jdbcType=BIGINT},</if>
+      <if test="amount != null">amount = #{amount,jdbcType=DECIMAL},</if>
+      <if test="status != null">status = #{status,jdbcType=VARCHAR},</if>
+      <if test="createdTime != null">created_time = #{createdTime,jdbcType=TIMESTAMP},</if>
+      <if test="settledTime != null">settled_time = #{settledTime,jdbcType=TIMESTAMP},</if>
+      <if test="tenantId != null">tenant_id = #{tenantId,jdbcType=BIGINT},</if>
+      <if test="remark != null">remark = #{remark,jdbcType=VARCHAR},</if>
+      <if test="deleteFlag != null">delete_flag = #{deleteFlag,jdbcType=VARCHAR},</if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <update id="updateByPrimaryKey" parameterType="com.jsh.erp.datasource.entities.CreditBill">
+    update jsh_credit_bill
+    set session_id = #{sessionId,jdbcType=BIGINT},
+      member_id = #{memberId,jdbcType=BIGINT},
+      amount = #{amount,jdbcType=DECIMAL},
+      status = #{status,jdbcType=VARCHAR},
+      created_time = #{createdTime,jdbcType=TIMESTAMP},
+      settled_time = #{settledTime,jdbcType=TIMESTAMP},
+      tenant_id = #{tenantId,jdbcType=BIGINT},
+      remark = #{remark,jdbcType=VARCHAR},
+      delete_flag = #{deleteFlag,jdbcType=VARCHAR}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <select id="selectByStatus" resultMap="BaseResultMap">
+    select *
+    from jsh_credit_bill
+    where status = #{status}
+      and ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+    order by created_time desc, id desc
+  </select>
+
+  <select id="selectByDepotAndTime" resultMap="BaseResultMap">
+    select b.*
+    from jsh_credit_bill b
+      left join jsh_cashier_session s on s.id = b.session_id
+    where 1=1
+      <if test="depotId != null">
+        and s.depot_id = #{depotId}
+      </if>
+      <if test="startTime != null">
+        and b.created_time &gt;= #{startTime}
+      </if>
+      <if test="endTime != null">
+        and b.created_time &lt;= #{endTime}
+      </if>
+      and ifnull(b.delete_flag,'0') != '1'
+      and ifnull(s.delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and b.tenant_id = #{tenantId}
+      </if>
+    order by b.created_time desc, b.id desc
+  </select>
+</mapper>

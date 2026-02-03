@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.CashierShiftMapper">
+  <resultMap id="BaseResultMap" type="com.jsh.erp.datasource.entities.CashierShift">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="depot_id" jdbcType="BIGINT" property="depotId" />
+    <result column="cashier_user_id" jdbcType="BIGINT" property="cashierUserId" />
+    <result column="start_time" jdbcType="TIMESTAMP" property="startTime" />
+    <result column="end_time" jdbcType="TIMESTAMP" property="endTime" />
+    <result column="opening_amount" jdbcType="DECIMAL" property="openingAmount" />
+    <result column="closing_amount" jdbcType="DECIMAL" property="closingAmount" />
+    <result column="total_amount" jdbcType="DECIMAL" property="totalAmount" />
+    <result column="diff_amount" jdbcType="DECIMAL" property="diffAmount" />
+    <result column="remark" jdbcType="VARCHAR" property="remark" />
+    <result column="tenant_id" jdbcType="BIGINT" property="tenantId" />
+    <result column="delete_flag" jdbcType="VARCHAR" property="deleteFlag" />
+  </resultMap>
+
+  <sql id="Base_Column_List">
+    id, depot_id, cashier_user_id, start_time, end_time, opening_amount, closing_amount, total_amount, diff_amount, remark, tenant_id, delete_flag
+  </sql>
+
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from jsh_cashier_shift
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from jsh_cashier_shift
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+
+  <insert id="insert" parameterType="com.jsh.erp.datasource.entities.CashierShift">
+    insert into jsh_cashier_shift (id, depot_id, cashier_user_id, start_time, end_time, opening_amount, closing_amount,
+      total_amount, diff_amount, remark, delete_flag)
+    values (#{id,jdbcType=BIGINT}, #{depotId,jdbcType=BIGINT}, #{cashierUserId,jdbcType=BIGINT}, #{startTime,jdbcType=TIMESTAMP},
+      #{endTime,jdbcType=TIMESTAMP}, #{openingAmount,jdbcType=DECIMAL}, #{closingAmount,jdbcType=DECIMAL},
+      #{totalAmount,jdbcType=DECIMAL}, #{diffAmount,jdbcType=DECIMAL}, #{remark,jdbcType=VARCHAR}, #{deleteFlag,jdbcType=VARCHAR})
+  </insert>
+
+  <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.CashierShift" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+    insert into jsh_cashier_shift
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">id,</if>
+      <if test="depotId != null">depot_id,</if>
+      <if test="cashierUserId != null">cashier_user_id,</if>
+      <if test="startTime != null">start_time,</if>
+      <if test="endTime != null">end_time,</if>
+      <if test="openingAmount != null">opening_amount,</if>
+      <if test="closingAmount != null">closing_amount,</if>
+      <if test="totalAmount != null">total_amount,</if>
+      <if test="diffAmount != null">diff_amount,</if>
+      <if test="remark != null">remark,</if>
+      <if test="deleteFlag != null">delete_flag,</if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">#{id,jdbcType=BIGINT},</if>
+      <if test="depotId != null">#{depotId,jdbcType=BIGINT},</if>
+      <if test="cashierUserId != null">#{cashierUserId,jdbcType=BIGINT},</if>
+      <if test="startTime != null">#{startTime,jdbcType=TIMESTAMP},</if>
+      <if test="endTime != null">#{endTime,jdbcType=TIMESTAMP},</if>
+      <if test="openingAmount != null">#{openingAmount,jdbcType=DECIMAL},</if>
+      <if test="closingAmount != null">#{closingAmount,jdbcType=DECIMAL},</if>
+      <if test="totalAmount != null">#{totalAmount,jdbcType=DECIMAL},</if>
+      <if test="diffAmount != null">#{diffAmount,jdbcType=DECIMAL},</if>
+      <if test="remark != null">#{remark,jdbcType=VARCHAR},</if>
+      <if test="deleteFlag != null">#{deleteFlag,jdbcType=VARCHAR},</if>
+    </trim>
+  </insert>
+
+  <update id="updateByPrimaryKeySelective" parameterType="com.jsh.erp.datasource.entities.CashierShift">
+    update jsh_cashier_shift
+    <set>
+      <if test="depotId != null">depot_id = #{depotId,jdbcType=BIGINT},</if>
+      <if test="cashierUserId != null">cashier_user_id = #{cashierUserId,jdbcType=BIGINT},</if>
+      <if test="startTime != null">start_time = #{startTime,jdbcType=TIMESTAMP},</if>
+      <if test="endTime != null">end_time = #{endTime,jdbcType=TIMESTAMP},</if>
+      <if test="openingAmount != null">opening_amount = #{openingAmount,jdbcType=DECIMAL},</if>
+      <if test="closingAmount != null">closing_amount = #{closingAmount,jdbcType=DECIMAL},</if>
+      <if test="totalAmount != null">total_amount = #{totalAmount,jdbcType=DECIMAL},</if>
+      <if test="diffAmount != null">diff_amount = #{diffAmount,jdbcType=DECIMAL},</if>
+      <if test="remark != null">remark = #{remark,jdbcType=VARCHAR},</if>
+      <if test="tenantId != null">tenant_id = #{tenantId,jdbcType=BIGINT},</if>
+      <if test="deleteFlag != null">delete_flag = #{deleteFlag,jdbcType=VARCHAR},</if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <update id="updateByPrimaryKey" parameterType="com.jsh.erp.datasource.entities.CashierShift">
+    update jsh_cashier_shift
+    set depot_id = #{depotId,jdbcType=BIGINT},
+      cashier_user_id = #{cashierUserId,jdbcType=BIGINT},
+      start_time = #{startTime,jdbcType=TIMESTAMP},
+      end_time = #{endTime,jdbcType=TIMESTAMP},
+      opening_amount = #{openingAmount,jdbcType=DECIMAL},
+      closing_amount = #{closingAmount,jdbcType=DECIMAL},
+      total_amount = #{totalAmount,jdbcType=DECIMAL},
+      diff_amount = #{diffAmount,jdbcType=DECIMAL},
+      remark = #{remark,jdbcType=VARCHAR},
+      tenant_id = #{tenantId,jdbcType=BIGINT},
+      delete_flag = #{deleteFlag,jdbcType=VARCHAR}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <select id="selectOpenShift" resultMap="BaseResultMap">
+    select *
+    from jsh_cashier_shift
+    where depot_id = #{depotId}
+      and cashier_user_id = #{cashierUserId}
+      and end_time is null
+      and ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+    order by start_time desc, id desc
+    limit 1
+  </select>
+</mapper>

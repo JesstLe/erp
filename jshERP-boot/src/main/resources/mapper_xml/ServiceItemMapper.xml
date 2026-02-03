@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.ServiceItemMapper">
+  <resultMap id="BaseResultMap" type="com.jsh.erp.datasource.entities.ServiceItem">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="name" jdbcType="VARCHAR" property="name" />
+    <result column="price" jdbcType="DECIMAL" property="price" />
+    <result column="duration_min" jdbcType="INTEGER" property="durationMin" />
+    <result column="enabled" jdbcType="BIT" property="enabled" />
+    <result column="sort" jdbcType="VARCHAR" property="sort" />
+    <result column="tenant_id" jdbcType="BIGINT" property="tenantId" />
+    <result column="delete_flag" jdbcType="VARCHAR" property="deleteFlag" />
+  </resultMap>
+
+  <sql id="Base_Column_List">
+    id, name, price, duration_min, enabled, sort, tenant_id, delete_flag
+  </sql>
+
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from jsh_service_item
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from jsh_service_item
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+
+  <insert id="insert" parameterType="com.jsh.erp.datasource.entities.ServiceItem">
+    insert into jsh_service_item (id, name, price, duration_min, enabled, sort, delete_flag)
+    values (#{id,jdbcType=BIGINT}, #{name,jdbcType=VARCHAR}, #{price,jdbcType=DECIMAL}, #{durationMin,jdbcType=INTEGER},
+      #{enabled,jdbcType=BIT}, #{sort,jdbcType=VARCHAR}, #{deleteFlag,jdbcType=VARCHAR})
+  </insert>
+
+  <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.ServiceItem">
+    insert into jsh_service_item
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        id,
+      </if>
+      <if test="name != null">
+        name,
+      </if>
+      <if test="price != null">
+        price,
+      </if>
+      <if test="durationMin != null">
+        duration_min,
+      </if>
+      <if test="enabled != null">
+        enabled,
+      </if>
+      <if test="sort != null">
+        sort,
+      </if>
+      <if test="deleteFlag != null">
+        delete_flag,
+      </if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">
+        #{id,jdbcType=BIGINT},
+      </if>
+      <if test="name != null">
+        #{name,jdbcType=VARCHAR},
+      </if>
+      <if test="price != null">
+        #{price,jdbcType=DECIMAL},
+      </if>
+      <if test="durationMin != null">
+        #{durationMin,jdbcType=INTEGER},
+      </if>
+      <if test="enabled != null">
+        #{enabled,jdbcType=BIT},
+      </if>
+      <if test="sort != null">
+        #{sort,jdbcType=VARCHAR},
+      </if>
+      <if test="deleteFlag != null">
+        #{deleteFlag,jdbcType=VARCHAR},
+      </if>
+    </trim>
+  </insert>
+
+  <update id="updateByPrimaryKeySelective" parameterType="com.jsh.erp.datasource.entities.ServiceItem">
+    update jsh_service_item
+    <set>
+      <if test="name != null">
+        name = #{name,jdbcType=VARCHAR},
+      </if>
+      <if test="price != null">
+        price = #{price,jdbcType=DECIMAL},
+      </if>
+      <if test="durationMin != null">
+        duration_min = #{durationMin,jdbcType=INTEGER},
+      </if>
+      <if test="enabled != null">
+        enabled = #{enabled,jdbcType=BIT},
+      </if>
+      <if test="sort != null">
+        sort = #{sort,jdbcType=VARCHAR},
+      </if>
+      <if test="tenantId != null">
+        tenant_id = #{tenantId,jdbcType=BIGINT},
+      </if>
+      <if test="deleteFlag != null">
+        delete_flag = #{deleteFlag,jdbcType=VARCHAR},
+      </if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <update id="updateByPrimaryKey" parameterType="com.jsh.erp.datasource.entities.ServiceItem">
+    update jsh_service_item
+    set name = #{name,jdbcType=VARCHAR},
+      price = #{price,jdbcType=DECIMAL},
+      duration_min = #{durationMin,jdbcType=INTEGER},
+      enabled = #{enabled,jdbcType=BIT},
+      sort = #{sort,jdbcType=VARCHAR},
+      tenant_id = #{tenantId,jdbcType=BIGINT},
+      delete_flag = #{deleteFlag,jdbcType=VARCHAR}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <select id="selectByCondition" resultMap="BaseResultMap">
+    select *
+    from jsh_service_item
+    where 1=1
+      <if test="name != null and name != ''">
+        and name like concat('%', #{name}, '%')
+      </if>
+      <if test="enabled != null">
+        and enabled = #{enabled}
+      </if>
+      and ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+    order by cast(ifnull(sort,'0') as signed) asc, id asc
+    <if test="offset != null and rows != null">
+      limit #{offset},#{rows}
+    </if>
+  </select>
+
+  <select id="countsByCondition" resultType="java.lang.Long">
+    select count(id)
+    from jsh_service_item
+    where 1=1
+      <if test="name != null and name != ''">
+        and name like concat('%', #{name}, '%')
+      </if>
+      <if test="enabled != null">
+        and enabled = #{enabled}
+      </if>
+      and ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+  </select>
+</mapper>
