@@ -42,6 +42,33 @@ public class ServiceOrderService {
     }
 
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public ServiceOrderItem quickAddItem(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
+        Long sessionId = obj.getLong("sessionId");
+        Long serviceItemId = obj.getLong("serviceItemId");
+        if (sessionId == null || serviceItemId == null) {
+            throw new IllegalArgumentException("参数错误");
+        }
+        ServiceOrder order = serviceOrderMapper.selectOpenDeskOrder(sessionId, tenantId);
+        if (order == null) {
+            ServiceOrder create = new ServiceOrder();
+            create.setSessionId(sessionId);
+            create.setTechnicianId(null);
+            create.setStatus("OPEN");
+            create.setCreatedTime(new Date());
+            create.setTenantId(tenantId);
+            create.setRemark("收银台");
+            create.setDeleteFlag("0");
+            serviceOrderMapper.insertSelective(create);
+            order = create;
+        }
+        JSONObject add = new JSONObject();
+        add.put("serviceOrderId", order.getId());
+        add.put("serviceItemId", serviceItemId);
+        add.put("qty", obj.getBigDecimal("qty"));
+        return addItem(add, tenantId, request);
+    }
+
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public ServiceOrder createOrder(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
         Long sessionId = obj.getLong("sessionId");
         Long technicianId = obj.getLong("technicianId");
@@ -82,6 +109,48 @@ public class ServiceOrderService {
         item.setDeleteFlag("0");
         serviceOrderItemMapper.insertSelective(item);
         return item;
+    }
+
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public int updateItemQty(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
+        Long id = obj.getLong("id");
+        BigDecimal qty = obj.getBigDecimal("qty");
+        if (id == null || qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
+            return 0;
+        }
+        ServiceOrderItem db = serviceOrderItemMapper.selectByPrimaryKey(id);
+        if (db == null) {
+            return 0;
+        }
+        if (tenantId != null && db.getTenantId() != null && !tenantId.equals(db.getTenantId())) {
+            return 0;
+        }
+        BigDecimal unitPrice = db.getUnitPrice();
+        if (unitPrice == null && db.getServiceItemId() != null) {
+            ServiceItem serviceItem = serviceItemMapper.selectByPrimaryKey(db.getServiceItemId());
+            unitPrice = serviceItem == null || serviceItem.getPrice() == null ? BigDecimal.ZERO : serviceItem.getPrice();
+        }
+        BigDecimal amount = (unitPrice == null ? BigDecimal.ZERO : unitPrice).multiply(qty).setScale(6, RoundingMode.HALF_UP);
+        ServiceOrderItem update = new ServiceOrderItem();
+        update.setId(id);
+        update.setTenantId(tenantId);
+        update.setQty(qty);
+        update.setUnitPrice(unitPrice);
+        update.setAmount(amount);
+        return serviceOrderItemMapper.updateByPrimaryKeySelective(update);
+    }
+
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public int deleteItem(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
+        Long id = obj.getLong("id");
+        if (id == null) {
+            return 0;
+        }
+        ServiceOrderItem update = new ServiceOrderItem();
+        update.setId(id);
+        update.setTenantId(tenantId);
+        update.setDeleteFlag("1");
+        return serviceOrderItemMapper.updateByPrimaryKeySelective(update);
     }
 
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
@@ -157,4 +226,3 @@ public class ServiceOrderService {
         return null;
     }
 }
-

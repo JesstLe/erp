@@ -138,7 +138,7 @@
       <if test="tenantId != null">
         and tenant_id = #{tenantId}
       </if>
-    order by cast(ifnull(sort,'0') as signed) asc, id asc
+    order by sort asc, id asc
     <if test="offset != null and rows != null">
       limit #{offset},#{rows}
     </if>

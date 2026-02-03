@@ -118,6 +118,7 @@ const cashierOpenSession = (params)=>postAction("/cashier/session/open",params);
 const cashierCloseSession = (params)=>postAction("/cashier/session/close",params);
 const cashierCurrentSessionBySeat = (params)=>getAction("/cashier/session/currentBySeat",params);
 const cashierBindMember = (params)=>putAction("/cashier/session/bindMember",params);
+const cashierSessionDetail = (params)=>getAction("/cashier/session/detail",params);
 
 const cashierServiceItemList = (params)=>getAction("/cashier/serviceItem/list",params);
 const cashierAddServiceItem = (params)=>postAction("/cashier/serviceItem/add",params);
@@ -126,9 +127,12 @@ const cashierDeleteServiceItem = (params)=>deleteAction("/cashier/serviceItem/de
 
 const cashierServiceOrderCreate = (params)=>postAction("/cashier/serviceOrder/create",params);
 const cashierServiceOrderAddItem = (params)=>postAction("/cashier/serviceOrder/addItem",params);
+const cashierServiceOrderQuickAddItem = (params)=>postAction("/cashier/serviceOrder/quickAddItem",params);
 const cashierServiceOrderListBySession = (params)=>getAction("/cashier/serviceOrder/listBySession",params);
 const cashierServiceOrderListItems = (params)=>getAction("/cashier/serviceOrder/listItems",params);
 const cashierServiceOrderFinish = (params)=>postAction("/cashier/serviceOrder/finish",params);
+const cashierServiceOrderItemUpdateQty = (params)=>putAction("/cashier/serviceOrder/item/updateQty",params);
+const cashierServiceOrderItemDelete = (params)=>postAction("/cashier/serviceOrder/item/delete",params);
 
 const cashierCreditListOpen = (params)=>getAction("/cashier/credit/listOpen",params);
 const cashierCreditCreate = (params)=>postAction("/cashier/credit/create",params);
@@ -138,6 +142,12 @@ const cashierCreditCancel = (params)=>postAction("/cashier/credit/cancel",params
 const cashierShiftCurrent = (params)=>getAction("/cashier/shift/current",params);
 const cashierShiftOpen = (params)=>postAction("/cashier/shift/open",params);
 const cashierShiftHandover = (params)=>postAction("/cashier/shift/handover",params);
+
+const cashierCartProductAdd = (params)=>postAction("/cashier/cart/product/add",params);
+const cashierCartProductUpdateQty = (params)=>putAction("/cashier/cart/product/updateQty",params);
+const cashierCartProductDelete = (params)=>postAction("/cashier/cart/product/delete",params);
+
+const cashierSettlementCheckout = (params)=>postAction("/cashier/settlement/checkout",params);
 
 export {
   getBuyAndSaleStatistics,
@@ -236,22 +246,30 @@ export {
   cashierCloseSession,
   cashierCurrentSessionBySeat,
   cashierBindMember,
+  cashierSessionDetail,
   cashierServiceItemList,
   cashierAddServiceItem,
   cashierUpdateServiceItem,
   cashierDeleteServiceItem,
   cashierServiceOrderCreate,
   cashierServiceOrderAddItem,
+  cashierServiceOrderQuickAddItem,
   cashierServiceOrderListBySession,
   cashierServiceOrderListItems,
   cashierServiceOrderFinish,
+  cashierServiceOrderItemUpdateQty,
+  cashierServiceOrderItemDelete,
   cashierCreditListOpen,
   cashierCreditCreate,
   cashierCreditSettle,
   cashierCreditCancel,
   cashierShiftCurrent,
   cashierShiftOpen,
-  cashierShiftHandover
+  cashierShiftHandover,
+  cashierCartProductAdd,
+  cashierCartProductUpdateQty,
+  cashierCartProductDelete,
+  cashierSettlementCheckout
 }
 
 

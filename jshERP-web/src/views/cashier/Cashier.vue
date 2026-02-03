@@ -143,6 +143,14 @@
         </a-form-model>
       </div>
     </a-modal>
+
+    <cashier-desk-modal
+      :visible="deskVisible"
+      :seat="deskSeat"
+      :session="deskSession"
+      @close="handleDeskClose"
+      @checkout="handleDeskCheckout"
+    />
   </div>
 </template>
 
@@ -164,11 +172,14 @@ import {
   cashierShiftCurrent,
   cashierShiftOpen,
   cashierShiftHandover,
+  cashierSettlementCheckout,
   getPersonByType
 } from '@/api/api'
+import CashierDeskModal from '@/views/cashier/modules/CashierDeskModal'
 
 export default {
   name: 'Cashier',
+  components: { CashierDeskModal },
   data() {
     return {
       depots: [],
@@ -195,7 +206,10 @@ export default {
       ],
       shiftVisible: false,
       shift: null,
-      shiftForm: { openingAmount: 0, closingAmount: 0, remark: '' }
+      shiftForm: { openingAmount: 0, closingAmount: 0, remark: '' },
+      deskVisible: false,
+      deskSeat: null,
+      deskSession: null
     }
   },
   created() {
@@ -260,9 +274,27 @@ export default {
         this.currentSession = res.data
         this.loadSeats()
         this.$message.success('开台成功')
+        this.deskSeat = seat
+        this.deskSession = res.data
+        this.deskVisible = true
         return
       }
       this.$message.error('开台失败')
+    },
+    handleDeskClose() {
+      this.deskVisible = false
+      this.deskSeat = null
+      this.deskSession = null
+    },
+    async handleDeskCheckout(payload) {
+      const res = await cashierSettlementCheckout(payload)
+      if (res.code === 200) {
+        this.$message.success('结算成功')
+        this.handleDeskClose()
+        await this.loadSeats()
+        return
+      }
+      this.$message.error(res.data || '结算失败')
     },
     handleAddSeat() {
       this.form = { name: '', sort: '' }

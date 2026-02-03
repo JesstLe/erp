@@ -62,6 +62,57 @@ public class ServiceOrderController extends BaseController {
         return res;
     }
 
+    @PostMapping(value = "/quickAddItem")
+    @ApiOperation(value = "收银台快捷新增项目(自动创建OPEN服务单)")
+    public BaseResponseInfo quickAddItem(@RequestBody JSONObject obj, HttpServletRequest request) throws Exception {
+        BaseResponseInfo res = new BaseResponseInfo();
+        try {
+            User userInfo = userService.getCurrentUser();
+            Long tenantId = resolveTenantId(userInfo);
+            ServiceOrderItem item = serviceOrderService.quickAddItem(obj, tenantId, request);
+            res.code = 200;
+            res.data = item;
+        } catch (Exception e) {
+            res.code = 500;
+            res.data = "新增失败";
+        }
+        return res;
+    }
+
+    @PutMapping(value = "/item/updateQty")
+    @ApiOperation(value = "修改服务单明细数量")
+    public BaseResponseInfo updateItemQty(@RequestBody JSONObject obj, HttpServletRequest request) throws Exception {
+        BaseResponseInfo res = new BaseResponseInfo();
+        try {
+            User userInfo = userService.getCurrentUser();
+            Long tenantId = resolveTenantId(userInfo);
+            int result = serviceOrderService.updateItemQty(obj, tenantId, request);
+            res.code = 200;
+            res.data = result;
+        } catch (Exception e) {
+            res.code = 500;
+            res.data = "修改失败";
+        }
+        return res;
+    }
+
+    @PostMapping(value = "/item/delete")
+    @ApiOperation(value = "删除服务单明细(软删除)")
+    public BaseResponseInfo deleteItem(@RequestBody JSONObject obj, HttpServletRequest request) throws Exception {
+        BaseResponseInfo res = new BaseResponseInfo();
+        try {
+            User userInfo = userService.getCurrentUser();
+            Long tenantId = resolveTenantId(userInfo);
+            int result = serviceOrderService.deleteItem(obj, tenantId, request);
+            res.code = 200;
+            res.data = result;
+        } catch (Exception e) {
+            res.code = 500;
+            res.data = "删除失败";
+        }
+        return res;
+    }
+
     @GetMapping(value = "/listBySession")
     @ApiOperation(value = "按会话获取服务单")
     public BaseResponseInfo listBySession(@RequestParam("sessionId") Long sessionId, HttpServletRequest request) throws Exception {
@@ -132,4 +183,3 @@ public class ServiceOrderController extends BaseController {
         return userInfo.getTenantId();
     }
 }
-

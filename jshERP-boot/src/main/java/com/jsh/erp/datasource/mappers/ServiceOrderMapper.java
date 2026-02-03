@@ -20,5 +20,7 @@ public interface ServiceOrderMapper {
 
     List<ServiceOrder> selectBySessionId(@Param("sessionId") Long sessionId,
                                          @Param("tenantId") Long tenantId);
-}
 
+    ServiceOrder selectOpenDeskOrder(@Param("sessionId") Long sessionId,
+                                     @Param("tenantId") Long tenantId);
+}

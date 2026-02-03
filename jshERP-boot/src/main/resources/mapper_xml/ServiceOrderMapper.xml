@@ -97,4 +97,18 @@
       </if>
     order by created_time desc, id desc
   </select>
+
+  <select id="selectOpenDeskOrder" resultMap="BaseResultMap">
+    select *
+    from jsh_service_order
+    where session_id = #{sessionId}
+      and status = 'OPEN'
+      and technician_id is null
+      and ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+    order by created_time desc, id desc
+    limit 1
+  </select>
 </mapper>

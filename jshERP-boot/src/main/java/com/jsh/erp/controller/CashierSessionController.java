@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
+import java.util.Map;
 
 @RestController
 @RequestMapping(value = "/cashier/session")
@@ -98,6 +99,29 @@ public class CashierSessionController extends BaseController {
         } catch (Exception e) {
             res.code = 500;
             res.data = "绑定失败";
+        }
+        return res;
+    }
+
+    @GetMapping(value = "/detail")
+    @ApiOperation(value = "会话详情(服务+产品汇总)")
+    public BaseResponseInfo detail(@RequestParam("sessionId") Long sessionId, HttpServletRequest request) throws Exception {
+        BaseResponseInfo res = new BaseResponseInfo();
+        try {
+            User userInfo = userService.getCurrentUser();
+            Long tenantId = resolveTenantId(userInfo);
+            Map<String, Object> data = cashierSessionService.getDetail(sessionId, tenantId);
+            if (data == null) {
+                res.code = 500;
+                res.data = "会话不存在";
+                return res;
+            }
+            res.code = 200;
+            res.data = data;
+        } catch (Exception e) {
+            logger.error("获取会话详情失败，sessionId={}", sessionId, e);
+            res.code = 500;
+            res.data = "获取失败";
         }
         return res;
     }
