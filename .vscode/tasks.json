@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "部署到 Lighthouse（Docker Compose）",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/scripts/lighthouse/deploy-compose.sh",
+        "--env-file",
+        "${workspaceFolder}/scripts/lighthouse/.env.local"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "检查 Lighthouse 部署配置",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/scripts/lighthouse/deploy-compose.sh",
+        "--env-file",
+        "${workspaceFolder}/scripts/lighthouse/.env.local",
+        "--check"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}
+

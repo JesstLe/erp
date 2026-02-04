@@ -8,3 +8,7 @@
 
 ## front
 **/*.lock
+
+## deploy
+scripts/lighthouse/.env
+scripts/lighthouse/.env.local
