@@ -58,6 +58,20 @@ export const constantRouterMap = [
     ]
   },
   {
+    path: '/cashier',
+    component: TabLayout,
+    redirect: '/cashier/service_item',
+    hidden: true,
+    children: [
+      {
+        path: 'service_item',
+        name: 'cashier-service-item',
+        meta: { title: '服务项目管理' },
+        component: () => import(/* webpackChunkName: "cashier" */ '@/views/cashier/ServiceItemList')
+      }
+    ]
+  },
+  {
     path: '/404',
     component: () => import(/* webpackChunkName: "fail" */ '@/views/exception/404')
   },

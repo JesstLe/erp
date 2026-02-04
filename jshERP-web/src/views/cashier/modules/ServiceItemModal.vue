@@ -15,8 +15,8 @@
       cancelText="取消"
       okText="保存"
       style="top:20%;height: 50%;">
-      <template slot="footer">
-        <a-button key="back" v-if="isReadOnly" @click="handleCancel">取消</a-button>
+      <template slot="footer" v-if="isReadOnly">
+        <a-button key="back" @click="handleCancel">取消</a-button>
       </template>
       <a-spin :spinning="confirmLoading">
         <a-form :form="form" id="serviceItemModal">
@@ -161,4 +161,3 @@
 
 <style scoped>
 </style>
-

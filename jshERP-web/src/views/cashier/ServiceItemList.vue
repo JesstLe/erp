@@ -29,10 +29,10 @@
           </a-form>
         </div>
         <div class="table-operator" style="margin-top: 5px">
-          <a-button v-if="btnEnableList.indexOf(1)>-1" @click="handleAdd" type="primary" icon="plus">新增</a-button>
-          <a-button v-if="btnEnableList.indexOf(1)>-1" @click="batchDel" icon="delete">删除</a-button>
-          <a-button v-if="btnEnableList.indexOf(1)>-1" @click="batchSetEnabled(true)" icon="check-square">启用</a-button>
-          <a-button v-if="btnEnableList.indexOf(1)>-1" @click="batchSetEnabled(false)" icon="close-square">禁用</a-button>
+          <a-button v-if="canEdit" @click="handleAdd" type="primary" icon="plus">新增</a-button>
+          <a-button v-if="canEdit" @click="batchDel" icon="delete">删除</a-button>
+          <a-button v-if="canEdit" @click="batchSetEnabled(true)" icon="check-square">启用</a-button>
+          <a-button v-if="canEdit" @click="batchSetEnabled(false)" icon="close-square">禁用</a-button>
         </div>
         <div>
           <a-table
@@ -49,8 +49,8 @@
             @change="handleTableChange">
             <span slot="action" slot-scope="text, record">
               <a @click="handleEdit(record)">编辑</a>
-              <a-divider v-if="btnEnableList.indexOf(1)>-1" type="vertical" />
-              <a-popconfirm v-if="btnEnableList.indexOf(1)>-1" title="确定删除吗?" @confirm="() => handleDelete(record.id)">
+              <a-divider v-if="canEdit" type="vertical" />
+              <a-popconfirm v-if="canEdit" title="确定删除吗?" @confirm="() => handleDelete(record.id)">
                 <a>删除</a>
               </a-popconfirm>
             </span>
@@ -116,6 +116,11 @@
         }
       }
     },
+    computed: {
+      canEdit() {
+        return this.btnEnableList === '' || this.btnEnableList.indexOf(1) > -1
+      }
+    },
     methods: {
       getQueryParams() {
         let sqp = {}
@@ -158,7 +163,7 @@
         this.$refs.modalForm.edit(record)
         this.$refs.modalForm.title = '编辑'
         this.$refs.modalForm.disableSubmit = false
-        if (this.btnEnableList.indexOf(1) === -1) {
+        if (!this.canEdit) {
           this.$refs.modalForm.isReadOnly = true
         }
       }
