@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.CustomerDashboardMapperEx">
+    <select id="countMemberTotal" resultType="java.lang.Long">
+        select count(1)
+        from jsh_supplier
+        where type = '会员'
+          and enabled = 1
+          and ifnull(delete_flag,'0') != '1'
+    </select>
+
+    <select id="sumMemberAdvanceIn" resultType="java.math.BigDecimal">
+        select ifnull(sum(advance_in), 0)
+        from jsh_supplier
+        where type = '会员'
+          and enabled = 1
+          and ifnull(delete_flag,'0') != '1'
+    </select>
+
+    <select id="countConsumerDistinct" resultType="java.lang.Long">
+        select count(distinct member_id)
+        from jsh_cashier_session
+        where status = 'CLOSED'
+          and member_id is not null
+          and ifnull(delete_flag,'0') != '1'
+          <if test="depotId != null">
+              and depot_id = #{depotId}
+          </if>
+          <if test="startTime != null">
+              and end_time &gt;= #{startTime}
+          </if>
+          <if test="endTime != null">
+              and end_time &lt; #{endTime}
+          </if>
+    </select>
+
+    <select id="sumServiceAmount" resultType="java.math.BigDecimal">
+        select ifnull(sum(soi.amount), 0)
+        from jsh_cashier_session s
+        join jsh_service_order so on so.session_id = s.id and ifnull(so.delete_flag,'0') != '1'
+        join jsh_service_order_item soi on soi.service_order_id = so.id and ifnull(soi.delete_flag,'0') != '1'
+        where s.status = 'CLOSED'
+          and ifnull(s.delete_flag,'0') != '1'
+          <if test="depotId != null">
+              and s.depot_id = #{depotId}
+          </if>
+          <if test="startTime != null">
+              and s.end_time &gt;= #{startTime}
+          </if>
+          <if test="endTime != null">
+              and s.end_time &lt; #{endTime}
+          </if>
+    </select>
+
+    <select id="sumProductAmount" resultType="java.math.BigDecimal">
+        select ifnull(sum(pi.amount), 0)
+        from jsh_cashier_session s
+        join jsh_cashier_session_product_item pi on pi.session_id = s.id and ifnull(pi.delete_flag,'0') != '1'
+        where s.status = 'CLOSED'
+          and ifnull(s.delete_flag,'0') != '1'
+          <if test="depotId != null">
+              and s.depot_id = #{depotId}
+          </if>
+          <if test="startTime != null">
+              and s.end_time &gt;= #{startTime}
+          </if>
+          <if test="endTime != null">
+              and s.end_time &lt; #{endTime}
+          </if>
+    </select>
+
+    <select id="revenueTrend" resultType="java.util.Map">
+        select d, sum(amount) amount
+        from (
+            select date(s.end_time) d, sum(pi.amount) amount
+            from jsh_cashier_session s
+            join jsh_cashier_session_product_item pi on pi.session_id = s.id and ifnull(pi.delete_flag,'0') != '1'
+            where s.status = 'CLOSED'
+              and ifnull(s.delete_flag,'0') != '1'
+              <if test="depotId != null">
+                  and s.depot_id = #{depotId}
+              </if>
+              <if test="startTime != null">
+                  and s.end_time &gt;= #{startTime}
+              </if>
+              <if test="endTime != null">
+                  and s.end_time &lt; #{endTime}
+              </if>
+            group by date(s.end_time)
+            union all
+            select date(s.end_time) d, sum(soi.amount) amount
+            from jsh_cashier_session s
+            join jsh_service_order so on so.session_id = s.id and ifnull(so.delete_flag,'0') != '1'
+            join jsh_service_order_item soi on soi.service_order_id = so.id and ifnull(soi.delete_flag,'0') != '1'
+            where s.status = 'CLOSED'
+              and ifnull(s.delete_flag,'0') != '1'
+              <if test="depotId != null">
+                  and s.depot_id = #{depotId}
+              </if>
+              <if test="startTime != null">
+                  and s.end_time &gt;= #{startTime}
+              </if>
+              <if test="endTime != null">
+                  and s.end_time &lt; #{endTime}
+              </if>
+            group by date(s.end_time)
+        ) t
+        group by d
+        order by d asc
+    </select>
+
+    <select id="listRecentMembers" resultType="com.jsh.erp.datasource.entities.Supplier">
+        select id, supplier, contacts, telephone, advance_in, create_time
+        from jsh_supplier
+        where type = '会员'
+          and enabled = 1
+          and ifnull(delete_flag,'0') != '1'
+        order by create_time desc, id desc
+        <choose>
+            <when test="limit != null">
+                limit 0, #{limit}
+            </when>
+            <otherwise>
+                limit 0, 10
+            </otherwise>
+        </choose>
+    </select>
+</mapper>
+

@@ -1,6 +1,7 @@
 package com.jsh.erp.datasource.entities;
 
 import java.math.BigDecimal;
+import java.util.Date;
 
 public class Supplier {
     private Long id;
@@ -50,6 +51,8 @@ public class Supplier {
     private Long creator;
 
     private Long tenantId;
+
+    private Date createTime;
 
     private String deleteFlag;
 
@@ -243,6 +246,14 @@ public class Supplier {
 
     public void setTenantId(Long tenantId) {
         this.tenantId = tenantId;
+    }
+
+    public Date getCreateTime() {
+        return createTime;
+    }
+
+    public void setCreateTime(Date createTime) {
+        this.createTime = createTime;
     }
 
     public String getDeleteFlag() {

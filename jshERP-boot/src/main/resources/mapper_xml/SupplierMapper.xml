@@ -26,6 +26,7 @@
     <result column="sort" jdbcType="VARCHAR" property="sort" />
     <result column="creator" jdbcType="BIGINT" property="creator" />
     <result column="tenant_id" jdbcType="BIGINT" property="tenantId" />
+    <result column="create_time" jdbcType="TIMESTAMP" property="createTime" />
     <result column="delete_flag" jdbcType="VARCHAR" property="deleteFlag" />
   </resultMap>
   <sql id="Example_Where_Clause">
@@ -89,7 +90,7 @@
   <sql id="Base_Column_List">
     id, supplier, contacts, phone_num, email, description, isystem, type, enabled, advance_in, 
     begin_need_get, begin_need_pay, all_need_get, all_need_pay, fax, telephone, address, 
-    tax_num, bank_name, account_number, tax_rate, sort, creator, tenant_id, delete_flag
+    tax_num, bank_name, account_number, tax_rate, sort, creator, tenant_id, create_time, delete_flag
   </sql>
   <select id="selectByExample" parameterType="com.jsh.erp.datasource.entities.SupplierExample" resultMap="BaseResultMap">
     select
@@ -130,7 +131,7 @@
       telephone, address, tax_num, 
       bank_name, account_number, tax_rate, 
       sort, creator, tenant_id, 
-      delete_flag)
+      create_time, delete_flag)
     values (#{id,jdbcType=BIGINT}, #{supplier,jdbcType=VARCHAR}, #{contacts,jdbcType=VARCHAR}, 
       #{phoneNum,jdbcType=VARCHAR}, #{email,jdbcType=VARCHAR}, #{description,jdbcType=VARCHAR}, 
       #{isystem,jdbcType=TINYINT}, #{type,jdbcType=VARCHAR}, #{enabled,jdbcType=BIT}, 
@@ -139,7 +140,7 @@
       #{telephone,jdbcType=VARCHAR}, #{address,jdbcType=VARCHAR}, #{taxNum,jdbcType=VARCHAR}, 
       #{bankName,jdbcType=VARCHAR}, #{accountNumber,jdbcType=VARCHAR}, #{taxRate,jdbcType=DECIMAL}, 
       #{sort,jdbcType=VARCHAR}, #{creator,jdbcType=BIGINT}, #{tenantId,jdbcType=BIGINT}, 
-      #{deleteFlag,jdbcType=VARCHAR})
+      #{createTime,jdbcType=TIMESTAMP}, #{deleteFlag,jdbcType=VARCHAR})
   </insert>
   <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.Supplier">
     insert into jsh_supplier
@@ -215,6 +216,9 @@
       </if>
       <if test="tenantId != null">
         tenant_id,
+      </if>
+      <if test="createTime != null">
+        create_time,
       </if>
       <if test="deleteFlag != null">
         delete_flag,
@@ -292,6 +296,9 @@
       </if>
       <if test="tenantId != null">
         #{tenantId,jdbcType=BIGINT},
+      </if>
+      <if test="createTime != null">
+        #{createTime,jdbcType=TIMESTAMP},
       </if>
       <if test="deleteFlag != null">
         #{deleteFlag,jdbcType=VARCHAR},

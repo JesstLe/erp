@@ -160,6 +160,9 @@ public class SupplierService {
             if(supplier.getAdvanceIn() == null) {
                 supplier.setAdvanceIn(BigDecimal.ZERO);
             }
+            if(supplier.getCreateTime() == null) {
+                supplier.setCreateTime(new Date());
+            }
             result=supplierMapper.insertSelective(supplier);
             //新增客户时给当前用户和租户自动授权
             setUserCustomerPermission(request, supplier);

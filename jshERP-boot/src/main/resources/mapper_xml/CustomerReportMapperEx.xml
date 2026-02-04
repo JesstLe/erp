@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.CustomerReportMapperEx">
+    <select id="listConsumption" resultType="java.util.Map">
+        select
+            s.id sessionId,
+            s.end_time endTime,
+            s.depot_id depotId,
+            d.name depotName,
+            s.member_id memberId,
+            sup.supplier memberCard,
+            sup.contacts memberName,
+            sup.telephone memberTelephone,
+            ifnull(serv.serviceAmount, 0) serviceAmount,
+            ifnull(prod.productAmount, 0) productAmount,
+            (ifnull(serv.serviceAmount, 0) + ifnull(prod.productAmount, 0)) totalAmount
+        from jsh_cashier_session s
+        left join jsh_depot d on d.id = s.depot_id and ifnull(d.delete_flag,'0') != '1'
+        left join jsh_supplier sup on sup.id = s.member_id and ifnull(sup.delete_flag,'0') != '1'
+        left join (
+            select so.session_id sessionId, sum(soi.amount) serviceAmount
+            from jsh_service_order so
+            join jsh_service_order_item soi on soi.service_order_id = so.id and ifnull(soi.delete_flag,'0') != '1'
+            where ifnull(so.delete_flag,'0') != '1'
+            group by so.session_id
+        ) serv on serv.sessionId = s.id
+        left join (
+            select session_id sessionId, sum(amount) productAmount
+            from jsh_cashier_session_product_item
+            where ifnull(delete_flag,'0') != '1'
+            group by session_id
+        ) prod on prod.sessionId = s.id
+        where s.status = 'CLOSED'
+          and ifnull(s.delete_flag,'0') != '1'
+          <if test="depotId != null">
+              and s.depot_id = #{depotId}
+          </if>
+          <if test="startTime != null">
+              and s.end_time &gt;= #{startTime}
+          </if>
+          <if test="endTime != null">
+              and s.end_time &lt; #{endTime}
+          </if>
+          <if test="memberKey != null and memberKey != ''">
+              <bind name="bindKey" value="'%'+memberKey+'%'"/>
+              and s.member_id is not null
+              and (sup.supplier like #{bindKey} or sup.contacts like #{bindKey} or sup.telephone like #{bindKey})
+          </if>
+        order by s.end_time desc, s.id desc
+    </select>
+
+    <select id="listCreditBill" resultType="java.util.Map">
+        select
+            cb.id,
+            cb.created_time createdTime,
+            cb.status,
+            cb.amount,
+            cb.session_id sessionId,
+            cb.member_id memberId,
+            sup.supplier memberCard,
+            sup.contacts memberName,
+            sup.telephone memberTelephone,
+            s.depot_id depotId,
+            d.name depotName
+        from jsh_credit_bill cb
+        left join jsh_cashier_session s on s.id = cb.session_id and ifnull(s.delete_flag,'0') != '1'
+        left join jsh_depot d on d.id = s.depot_id and ifnull(d.delete_flag,'0') != '1'
+        left join jsh_supplier sup on sup.id = cb.member_id and ifnull(sup.delete_flag,'0') != '1'
+        where ifnull(cb.delete_flag,'0') != '1'
+          <if test="status != null and status != ''">
+              and cb.status = #{status}
+          </if>
+          <if test="depotId != null">
+              and s.depot_id = #{depotId}
+          </if>
+          <if test="startTime != null">
+              and cb.created_time &gt;= #{startTime}
+          </if>
+          <if test="endTime != null">
+              and cb.created_time &lt; #{endTime}
+          </if>
+          <if test="memberKey != null and memberKey != ''">
+              <bind name="bindKey" value="'%'+memberKey+'%'"/>
+              and cb.member_id is not null
+              and (sup.supplier like #{bindKey} or sup.contacts like #{bindKey} or sup.telephone like #{bindKey})
+          </if>
+        order by cb.created_time desc, cb.id desc
+    </select>
+</mapper>
+
