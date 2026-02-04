@@ -20,37 +20,61 @@
     <a-row :gutter="24">
       <a-col :sm="24" :md="12" :xl="6" :style="{ paddingRight: '0px', marginBottom: '12px' }">
         <chart-card :loading="loading" title="收入总额">
-          <div class="kpi">￥{{ formatMoney(summary.incomeTotal) }}</div>
+          <a-tooltip title="统计周期内总收入（服务+商品）" slot="action">
+            <a-icon type="info-circle-o" />
+          </a-tooltip>
+          <div class="kpi-content">
+            <div class="kpi-value">￥{{ formatMoney(summary.incomeTotal) }}</div>
+            <a-icon type="pay-circle" class="kpi-icon" style="color: #1890ff; background: #e6f7ff;" />
+          </div>
         </chart-card>
       </a-col>
       <a-col :sm="24" :md="12" :xl="6" :style="{ paddingRight: '0px', marginBottom: '12px' }">
         <chart-card :loading="loading" title="消费人数">
-          <div class="kpi">{{ summary.consumerCount }}</div>
+          <a-tooltip title="统计周期内消费去重人数" slot="action">
+            <a-icon type="info-circle-o" />
+          </a-tooltip>
+          <div class="kpi-content">
+            <div class="kpi-value">{{ summary.consumerCount }}</div>
+            <a-icon type="team" class="kpi-icon" style="color: #722ed1; background: #f9f0ff;" />
+          </div>
         </chart-card>
       </a-col>
       <a-col :sm="24" :md="12" :xl="6" :style="{ paddingRight: '0px', marginBottom: '12px' }">
         <chart-card :loading="loading" title="会员总数">
-          <div class="kpi">{{ summary.memberTotal }}</div>
+          <a-tooltip title="当前有效会员总数" slot="action">
+            <a-icon type="info-circle-o" />
+          </a-tooltip>
+          <div class="kpi-content">
+            <div class="kpi-value">{{ summary.memberTotal }}</div>
+            <a-icon type="user" class="kpi-icon" style="color: #52c41a; background: #f6ffed;" />
+          </div>
         </chart-card>
       </a-col>
       <a-col :sm="24" :md="12" :xl="6" :style="{ paddingRight: '0px', marginBottom: '12px' }">
         <chart-card :loading="loading" title="储值余额">
-          <div class="kpi">￥{{ formatMoney(summary.storedBalance) }}</div>
+          <a-tooltip title="当前所有会员储值余额总计" slot="action">
+            <a-icon type="info-circle-o" />
+          </a-tooltip>
+          <div class="kpi-content">
+            <div class="kpi-value">￥{{ formatMoney(summary.storedBalance) }}</div>
+            <a-icon type="wallet" class="kpi-icon" style="color: #faad14; background: #fffbe6;" />
+          </div>
         </chart-card>
       </a-col>
     </a-row>
 
     <a-row :gutter="24">
-      <a-col :sm="24" :md="12" :xl="12" :style="{ paddingRight: '0px', marginBottom: '12px' }">
-        <a-card :loading="loading" :bordered="false" :body-style="{paddingRight: '5'}">
-          <pie title="消费类型占比" :height="chartHeight" :dataSource="consumeTypeData"/>
+      <a-col :sm="24" :md="24" :xl="8" :style="{ paddingRight: '0px', marginBottom: '12px' }">
+        <a-card :loading="loading" :bordered="false" :body-style="{padding: '12px 0 0 0', height: '360px', overflow: 'hidden'}">
+          <pie title="消费类型占比" :height="340" :dataSource="consumeTypeData"/>
         </a-card>
       </a-col>
-      <a-col :sm="24" :md="12" :xl="12" :style="{ paddingRight: '0px', marginBottom: '12px' }">
-        <a-card :loading="loading" :bordered="false" :body-style="{paddingRight: '5'}">
+      <a-col :sm="24" :md="24" :xl="16" :style="{ paddingRight: '0px', marginBottom: '12px' }">
+        <a-card :loading="loading" :bordered="false" :body-style="{padding: '24px', height: '360px'}">
           <line-chart-multid
             title="营业额趋势"
-            :height="chartHeight"
+            :height="310"
             :dataSource="revenueTrendData"
             :fields="['amount']"
             :aliases="[{field:'amount',alias:'营业额'}]"
@@ -61,24 +85,40 @@
 
     <a-row :gutter="24">
       <a-col :sm="24" :md="16" :xl="16" :style="{ paddingRight: '0px', marginBottom: '12px' }">
-        <a-card :loading="loading" :bordered="false" title="最近新增会员">
+        <a-card :loading="loading" :bordered="false" title="最近新增会员" style="min-height: 420px;">
           <a-table
-            size="middle"
+            size="small"
             bordered
             rowKey="id"
             :columns="recentColumns"
             :dataSource="recentMembers"
             :pagination="false"
-          />
+          >
+            <template slot="createTime" slot-scope="text">
+              {{ formatTime(text) }}
+            </template>
+          </a-table>
         </a-card>
       </a-col>
       <a-col :sm="24" :md="8" :xl="8" :style="{ paddingRight: '0px', marginBottom: '12px' }">
-        <a-card :bordered="false" title="快捷入口">
-          <div style="display:flex; flex-direction: column; gap: 8px">
-            <a @click="go('/system/member')">会员信息</a>
-            <a @click="go('/system/customer')">客户信息</a>
-            <a @click="go('/customer/report')">顾客报表</a>
-            <a @click="go('/cashier/index')">前台收银</a>
+        <a-card :bordered="false" title="快捷入口" :body-style="{padding: '12px'}" style="min-height: 420px;">
+          <div class="quick-nav-grid">
+            <div class="quick-nav-item" @click="go('/system/member')">
+              <a-icon type="user" class="nav-icon" style="color: #1890ff"/>
+              <span>会员信息</span>
+            </div>
+            <div class="quick-nav-item" @click="go('/system/customer')">
+              <a-icon type="team" class="nav-icon" style="color: #52c41a"/>
+              <span>客户信息</span>
+            </div>
+            <div class="quick-nav-item" @click="go('/customer/report')">
+              <a-icon type="file-text" class="nav-icon" style="color: #faad14"/>
+              <span>顾客报表</span>
+            </div>
+            <div class="quick-nav-item" @click="go('/cashier/index')">
+              <a-icon type="pay-circle" class="nav-icon" style="color: #f5222d"/>
+              <span>前台收银</span>
+            </div>
           </div>
         </a-card>
       </a-col>
@@ -114,10 +154,10 @@ export default {
         { title: '会员卡号', dataIndex: 'supplier', width: 160 },
         { title: '联系人', dataIndex: 'contacts', width: 120 },
         { title: '手机号码', dataIndex: 'telephone', width: 140 },
-        { title: '创建时间', dataIndex: 'createTime', width: 120 },
+        { title: '创建时间', dataIndex: 'createTime', width: 140, scopedSlots: { customRender: 'createTime' } },
         { title: '储值余额', dataIndex: 'advanceIn', width: 120 }
       ],
-      chartHeight: document.documentElement.clientHeight - 520
+      chartHeight: 300
     }
   },
   created() {
@@ -131,6 +171,15 @@ export default {
     formatMoney(v) {
       const n = Number(v || 0)
       return n.toFixed(2)
+    },
+    formatTime(v) {
+      if (!v) return ''
+      // v is like "2026-02-03T21:37:04.000+0000" or similar
+      // Try simple substring if standard format, or Date parse
+      if (typeof v === 'string' && v.length > 16) {
+        return v.substring(0, 16).replace('T', ' ')
+      }
+      return v
     },
     async initDepots() {
       const res = await getAction('/depot/findDepotByCurrentUser')
@@ -189,10 +238,50 @@ export default {
 </script>
 
 <style scoped>
-.kpi {
-  font-size: 28px;
-  line-height: 32px;
+.kpi-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 8px;
+}
+.kpi-value {
+  font-size: 30px;
+  line-height: 38px;
   color: rgba(0, 0, 0, .85);
+  font-weight: bold;
+}
+.kpi-icon {
+  font-size: 32px;
+  padding: 8px;
+  border-radius: 50%;
+}
+
+.quick-nav-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  .quick-nav-item {
+    width: calc(50% - 8px);
+    height: 90px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: #fafafa;
+    border: 1px solid #e8e8e8;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  .quick-nav-item:hover {
+    background-color: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    border-color: #1890ff;
+  }
+.nav-icon {
+  font-size: 24px;
+  margin-bottom: 8px;
 }
 </style>
 
