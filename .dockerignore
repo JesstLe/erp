@@ -1,0 +1,14 @@
+.git
+.gitignore
+.DS_Store
+.idea
+.vscode
+**/node_modules
+**/dist
+**/target
+**/.cache
+**/.data
+**/logs
+**/*.log
+cloudflared
+docs
