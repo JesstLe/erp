@@ -3,6 +3,7 @@ package com.jsh.erp.datasource.mappers;
 import com.jsh.erp.datasource.entities.CashierSettlementPayment;
 import org.apache.ibatis.annotations.Param;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 public interface CashierSettlementPaymentMapper {
@@ -21,5 +22,6 @@ public interface CashierSettlementPaymentMapper {
     List<CashierSettlementPayment> selectBySettlementId(@Param("settlementId") Long settlementId, @Param("tenantId") Long tenantId);
 
     int deleteBySettlementId(@Param("settlementId") Long settlementId, @Param("tenantId") Long tenantId);
-}
 
+    BigDecimal sumCardAmountByMemberId(@Param("memberId") Long memberId, @Param("tenantId") Long tenantId);
+}

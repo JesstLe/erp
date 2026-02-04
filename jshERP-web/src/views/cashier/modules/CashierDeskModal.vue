@@ -375,6 +375,10 @@ export default {
     canCheckout() {
       const total = Number((this.settlePreview && this.settlePreview.totalAmount) || 0)
       if (this.paySum + 1e-9 < total) return false
+      const cardPay = Number((this.settleForm && this.settleForm.payments && this.settleForm.payments.CARD) || 0)
+      if (cardPay > 0) {
+        if (!this.detail || !this.detail.member || !this.detail.member.id) return false
+      }
       if (this.settleForm.needInvoice) {
         const info = this.settleForm.invoiceInfo || {}
         const buyerName = (info.buyerName || '').trim()
@@ -678,6 +682,13 @@ export default {
       if (this.paySum + 1e-9 < total) {
         this.$message.warning('实收金额不足')
         return
+      }
+      const cardPay = Number((this.settleForm && this.settleForm.payments && this.settleForm.payments.CARD) || 0)
+      if (cardPay > 0) {
+        if (!this.detail || !this.detail.member || !this.detail.member.id) {
+          this.$message.warning('储值支付必须先绑定会员')
+          return
+        }
       }
       if (this.settleForm.needInvoice) {
         const info = this.settleForm.invoiceInfo || {}

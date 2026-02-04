@@ -8,11 +8,13 @@ import com.jsh.erp.datasource.entities.CashierSettlementPayment;
 import com.jsh.erp.datasource.entities.CashierSessionProductItem;
 import com.jsh.erp.datasource.entities.InvoiceRequest;
 import com.jsh.erp.datasource.entities.CashierSession;
+import com.jsh.erp.datasource.entities.Supplier;
 import com.jsh.erp.datasource.entities.ServiceOrder;
 import com.jsh.erp.datasource.entities.ServiceOrderItem;
 import com.jsh.erp.datasource.mappers.CashierSettlementMapper;
 import com.jsh.erp.datasource.mappers.CashierSettlementPaymentMapper;
 import com.jsh.erp.datasource.mappers.InvoiceRequestMapper;
+import com.jsh.erp.service.SupplierService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -45,6 +47,9 @@ public class CashierSettlementService {
 
     @Resource
     private InvoiceRequestMapper invoiceRequestMapper;
+
+    @Resource
+    private SupplierService supplierService;
 
     public Map<String, Object> preview(Long sessionId, Long tenantId) throws Exception {
         Map<String, Object> detail = cashierSessionService.getDetail(sessionId, tenantId);
@@ -93,8 +98,10 @@ public class CashierSettlementService {
         }
 
         BigDecimal realPayAmount = BigDecimal.ZERO;
+        BigDecimal prepaidUsedAmount = BigDecimal.ZERO;
         for (Object p : payments) {
             JSONObject row = JSONObject.parseObject(JSON.toJSONString(p));
+            String method = row.getString("payMethod");
             BigDecimal amount = row.getBigDecimal("amount");
             if (amount == null) {
                 continue;
@@ -103,14 +110,36 @@ public class CashierSettlementService {
                 throw new RuntimeException("付款金额不能为负数");
             }
             realPayAmount = realPayAmount.add(amount);
+            if ("CARD".equalsIgnoreCase(method)) {
+                prepaidUsedAmount = prepaidUsedAmount.add(amount);
+            }
         }
         realPayAmount = realPayAmount.setScale(2, RoundingMode.HALF_UP);
+        prepaidUsedAmount = prepaidUsedAmount.setScale(2, RoundingMode.HALF_UP);
         BigDecimal totalAmountScale2 = totalAmount.setScale(2, RoundingMode.HALF_UP);
 
         if (realPayAmount.compareTo(totalAmountScale2) < 0) {
             throw new RuntimeException("实收金额不足");
         }
         BigDecimal changeAmount = realPayAmount.subtract(totalAmountScale2).setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal balanceBefore = null;
+        BigDecimal balanceAfter = null;
+        if (prepaidUsedAmount.compareTo(BigDecimal.ZERO) > 0) {
+            if (session.getMemberId() == null) {
+                throw new RuntimeException("储值支付必须选择会员");
+            }
+            Object memberObj = preview.get("member");
+            Supplier member = memberObj instanceof Supplier ? (Supplier) memberObj : null;
+            if (member == null) {
+                member = supplierService.getSupplier(session.getMemberId());
+            }
+            balanceBefore = member == null || member.getAdvanceIn() == null ? BigDecimal.ZERO : member.getAdvanceIn().setScale(2, RoundingMode.HALF_UP);
+            if (balanceBefore.compareTo(prepaidUsedAmount) < 0) {
+                throw new RuntimeException("会员余额不足");
+            }
+            balanceAfter = balanceBefore.subtract(prepaidUsedAmount).setScale(2, RoundingMode.HALF_UP);
+        }
 
         CashierSettlement settlement = new CashierSettlement();
         settlement.setSettlementNo(generateSettlementNo(tenantId, sessionId));
@@ -197,6 +226,15 @@ public class CashierSettlementService {
             invoiceRequestId = req.getId();
         }
 
+        if (prepaidUsedAmount.compareTo(BigDecimal.ZERO) > 0 && session.getMemberId() != null) {
+            supplierService.updateAdvanceIn(session.getMemberId());
+            Supplier updatedMember = supplierService.getSupplier(session.getMemberId());
+            preview.put("member", updatedMember);
+            if (updatedMember != null && updatedMember.getAdvanceIn() != null) {
+                balanceAfter = updatedMember.getAdvanceIn().setScale(2, RoundingMode.HALF_UP);
+            }
+        }
+
         if (clearSeat == null || clearSeat) {
             JSONObject close = new JSONObject();
             close.put("sessionId", sessionId);
@@ -209,6 +247,9 @@ public class CashierSettlementService {
         preview.put("changeAmount", changeAmount);
         preview.put("invoiceRequestId", invoiceRequestId);
         preview.put("payments", payments);
+        preview.put("prepaidUsedAmount", prepaidUsedAmount);
+        preview.put("balanceBefore", balanceBefore);
+        preview.put("balanceAfter", balanceAfter);
         return preview;
     }
 

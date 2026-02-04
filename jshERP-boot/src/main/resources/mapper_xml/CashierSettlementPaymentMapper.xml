@@ -90,4 +90,18 @@
         and tenant_id = #{tenantId}
       </if>
   </delete>
+
+  <select id="sumCardAmountByMemberId" resultType="java.math.BigDecimal">
+    select ifnull(sum(p.amount),0)
+    from jsh_cashier_settlement_payment p
+    left join jsh_cashier_settlement s on p.settlement_id = s.id
+    where s.member_id = #{memberId}
+      and p.pay_method = 'CARD'
+      and s.status = 'PAID'
+      and ifnull(p.delete_flag,'0') != '1'
+      and ifnull(s.delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and s.tenant_id = #{tenantId}
+      </if>
+  </select>
 </mapper>

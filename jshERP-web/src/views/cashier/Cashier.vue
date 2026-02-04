@@ -504,6 +504,7 @@ export default {
       const settlementNo = data.settlementNo || ''
       const items = Array.isArray(data.items) ? data.items : []
       const payments = Array.isArray(data.payments) ? data.payments : []
+      const member = data && data.member ? data.member : null
       const serviceItems = items.filter(i => (i.refType || i.type) === 'SERVICE' || i.type === '服务')
       const productItems = items.filter(i => (i.refType || i.type) === 'PRODUCT' || i.type === '产品')
       const lines = []
@@ -513,6 +514,19 @@ export default {
       if (seatName) lines.push('座位/包间：' + seatName)
       if (data.sessionId) lines.push('会话：' + data.sessionId)
       lines.push('时间：' + new Date().toLocaleString())
+      if (member) {
+        const name = member.supplier || member.contacts || ''
+        const phone = member.phoneNum || member.telephone || ''
+        if (name && phone) {
+          lines.push('会员：' + name + ' ' + phone)
+        } else if (name) {
+          lines.push('会员：' + name)
+        } else if (phone) {
+          lines.push('会员：' + phone)
+        } else if (member.id) {
+          lines.push('会员：' + member.id)
+        }
+      }
       lines.push('------------------------------')
       if (serviceItems.length > 0) {
         lines.push('项目明细')
@@ -550,6 +564,20 @@ export default {
           const label = labelMap[p.payMethod] || p.payMethod
           lines.push(`${label}：${Number(p.amount || 0).toFixed(2)}`)
         })
+      }
+      if (member) {
+        const prepaidUsed = Number(data.prepaidUsedAmount || 0)
+        const balanceBefore = data.balanceBefore != null ? Number(data.balanceBefore || 0) : Number(member.advanceIn || 0)
+        const balanceAfter = data.balanceAfter != null ? Number(data.balanceAfter || 0) : Number(member.advanceIn || 0)
+        lines.push('------------------------------')
+        if (prepaidUsed > 0) {
+          lines.push('会员储值')
+          lines.push(`结前余额：${balanceBefore.toFixed(2)}`)
+          lines.push(`本次储值支付：${prepaidUsed.toFixed(2)}`)
+          lines.push(`结后余额：${balanceAfter.toFixed(2)}`)
+        } else {
+          lines.push(`会员余额：${balanceAfter.toFixed(2)}`)
+        }
       }
       if (data.invoiceRequestId) {
         lines.push('------------------------------')

@@ -45,6 +45,8 @@ public class SupplierService {
     @Resource
     private DepotHeadMapperEx depotHeadMapperEx;
     @Resource
+    private CashierSettlementPaymentMapper cashierSettlementPaymentMapper;
+    @Resource
     private AccountItemMapperEx accountItemMapperEx;
     @Resource
     private DepotHeadService depotHeadService;
@@ -154,6 +156,9 @@ public class SupplierService {
             supplier.setEnabled(true);
             User userInfo=userService.getCurrentUser();
             supplier.setCreator(userInfo==null?null:userInfo.getId());
+            if (supplier.getTenantId() == null && userInfo != null && userInfo.getTenantId() != null && userInfo.getTenantId() != 0L) {
+                supplier.setTenantId(userInfo.getTenantId());
+            }
             if(supplier.getDeleteFlag() == null) {
                 supplier.setDeleteFlag(BusinessConstants.DELETE_FLAG_EXISTS);
             }
@@ -286,13 +291,19 @@ public class SupplierService {
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public void updateAdvanceIn(Long supplierId) {
         try{
+            User userInfo = userService.getCurrentUser();
+            Long tenantId = resolveTenantId(userInfo);
             //查询会员在收预付款单据的总金额
             BigDecimal financialAllPrice = accountHeadMapperEx.getFinancialAllPriceByOrganId(supplierId);
             //查询会员在零售出库单据的总金额
             BigDecimal billAllPrice = depotHeadMapperEx.getBillAllPriceByOrganId(supplierId);
+            BigDecimal cashierPrepaidUsed = cashierSettlementPaymentMapper.sumCardAmountByMemberId(supplierId, tenantId);
+            if (cashierPrepaidUsed == null) {
+                cashierPrepaidUsed = BigDecimal.ZERO;
+            }
             Supplier supplier = new Supplier();
             supplier.setId(supplierId);
-            supplier.setAdvanceIn(financialAllPrice.subtract(billAllPrice));
+            supplier.setAdvanceIn(financialAllPrice.subtract(billAllPrice.add(cashierPrepaidUsed)));
             supplierMapper.updateByPrimaryKeySelective(supplier);
         } catch (Exception e){
             JshException.writeFail(logger, e);
@@ -587,9 +598,23 @@ public class SupplierService {
         BaseResponseInfo info = new BaseResponseInfo();
         Map<String, Object> data = new HashMap<>();
         try {
+            User userInfo = userService.getCurrentUser();
+            Long tenantId = userInfo == null ? null : userInfo.getTenantId();
+            if (tenantId != null && tenantId == 0L) {
+                tenantId = null;
+            }
             for(Supplier supplier: mList) {
+                if (supplier.getTenantId() == null && tenantId != null) {
+                    supplier.setTenantId(tenantId);
+                }
                 SupplierExample example = new SupplierExample();
-                example.createCriteria().andSupplierEqualTo(supplier.getSupplier()).andTypeEqualTo(type).andDeleteFlagNotEqualTo(BusinessConstants.DELETE_FLAG_DELETED);
+                SupplierExample.Criteria criteria = example.createCriteria()
+                        .andSupplierEqualTo(supplier.getSupplier())
+                        .andTypeEqualTo(type)
+                        .andDeleteFlagNotEqualTo(BusinessConstants.DELETE_FLAG_DELETED);
+                if (tenantId != null) {
+                    criteria.andTenantIdEqualTo(tenantId);
+                }
                 List<Supplier> list= supplierMapper.selectByExample(example);
                 if(list.size() <= 0) {
                     supplierMapper.insertSelective(supplier);
