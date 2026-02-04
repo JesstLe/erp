@@ -45,6 +45,7 @@
       <a-button type="primary" class="action-btn" @click="notImplemented('顾客预约')">顾客预约</a-button>
       <a-button type="primary" class="action-btn" @click="openNursing">顾客护理</a-button>
       <a-button type="primary" class="action-btn" @click="openCredit">签单清账</a-button>
+      <a-button type="primary" class="action-btn" @click="openInvoiceManage">开票管理</a-button>
       <a-button type="primary" class="action-btn" @click="goRetailBack">消费退货</a-button>
       <a-button type="primary" class="action-btn" @click="notImplemented('积分增减')">积分增减</a-button>
       <a-button type="primary" class="action-btn" @click="notImplemented('兑换礼品')">兑换礼品</a-button>
@@ -144,6 +145,62 @@
       </div>
     </a-modal>
 
+    <a-modal v-model="invoiceManageVisible" title="发票申请管理" :width="900" :footer="null" :maskClosable="false">
+      <div style="display:flex; gap: 8px; align-items:center; flex-wrap: wrap; margin-bottom: 12px">
+        <div>门店：</div>
+        <a-select v-model="invoiceFilters.depotId" style="width: 200px" @change="handleInvoiceDepotChange">
+          <a-select-option v-for="d in depots" :key="d.id" :value="d.id">
+            {{ d.depotName }}
+          </a-select-option>
+        </a-select>
+        <a-select v-model="invoiceFilters.status" style="width: 160px" @change="loadInvoiceRequests">
+          <a-select-option value="">全部状态</a-select-option>
+          <a-select-option value="PENDING">待开票</a-select-option>
+          <a-select-option value="ISSUED">已开票</a-select-option>
+          <a-select-option value="REJECTED">已驳回</a-select-option>
+          <a-select-option value="CANCELED">已取消</a-select-option>
+        </a-select>
+        <a-input v-model="invoiceFilters.keyword" style="width: 240px" placeholder="抬头/税号/邮箱" @pressEnter="loadInvoiceRequests" />
+        <a-button type="primary" @click="loadInvoiceRequests">查询</a-button>
+      </div>
+      <a-table
+        :loading="invoiceLoading"
+        :columns="invoiceColumns"
+        :dataSource="invoiceRows"
+        :rowKey="r => r.id"
+        :pagination="invoicePagination">
+        <span slot="status" slot-scope="text">
+          {{ invoiceStatusLabel(text) }}
+        </span>
+        <span slot="action" slot-scope="text, record">
+          <a-button type="link" size="small" @click="openInvoiceIssue(record)">标记已开票</a-button>
+          <a-button type="link" size="small" @click="openInvoiceReject(record)">驳回</a-button>
+        </span>
+      </a-table>
+    </a-modal>
+
+    <a-modal v-model="invoiceIssueVisible" title="标记已开票" :width="700" @ok="submitInvoiceIssue" @cancel="invoiceIssueVisible=false">
+      <a-form-model :model="invoiceIssueForm" layout="vertical">
+        <a-form-model-item label="发票号码">
+          <a-input v-model="invoiceIssueForm.invoiceNo" placeholder="可选填" />
+        </a-form-model-item>
+        <a-form-model-item label="发票PDF/图片附件">
+          <j-upload v-model="invoiceIssueForm.fileUrl" :bizPath="'financial'" :number="1" />
+        </a-form-model-item>
+        <a-form-model-item label="备注">
+          <a-input v-model="invoiceIssueForm.remark" />
+        </a-form-model-item>
+      </a-form-model>
+    </a-modal>
+
+    <a-modal v-model="invoiceRejectVisible" title="驳回发票申请" :width="600" @ok="submitInvoiceReject" @cancel="invoiceRejectVisible=false">
+      <a-form-model :model="invoiceRejectForm" layout="vertical">
+        <a-form-model-item label="驳回原因">
+          <a-textarea v-model="invoiceRejectForm.remark" :rows="3" placeholder="请输入驳回原因" />
+        </a-form-model-item>
+      </a-form-model>
+    </a-modal>
+
     <cashier-desk-modal
       ref="deskModal"
       :visible="deskVisible"
@@ -152,6 +209,16 @@
       @close="handleDeskClose"
       @checkout="handleDeskCheckout"
     />
+
+    <a-modal v-model="receiptVisible" title="小票预览" :width="420" :footer="null">
+      <div style="max-height: 70vh; overflow: auto">
+        <pre style="white-space: pre-wrap; margin: 0">{{ receiptText }}</pre>
+      </div>
+      <div style="margin-top: 12px; display:flex; justify-content: flex-end; gap: 8px">
+        <a-button @click="receiptVisible=false">关闭</a-button>
+        <a-button type="primary" @click="handlePrintReceipt">打印小票</a-button>
+      </div>
+    </a-modal>
 
     <a-modal
       v-model="exitConfirmVisible"
@@ -192,13 +259,17 @@ import {
   cashierShiftOpen,
   cashierShiftHandover,
   cashierSettlementCheckout,
+  cashierInvoiceRequestList,
+  cashierInvoiceRequestMarkIssued,
+  cashierInvoiceRequestReject,
   getPersonByType
 } from '@/api/api'
 import CashierDeskModal from '@/views/cashier/modules/CashierDeskModal'
+import JUpload from '@/components/jeecg/JUpload'
 
 export default {
   name: 'Cashier',
-  components: { CashierDeskModal },
+  components: { CashierDeskModal, JUpload },
   data() {
     return {
       depots: [],
@@ -229,9 +300,46 @@ export default {
       deskVisible: false,
       deskSeat: null,
       deskSession: null,
+      receiptVisible: false,
+      receiptText: '',
+      invoiceManageVisible: false,
+      invoiceLoading: false,
+      invoiceFilters: { depotId: undefined, status: 'PENDING', keyword: '', currentPage: 1, pageSize: 10 },
+      invoiceRows: [],
+      invoiceTotal: 0,
+      invoiceColumns: [
+        { title: 'ID', dataIndex: 'id', width: 80 },
+        { title: '抬头类型', dataIndex: 'buyerType', width: 90 },
+        { title: '抬头名称', dataIndex: 'buyerName' },
+        { title: '税号', dataIndex: 'taxNo', width: 160 },
+        { title: '邮箱', dataIndex: 'email', width: 200 },
+        { title: '金额', dataIndex: 'amount', width: 100 },
+        { title: '状态', dataIndex: 'status', width: 90, scopedSlots: { customRender: 'status' } },
+        { title: '申请时间', dataIndex: 'createdTime', width: 160 },
+        { title: '操作', key: 'action', width: 160, scopedSlots: { customRender: 'action' } }
+      ],
+      invoiceIssueVisible: false,
+      invoiceIssueForm: { id: undefined, invoiceNo: '', fileUrl: '', remark: '' },
+      invoiceRejectVisible: false,
+      invoiceRejectForm: { id: undefined, remark: '' },
       exitConfirmVisible: false,
       exitConfirmSeat: null,
       exitConfirmSession: null
+    }
+  },
+  computed: {
+    invoicePagination() {
+      return {
+        current: this.invoiceFilters.currentPage,
+        pageSize: this.invoiceFilters.pageSize,
+        total: this.invoiceTotal,
+        showTotal: total => `共 ${total} 条`,
+        onChange: (page, pageSize) => {
+          this.invoiceFilters.currentPage = page
+          this.invoiceFilters.pageSize = pageSize
+          this.loadInvoiceRequests()
+        }
+      }
     }
   },
   created() {
@@ -381,11 +489,167 @@ export default {
       const res = await cashierSettlementCheckout(payload)
       if (res.code === 200) {
         this.$message.success('结算成功')
+        this.receiptText = this.buildReceiptText(res.data || {})
+        this.receiptVisible = true
         this.handleDeskClose()
         await this.loadSeats()
         return
       }
       this.$message.error(res.data || '结算失败')
+    },
+    buildReceiptText(data) {
+      const depot = (this.depots || []).find(d => d.id === this.selectedDepot)
+      const depotName = depot && depot.depotName ? depot.depotName : ''
+      const seatName = data && data.seat && data.seat.name ? data.seat.name : (this.deskSeat && this.deskSeat.name ? this.deskSeat.name : '')
+      const settlementNo = data.settlementNo || ''
+      const items = Array.isArray(data.items) ? data.items : []
+      const payments = Array.isArray(data.payments) ? data.payments : []
+      const serviceItems = items.filter(i => (i.refType || i.type) === 'SERVICE' || i.type === '服务')
+      const productItems = items.filter(i => (i.refType || i.type) === 'PRODUCT' || i.type === '产品')
+      const lines = []
+      if (depotName) lines.push(depotName)
+      lines.push('消费小票')
+      if (settlementNo) lines.push('结算单号：' + settlementNo)
+      if (seatName) lines.push('座位/包间：' + seatName)
+      if (data.sessionId) lines.push('会话：' + data.sessionId)
+      lines.push('时间：' + new Date().toLocaleString())
+      lines.push('------------------------------')
+      if (serviceItems.length > 0) {
+        lines.push('项目明细')
+        serviceItems.forEach(it => {
+          lines.push(`${it.name}  x${it.qty}  ${Number(it.amount || 0).toFixed(2)}`)
+        })
+        lines.push('------------------------------')
+      }
+      if (productItems.length > 0) {
+        lines.push('产品明细')
+        productItems.forEach(it => {
+          lines.push(`${it.name}  x${it.qty}  ${Number(it.amount || 0).toFixed(2)}`)
+        })
+        lines.push('------------------------------')
+      }
+      lines.push(`项目合计：${Number(data.serviceTotalAmount || 0).toFixed(2)}`)
+      lines.push(`产品合计：${Number(data.productTotalAmount || 0).toFixed(2)}`)
+      lines.push(`应收合计：${Number(data.totalAmount || 0).toFixed(2)}`)
+      lines.push(`实收合计：${Number(data.realPayAmount || 0).toFixed(2)}`)
+      if (Number(data.changeAmount || 0) > 0) {
+        lines.push(`找零：${Number(data.changeAmount || 0).toFixed(2)}`)
+      }
+      if (payments.length > 0) {
+        lines.push('------------------------------')
+        lines.push('付款方式')
+        const labelMap = {
+          WECHAT: '微信',
+          ALIPAY: '支付宝',
+          CASH: '现金',
+          BANK: '银行卡/POS',
+          CARD: '储值卡',
+          CREDIT: '挂账/签单'
+        }
+        payments.forEach(p => {
+          const label = labelMap[p.payMethod] || p.payMethod
+          lines.push(`${label}：${Number(p.amount || 0).toFixed(2)}`)
+        })
+      }
+      if (data.invoiceRequestId) {
+        lines.push('------------------------------')
+        lines.push('已提交发票申请：' + data.invoiceRequestId)
+      }
+      lines.push('------------------------------')
+      lines.push('本小票仅作为消费凭证')
+      return lines.join('\n')
+    },
+    handlePrintReceipt() {
+      const content = this.receiptText || ''
+      const win = window.open('', '_blank')
+      if (!win) return
+      win.document.open()
+      win.document.write(`<pre style="white-space: pre-wrap; font-size: 12px; font-family: monospace; margin: 0">${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`)
+      win.document.close()
+      win.focus()
+      win.print()
+      win.close()
+    },
+    openInvoiceManage() {
+      this.invoiceManageVisible = true
+      this.invoiceFilters.depotId = this.selectedDepot
+      this.invoiceFilters.currentPage = 1
+      this.loadInvoiceRequests()
+    },
+    handleInvoiceDepotChange() {
+      this.invoiceFilters.currentPage = 1
+      this.loadInvoiceRequests()
+    },
+    async loadInvoiceRequests() {
+      if (!this.invoiceManageVisible) return
+      this.invoiceLoading = true
+      try {
+        const res = await cashierInvoiceRequestList({
+          depotId: this.invoiceFilters.depotId,
+          status: this.invoiceFilters.status,
+          keyword: this.invoiceFilters.keyword,
+          currentPage: this.invoiceFilters.currentPage,
+          pageSize: this.invoiceFilters.pageSize
+        })
+        if (res.code === 200 && res.data) {
+          this.invoiceRows = res.data.rows || []
+          this.invoiceTotal = res.data.total || 0
+          return
+        }
+        this.invoiceRows = []
+        this.invoiceTotal = 0
+      } finally {
+        this.invoiceLoading = false
+      }
+    },
+    invoiceStatusLabel(v) {
+      const map = {
+        PENDING: '待开票',
+        ISSUED: '已开票',
+        REJECTED: '已驳回',
+        CANCELED: '已取消'
+      }
+      return map[v] || v
+    },
+    openInvoiceIssue(record) {
+      this.invoiceIssueForm = { id: record.id, invoiceNo: record.invoiceNo || '', fileUrl: record.fileUrl || '', remark: '' }
+      this.invoiceIssueVisible = true
+    },
+    async submitInvoiceIssue() {
+      const id = this.invoiceIssueForm.id
+      if (!id) return
+      const res = await cashierInvoiceRequestMarkIssued({
+        id,
+        invoiceNo: this.invoiceIssueForm.invoiceNo,
+        fileUrl: this.invoiceIssueForm.fileUrl,
+        remark: this.invoiceIssueForm.remark
+      })
+      if (res.code === 200) {
+        this.$message.success('操作成功')
+        this.invoiceIssueVisible = false
+        await this.loadInvoiceRequests()
+        return
+      }
+      this.$message.error(res.data || '操作失败')
+    },
+    openInvoiceReject(record) {
+      this.invoiceRejectForm = { id: record.id, remark: '' }
+      this.invoiceRejectVisible = true
+    },
+    async submitInvoiceReject() {
+      const id = this.invoiceRejectForm.id
+      if (!id) return
+      const res = await cashierInvoiceRequestReject({
+        id,
+        remark: this.invoiceRejectForm.remark
+      })
+      if (res.code === 200) {
+        this.$message.success('操作成功')
+        this.invoiceRejectVisible = false
+        await this.loadInvoiceRequests()
+        return
+      }
+      this.$message.error(res.data || '操作失败')
     },
     handleAddSeat() {
       this.form = { name: '', sort: '' }

@@ -48,12 +48,13 @@ public class CashierSettlementController extends BaseController {
         try {
             User userInfo = userService.getCurrentUser();
             Long tenantId = resolveTenantId(userInfo);
-            Map<String, Object> data = cashierSettlementService.checkout(obj, tenantId, request);
+            Long cashierUserId = userInfo == null ? null : userInfo.getId();
+            Map<String, Object> data = cashierSettlementService.checkout(obj, tenantId, cashierUserId, request);
             res.code = 200;
             res.data = data;
         } catch (Exception e) {
             res.code = 500;
-            res.data = "结算失败";
+            res.data = e.getMessage() == null ? "结算失败" : e.getMessage();
         }
         return res;
     }

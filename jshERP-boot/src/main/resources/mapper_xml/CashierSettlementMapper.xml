@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.CashierSettlementMapper">
+  <resultMap id="BaseResultMap" type="com.jsh.erp.datasource.entities.CashierSettlement">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="settlement_no" jdbcType="VARCHAR" property="settlementNo" />
+    <result column="session_id" jdbcType="BIGINT" property="sessionId" />
+    <result column="depot_id" jdbcType="BIGINT" property="depotId" />
+    <result column="seat_id" jdbcType="BIGINT" property="seatId" />
+    <result column="member_id" jdbcType="BIGINT" property="memberId" />
+    <result column="service_total_amount" jdbcType="DECIMAL" property="serviceTotalAmount" />
+    <result column="product_total_amount" jdbcType="DECIMAL" property="productTotalAmount" />
+    <result column="total_amount" jdbcType="DECIMAL" property="totalAmount" />
+    <result column="real_pay_amount" jdbcType="DECIMAL" property="realPayAmount" />
+    <result column="change_amount" jdbcType="DECIMAL" property="changeAmount" />
+    <result column="discount_amount" jdbcType="DECIMAL" property="discountAmount" />
+    <result column="items_json" jdbcType="LONGVARCHAR" property="itemsJson" />
+    <result column="status" jdbcType="VARCHAR" property="status" />
+    <result column="cashier_user_id" jdbcType="BIGINT" property="cashierUserId" />
+    <result column="created_time" jdbcType="TIMESTAMP" property="createdTime" />
+    <result column="remark" jdbcType="VARCHAR" property="remark" />
+    <result column="tenant_id" jdbcType="BIGINT" property="tenantId" />
+    <result column="delete_flag" jdbcType="VARCHAR" property="deleteFlag" />
+  </resultMap>
+
+  <sql id="Base_Column_List">
+    id, settlement_no, session_id, depot_id, seat_id, member_id, service_total_amount, product_total_amount,
+    total_amount, real_pay_amount, change_amount, discount_amount, items_json, status, cashier_user_id, created_time,
+    remark, tenant_id, delete_flag
+  </sql>
+
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from jsh_cashier_settlement
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from jsh_cashier_settlement
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+
+  <insert id="insert" parameterType="com.jsh.erp.datasource.entities.CashierSettlement">
+    insert into jsh_cashier_settlement (id, settlement_no, session_id, depot_id, seat_id, member_id, service_total_amount,
+      product_total_amount, total_amount, real_pay_amount, change_amount, discount_amount, items_json, status, cashier_user_id,
+      created_time, remark, delete_flag)
+    values (#{id,jdbcType=BIGINT}, #{settlementNo,jdbcType=VARCHAR}, #{sessionId,jdbcType=BIGINT}, #{depotId,jdbcType=BIGINT},
+      #{seatId,jdbcType=BIGINT}, #{memberId,jdbcType=BIGINT}, #{serviceTotalAmount,jdbcType=DECIMAL}, #{productTotalAmount,jdbcType=DECIMAL},
+      #{totalAmount,jdbcType=DECIMAL}, #{realPayAmount,jdbcType=DECIMAL}, #{changeAmount,jdbcType=DECIMAL}, #{discountAmount,jdbcType=DECIMAL},
+      #{itemsJson,jdbcType=LONGVARCHAR}, #{status,jdbcType=VARCHAR}, #{cashierUserId,jdbcType=BIGINT}, #{createdTime,jdbcType=TIMESTAMP},
+      #{remark,jdbcType=VARCHAR}, #{deleteFlag,jdbcType=VARCHAR})
+  </insert>
+
+  <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.CashierSettlement" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+    insert into jsh_cashier_settlement
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">id,</if>
+      <if test="settlementNo != null">settlement_no,</if>
+      <if test="sessionId != null">session_id,</if>
+      <if test="depotId != null">depot_id,</if>
+      <if test="seatId != null">seat_id,</if>
+      <if test="memberId != null">member_id,</if>
+      <if test="serviceTotalAmount != null">service_total_amount,</if>
+      <if test="productTotalAmount != null">product_total_amount,</if>
+      <if test="totalAmount != null">total_amount,</if>
+      <if test="realPayAmount != null">real_pay_amount,</if>
+      <if test="changeAmount != null">change_amount,</if>
+      <if test="discountAmount != null">discount_amount,</if>
+      <if test="itemsJson != null">items_json,</if>
+      <if test="status != null">status,</if>
+      <if test="cashierUserId != null">cashier_user_id,</if>
+      <if test="createdTime != null">created_time,</if>
+      <if test="remark != null">remark,</if>
+      <if test="deleteFlag != null">delete_flag,</if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">#{id,jdbcType=BIGINT},</if>
+      <if test="settlementNo != null">#{settlementNo,jdbcType=VARCHAR},</if>
+      <if test="sessionId != null">#{sessionId,jdbcType=BIGINT},</if>
+      <if test="depotId != null">#{depotId,jdbcType=BIGINT},</if>
+      <if test="seatId != null">#{seatId,jdbcType=BIGINT},</if>
+      <if test="memberId != null">#{memberId,jdbcType=BIGINT},</if>
+      <if test="serviceTotalAmount != null">#{serviceTotalAmount,jdbcType=DECIMAL},</if>
+      <if test="productTotalAmount != null">#{productTotalAmount,jdbcType=DECIMAL},</if>
+      <if test="totalAmount != null">#{totalAmount,jdbcType=DECIMAL},</if>
+      <if test="realPayAmount != null">#{realPayAmount,jdbcType=DECIMAL},</if>
+      <if test="changeAmount != null">#{changeAmount,jdbcType=DECIMAL},</if>
+      <if test="discountAmount != null">#{discountAmount,jdbcType=DECIMAL},</if>
+      <if test="itemsJson != null">#{itemsJson,jdbcType=LONGVARCHAR},</if>
+      <if test="status != null">#{status,jdbcType=VARCHAR},</if>
+      <if test="cashierUserId != null">#{cashierUserId,jdbcType=BIGINT},</if>
+      <if test="createdTime != null">#{createdTime,jdbcType=TIMESTAMP},</if>
+      <if test="remark != null">#{remark,jdbcType=VARCHAR},</if>
+      <if test="deleteFlag != null">#{deleteFlag,jdbcType=VARCHAR},</if>
+    </trim>
+  </insert>
+
+  <update id="updateByPrimaryKeySelective" parameterType="com.jsh.erp.datasource.entities.CashierSettlement">
+    update jsh_cashier_settlement
+    <set>
+      <if test="settlementNo != null">settlement_no = #{settlementNo,jdbcType=VARCHAR},</if>
+      <if test="sessionId != null">session_id = #{sessionId,jdbcType=BIGINT},</if>
+      <if test="depotId != null">depot_id = #{depotId,jdbcType=BIGINT},</if>
+      <if test="seatId != null">seat_id = #{seatId,jdbcType=BIGINT},</if>
+      <if test="memberId != null">member_id = #{memberId,jdbcType=BIGINT},</if>
+      <if test="serviceTotalAmount != null">service_total_amount = #{serviceTotalAmount,jdbcType=DECIMAL},</if>
+      <if test="productTotalAmount != null">product_total_amount = #{productTotalAmount,jdbcType=DECIMAL},</if>
+      <if test="totalAmount != null">total_amount = #{totalAmount,jdbcType=DECIMAL},</if>
+      <if test="realPayAmount != null">real_pay_amount = #{realPayAmount,jdbcType=DECIMAL},</if>
+      <if test="changeAmount != null">change_amount = #{changeAmount,jdbcType=DECIMAL},</if>
+      <if test="discountAmount != null">discount_amount = #{discountAmount,jdbcType=DECIMAL},</if>
+      <if test="itemsJson != null">items_json = #{itemsJson,jdbcType=LONGVARCHAR},</if>
+      <if test="status != null">status = #{status,jdbcType=VARCHAR},</if>
+      <if test="cashierUserId != null">cashier_user_id = #{cashierUserId,jdbcType=BIGINT},</if>
+      <if test="createdTime != null">created_time = #{createdTime,jdbcType=TIMESTAMP},</if>
+      <if test="remark != null">remark = #{remark,jdbcType=VARCHAR},</if>
+      <if test="tenantId != null">tenant_id = #{tenantId,jdbcType=BIGINT},</if>
+      <if test="deleteFlag != null">delete_flag = #{deleteFlag,jdbcType=VARCHAR},</if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <update id="updateByPrimaryKey" parameterType="com.jsh.erp.datasource.entities.CashierSettlement">
+    update jsh_cashier_settlement
+    set settlement_no = #{settlementNo,jdbcType=VARCHAR},
+      session_id = #{sessionId,jdbcType=BIGINT},
+      depot_id = #{depotId,jdbcType=BIGINT},
+      seat_id = #{seatId,jdbcType=BIGINT},
+      member_id = #{memberId,jdbcType=BIGINT},
+      service_total_amount = #{serviceTotalAmount,jdbcType=DECIMAL},
+      product_total_amount = #{productTotalAmount,jdbcType=DECIMAL},
+      total_amount = #{totalAmount,jdbcType=DECIMAL},
+      real_pay_amount = #{realPayAmount,jdbcType=DECIMAL},
+      change_amount = #{changeAmount,jdbcType=DECIMAL},
+      discount_amount = #{discountAmount,jdbcType=DECIMAL},
+      items_json = #{itemsJson,jdbcType=LONGVARCHAR},
+      status = #{status,jdbcType=VARCHAR},
+      cashier_user_id = #{cashierUserId,jdbcType=BIGINT},
+      created_time = #{createdTime,jdbcType=TIMESTAMP},
+      remark = #{remark,jdbcType=VARCHAR},
+      tenant_id = #{tenantId,jdbcType=BIGINT},
+      delete_flag = #{deleteFlag,jdbcType=VARCHAR}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <select id="selectLatestBySessionId" resultMap="BaseResultMap">
+    select *
+    from jsh_cashier_settlement
+    where session_id = #{sessionId}
+      and ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+    order by created_time desc, id desc
+    limit 1
+  </select>
+
+  <select id="selectListByDepotAndTime" resultMap="BaseResultMap">
+    select *
+    from jsh_cashier_settlement
+    where ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+      <if test="depotId != null">
+        and depot_id = #{depotId}
+      </if>
+      <if test="startTime != null and startTime != ''">
+        and created_time <![CDATA[>=]]> #{startTime}
+      </if>
+      <if test="endTime != null and endTime != ''">
+        and created_time <![CDATA[<=]]> #{endTime}
+      </if>
+    order by created_time desc, id desc
+    <if test="offset != null and rows != null">
+      limit #{offset},#{rows}
+    </if>
+  </select>
+</mapper>

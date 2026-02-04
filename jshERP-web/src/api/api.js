@@ -151,6 +151,10 @@ const cashierCartProductDelete = (params)=>postAction("/cashier/cart/product/del
 const cashierSettlementPreview = (params)=>getAction("/cashier/settlement/preview",params);
 const cashierSettlementCheckout = (params)=>postAction("/cashier/settlement/checkout",params);
 
+const cashierInvoiceRequestList = (params)=>getAction("/cashier/invoiceRequest/list",params);
+const cashierInvoiceRequestMarkIssued = (params)=>putAction("/cashier/invoiceRequest/markIssued",params);
+const cashierInvoiceRequestReject = (params)=>putAction("/cashier/invoiceRequest/reject",params);
+
 export {
   getBuyAndSaleStatistics,
   buyOrSalePrice,
@@ -273,7 +277,10 @@ export {
   cashierCartProductUpdateQty,
   cashierCartProductDelete,
   cashierSettlementPreview,
-  cashierSettlementCheckout
+  cashierSettlementCheckout,
+  cashierInvoiceRequestList,
+  cashierInvoiceRequestMarkIssued,
+  cashierInvoiceRequestReject
 }
 
 

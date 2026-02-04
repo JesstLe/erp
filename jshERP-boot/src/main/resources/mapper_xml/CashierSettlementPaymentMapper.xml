@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.CashierSettlementPaymentMapper">
+  <resultMap id="BaseResultMap" type="com.jsh.erp.datasource.entities.CashierSettlementPayment">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="settlement_id" jdbcType="BIGINT" property="settlementId" />
+    <result column="pay_method" jdbcType="VARCHAR" property="payMethod" />
+    <result column="amount" jdbcType="DECIMAL" property="amount" />
+    <result column="tenant_id" jdbcType="BIGINT" property="tenantId" />
+    <result column="delete_flag" jdbcType="VARCHAR" property="deleteFlag" />
+  </resultMap>
+
+  <sql id="Base_Column_List">
+    id, settlement_id, pay_method, amount, tenant_id, delete_flag
+  </sql>
+
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from jsh_cashier_settlement_payment
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from jsh_cashier_settlement_payment
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+
+  <insert id="insert" parameterType="com.jsh.erp.datasource.entities.CashierSettlementPayment">
+    insert into jsh_cashier_settlement_payment (id, settlement_id, pay_method, amount, delete_flag)
+    values (#{id,jdbcType=BIGINT}, #{settlementId,jdbcType=BIGINT}, #{payMethod,jdbcType=VARCHAR}, #{amount,jdbcType=DECIMAL},
+      #{deleteFlag,jdbcType=VARCHAR})
+  </insert>
+
+  <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.CashierSettlementPayment" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+    insert into jsh_cashier_settlement_payment
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">id,</if>
+      <if test="settlementId != null">settlement_id,</if>
+      <if test="payMethod != null">pay_method,</if>
+      <if test="amount != null">amount,</if>
+      <if test="deleteFlag != null">delete_flag,</if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">#{id,jdbcType=BIGINT},</if>
+      <if test="settlementId != null">#{settlementId,jdbcType=BIGINT},</if>
+      <if test="payMethod != null">#{payMethod,jdbcType=VARCHAR},</if>
+      <if test="amount != null">#{amount,jdbcType=DECIMAL},</if>
+      <if test="deleteFlag != null">#{deleteFlag,jdbcType=VARCHAR},</if>
+    </trim>
+  </insert>
+
+  <update id="updateByPrimaryKeySelective" parameterType="com.jsh.erp.datasource.entities.CashierSettlementPayment">
+    update jsh_cashier_settlement_payment
+    <set>
+      <if test="settlementId != null">settlement_id = #{settlementId,jdbcType=BIGINT},</if>
+      <if test="payMethod != null">pay_method = #{payMethod,jdbcType=VARCHAR},</if>
+      <if test="amount != null">amount = #{amount,jdbcType=DECIMAL},</if>
+      <if test="tenantId != null">tenant_id = #{tenantId,jdbcType=BIGINT},</if>
+      <if test="deleteFlag != null">delete_flag = #{deleteFlag,jdbcType=VARCHAR},</if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <update id="updateByPrimaryKey" parameterType="com.jsh.erp.datasource.entities.CashierSettlementPayment">
+    update jsh_cashier_settlement_payment
+    set settlement_id = #{settlementId,jdbcType=BIGINT},
+      pay_method = #{payMethod,jdbcType=VARCHAR},
+      amount = #{amount,jdbcType=DECIMAL},
+      tenant_id = #{tenantId,jdbcType=BIGINT},
+      delete_flag = #{deleteFlag,jdbcType=VARCHAR}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <select id="selectBySettlementId" resultMap="BaseResultMap">
+    select *
+    from jsh_cashier_settlement_payment
+    where settlement_id = #{settlementId}
+      and ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+    order by id asc
+  </select>
+
+  <delete id="deleteBySettlementId">
+    delete from jsh_cashier_settlement_payment
+    where settlement_id = #{settlementId}
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+  </delete>
+</mapper>

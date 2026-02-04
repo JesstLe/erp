@@ -154,12 +154,74 @@
                   <a-descriptions-item label="产品金额">¥ {{ formatMoney(settlePreview.productTotalAmount) }}</a-descriptions-item>
                   <a-descriptions-item label="合计">¥ {{ formatMoney(settlePreview.totalAmount) }}</a-descriptions-item>
                 </a-descriptions>
+                <div style="margin-top: 12px">
+                  <a-form-model :model="settleForm" layout="vertical">
+                    <a-row :gutter="12">
+                      <a-col v-for="m in paymentMethods" :key="m.key" :span="12">
+                        <a-form-model-item :label="m.label">
+                          <a-input-number
+                            v-model="settleForm.payments[m.key]"
+                            :min="0"
+                            :step="0.01"
+                            style="width: 100%"
+                          />
+                        </a-form-model-item>
+                      </a-col>
+                    </a-row>
+                    <a-descriptions :column="1" size="small" bordered>
+                      <a-descriptions-item label="实收合计">¥ {{ formatMoney(paySum) }}</a-descriptions-item>
+                      <a-descriptions-item label="差额">¥ {{ formatMoney(payDiff) }}</a-descriptions-item>
+                      <a-descriptions-item v-if="payChange > 0" label="找零">¥ {{ formatMoney(payChange) }}</a-descriptions-item>
+                    </a-descriptions>
+                    <div style="margin-top: 12px; display:flex; align-items:center; gap: 12px; flex-wrap: wrap">
+                      <div>需要发票</div>
+                      <a-switch v-model="settleForm.needInvoice" />
+                    </div>
+                    <div v-if="settleForm.needInvoice" style="margin-top: 12px">
+                      <a-row :gutter="12">
+                        <a-col :span="12">
+                          <a-form-model-item label="抬头类型">
+                            <a-select v-model="settleForm.invoiceInfo.buyerType" style="width: 100%">
+                              <a-select-option value="PERSONAL">个人</a-select-option>
+                              <a-select-option value="COMPANY">企业</a-select-option>
+                            </a-select>
+                          </a-form-model-item>
+                        </a-col>
+                        <a-col :span="12">
+                          <a-form-model-item label="抬头名称">
+                            <a-input v-model="settleForm.invoiceInfo.buyerName" placeholder="个人/公司名称" />
+                          </a-form-model-item>
+                        </a-col>
+                        <a-col :span="12">
+                          <a-form-model-item label="税号(企业必填)">
+                            <a-input v-model="settleForm.invoiceInfo.taxNo" placeholder="纳税人识别号" />
+                          </a-form-model-item>
+                        </a-col>
+                        <a-col :span="12">
+                          <a-form-model-item label="接收邮箱">
+                            <a-input v-model="settleForm.invoiceInfo.email" placeholder="用于接收电子发票" />
+                          </a-form-model-item>
+                        </a-col>
+                        <a-col :span="12">
+                          <a-form-model-item label="接收手机号(可选)">
+                            <a-input v-model="settleForm.invoiceInfo.phone" placeholder="手机号" />
+                          </a-form-model-item>
+                        </a-col>
+                        <a-col :span="12">
+                          <a-form-model-item label="开票内容">
+                            <a-input v-model="settleForm.invoiceInfo.invoiceContent" placeholder="默认：服务费" />
+                          </a-form-model-item>
+                        </a-col>
+                      </a-row>
+                    </div>
+                  </a-form-model>
+                </div>
                 <div style="margin-top: 12px; display:flex; align-items:center; gap: 12px">
                   <div>结算后清台</div>
                   <a-switch v-model="settleClearSeat" />
                 </div>
                 <div style="margin-top: 12px">
-                  <a-button type="danger" @click="handleCheckout">确认结算</a-button>
+                  <a-button type="danger" :disabled="!canCheckout" @click="handleCheckout">确认结算</a-button>
                 </div>
               </a-card>
             </div>
@@ -215,6 +277,34 @@ export default {
       ],
       settlePreview: { serviceTotalAmount: 0, productTotalAmount: 0, totalAmount: 0 },
       settleClearSeat: true,
+      paymentMethods: [
+        { key: 'WECHAT', label: '微信' },
+        { key: 'ALIPAY', label: '支付宝' },
+        { key: 'CASH', label: '现金' },
+        { key: 'BANK', label: '银行卡/POS' },
+        { key: 'CARD', label: '储值卡' },
+        { key: 'CREDIT', label: '挂账/签单' }
+      ],
+      settleForm: {
+        payments: {
+          WECHAT: 0,
+          ALIPAY: 0,
+          CASH: 0,
+          BANK: 0,
+          CARD: 0,
+          CREDIT: 0
+        },
+        needInvoice: false,
+        invoiceInfo: {
+          buyerType: 'PERSONAL',
+          buyerName: '',
+          taxNo: '',
+          email: '',
+          phone: '',
+          invoiceType: 'ELECTRONIC_NORMAL',
+          invoiceContent: '服务费'
+        }
+      },
       bodyStyle: {
         padding: '0px',
         height: '100vh'
@@ -264,6 +354,38 @@ export default {
         settle: '结算'
       }
       return map[this.activeTab] || ''
+    },
+    paySum() {
+      const p = (this.settleForm && this.settleForm.payments) ? this.settleForm.payments : {}
+      let sum = 0
+      Object.keys(p).forEach(k => {
+        const v = Number(p[k] || 0)
+        if (!isNaN(v)) sum += v
+      })
+      return sum
+    },
+    payDiff() {
+      const total = Number((this.settlePreview && this.settlePreview.totalAmount) || 0)
+      const diff = this.paySum - total
+      return diff
+    },
+    payChange() {
+      return this.payDiff > 0 ? this.payDiff : 0
+    },
+    canCheckout() {
+      const total = Number((this.settlePreview && this.settlePreview.totalAmount) || 0)
+      if (this.paySum + 1e-9 < total) return false
+      if (this.settleForm.needInvoice) {
+        const info = this.settleForm.invoiceInfo || {}
+        const buyerName = (info.buyerName || '').trim()
+        const email = (info.email || '').trim()
+        if (!buyerName || !email) return false
+        if ((info.buyerType || '') === 'COMPANY') {
+          const taxNo = (info.taxNo || '').trim()
+          if (!taxNo) return false
+        }
+      }
+      return true
     }
   },
   watch: {
@@ -296,6 +418,26 @@ export default {
       this.memberList = []
       this.settlePreview = { serviceTotalAmount: 0, productTotalAmount: 0, totalAmount: 0 }
       this.settleClearSeat = true
+      this.settleForm = {
+        payments: {
+          WECHAT: 0,
+          ALIPAY: 0,
+          CASH: 0,
+          BANK: 0,
+          CARD: 0,
+          CREDIT: 0
+        },
+        needInvoice: false,
+        invoiceInfo: {
+          buyerType: 'PERSONAL',
+          buyerName: '',
+          taxNo: '',
+          email: '',
+          phone: '',
+          invoiceType: 'ELECTRONIC_NORMAL',
+          invoiceContent: '服务费'
+        }
+      }
       await this.loadDetail()
       await this.loadServiceItems()
     },
@@ -314,9 +456,17 @@ export default {
       const res = await getAction('/cashier/settlement/preview', { sessionId: this.sessionId })
       if (res.code === 200) {
         this.settlePreview = res.data || { serviceTotalAmount: 0, productTotalAmount: 0, totalAmount: 0 }
+        this.initDefaultPayment()
         return
       }
       this.settlePreview = { serviceTotalAmount: 0, productTotalAmount: 0, totalAmount: 0 }
+    },
+    initDefaultPayment() {
+      const p = (this.settleForm && this.settleForm.payments) ? this.settleForm.payments : {}
+      const hasAny = Object.keys(p).some(k => Number(p[k] || 0) > 0)
+      if (hasAny) return
+      const total = Number((this.settlePreview && this.settlePreview.totalAmount) || 0)
+      this.$set(this.settleForm.payments, 'WECHAT', total)
     },
     async loadServiceItems() {
       const res = await cashierServiceItemList({
@@ -524,7 +674,45 @@ export default {
     },
     async handleCheckout() {
       if (!this.sessionId) return
-      this.$emit('checkout', { sessionId: this.sessionId, clearSeat: this.settleClearSeat })
+      const total = Number((this.settlePreview && this.settlePreview.totalAmount) || 0)
+      if (this.paySum + 1e-9 < total) {
+        this.$message.warning('实收金额不足')
+        return
+      }
+      if (this.settleForm.needInvoice) {
+        const info = this.settleForm.invoiceInfo || {}
+        const buyerName = (info.buyerName || '').trim()
+        const email = (info.email || '').trim()
+        if (!buyerName) {
+          this.$message.warning('请填写抬头名称')
+          return
+        }
+        if (!email) {
+          this.$message.warning('请填写接收邮箱')
+          return
+        }
+        if ((info.buyerType || '') === 'COMPANY') {
+          const taxNo = (info.taxNo || '').trim()
+          if (!taxNo) {
+            this.$message.warning('企业开票需填写税号')
+            return
+          }
+        }
+      }
+      const payments = []
+      Object.keys(this.settleForm.payments || {}).forEach(k => {
+        const v = Number(this.settleForm.payments[k] || 0)
+        if (!isNaN(v) && v > 0) {
+          payments.push({ payMethod: k, amount: v })
+        }
+      })
+      this.$emit('checkout', {
+        sessionId: this.sessionId,
+        clearSeat: this.settleClearSeat,
+        payments,
+        needInvoice: this.settleForm.needInvoice,
+        invoiceInfo: this.settleForm.needInvoice ? this.settleForm.invoiceInfo : null
+      })
     }
   }
 }

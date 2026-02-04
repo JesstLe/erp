@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.InvoiceRequestMapper">
+  <resultMap id="BaseResultMap" type="com.jsh.erp.datasource.entities.InvoiceRequest">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="settlement_id" jdbcType="BIGINT" property="settlementId" />
+    <result column="session_id" jdbcType="BIGINT" property="sessionId" />
+    <result column="depot_id" jdbcType="BIGINT" property="depotId" />
+    <result column="member_id" jdbcType="BIGINT" property="memberId" />
+    <result column="buyer_type" jdbcType="VARCHAR" property="buyerType" />
+    <result column="buyer_name" jdbcType="VARCHAR" property="buyerName" />
+    <result column="tax_no" jdbcType="VARCHAR" property="taxNo" />
+    <result column="email" jdbcType="VARCHAR" property="email" />
+    <result column="phone" jdbcType="VARCHAR" property="phone" />
+    <result column="invoice_type" jdbcType="VARCHAR" property="invoiceType" />
+    <result column="invoice_content" jdbcType="VARCHAR" property="invoiceContent" />
+    <result column="amount" jdbcType="DECIMAL" property="amount" />
+    <result column="status" jdbcType="VARCHAR" property="status" />
+    <result column="invoice_no" jdbcType="VARCHAR" property="invoiceNo" />
+    <result column="file_url" jdbcType="VARCHAR" property="fileUrl" />
+    <result column="created_time" jdbcType="TIMESTAMP" property="createdTime" />
+    <result column="processed_time" jdbcType="TIMESTAMP" property="processedTime" />
+    <result column="processor_user_id" jdbcType="BIGINT" property="processorUserId" />
+    <result column="remark" jdbcType="VARCHAR" property="remark" />
+    <result column="tenant_id" jdbcType="BIGINT" property="tenantId" />
+    <result column="delete_flag" jdbcType="VARCHAR" property="deleteFlag" />
+  </resultMap>
+
+  <sql id="Base_Column_List">
+    id, settlement_id, session_id, depot_id, member_id, buyer_type, buyer_name, tax_no, email, phone, invoice_type,
+    invoice_content, amount, status, invoice_no, file_url, created_time, processed_time, processor_user_id, remark, tenant_id, delete_flag
+  </sql>
+
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from jsh_invoice_request
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from jsh_invoice_request
+    where id = #{id,jdbcType=BIGINT}
+  </delete>
+
+  <insert id="insert" parameterType="com.jsh.erp.datasource.entities.InvoiceRequest">
+    insert into jsh_invoice_request (id, settlement_id, session_id, depot_id, member_id, buyer_type, buyer_name, tax_no, email,
+      phone, invoice_type, invoice_content, amount, status, invoice_no, file_url, created_time, processed_time, processor_user_id,
+      remark, delete_flag)
+    values (#{id,jdbcType=BIGINT}, #{settlementId,jdbcType=BIGINT}, #{sessionId,jdbcType=BIGINT}, #{depotId,jdbcType=BIGINT},
+      #{memberId,jdbcType=BIGINT}, #{buyerType,jdbcType=VARCHAR}, #{buyerName,jdbcType=VARCHAR}, #{taxNo,jdbcType=VARCHAR},
+      #{email,jdbcType=VARCHAR}, #{phone,jdbcType=VARCHAR}, #{invoiceType,jdbcType=VARCHAR}, #{invoiceContent,jdbcType=VARCHAR},
+      #{amount,jdbcType=DECIMAL}, #{status,jdbcType=VARCHAR}, #{invoiceNo,jdbcType=VARCHAR}, #{fileUrl,jdbcType=VARCHAR},
+      #{createdTime,jdbcType=TIMESTAMP}, #{processedTime,jdbcType=TIMESTAMP}, #{processorUserId,jdbcType=BIGINT},
+      #{remark,jdbcType=VARCHAR}, #{deleteFlag,jdbcType=VARCHAR})
+  </insert>
+
+  <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.InvoiceRequest" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+    insert into jsh_invoice_request
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">id,</if>
+      <if test="settlementId != null">settlement_id,</if>
+      <if test="sessionId != null">session_id,</if>
+      <if test="depotId != null">depot_id,</if>
+      <if test="memberId != null">member_id,</if>
+      <if test="buyerType != null">buyer_type,</if>
+      <if test="buyerName != null">buyer_name,</if>
+      <if test="taxNo != null">tax_no,</if>
+      <if test="email != null">email,</if>
+      <if test="phone != null">phone,</if>
+      <if test="invoiceType != null">invoice_type,</if>
+      <if test="invoiceContent != null">invoice_content,</if>
+      <if test="amount != null">amount,</if>
+      <if test="status != null">status,</if>
+      <if test="invoiceNo != null">invoice_no,</if>
+      <if test="fileUrl != null">file_url,</if>
+      <if test="createdTime != null">created_time,</if>
+      <if test="processedTime != null">processed_time,</if>
+      <if test="processorUserId != null">processor_user_id,</if>
+      <if test="remark != null">remark,</if>
+      <if test="deleteFlag != null">delete_flag,</if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">#{id,jdbcType=BIGINT},</if>
+      <if test="settlementId != null">#{settlementId,jdbcType=BIGINT},</if>
+      <if test="sessionId != null">#{sessionId,jdbcType=BIGINT},</if>
+      <if test="depotId != null">#{depotId,jdbcType=BIGINT},</if>
+      <if test="memberId != null">#{memberId,jdbcType=BIGINT},</if>
+      <if test="buyerType != null">#{buyerType,jdbcType=VARCHAR},</if>
+      <if test="buyerName != null">#{buyerName,jdbcType=VARCHAR},</if>
+      <if test="taxNo != null">#{taxNo,jdbcType=VARCHAR},</if>
+      <if test="email != null">#{email,jdbcType=VARCHAR},</if>
+      <if test="phone != null">#{phone,jdbcType=VARCHAR},</if>
+      <if test="invoiceType != null">#{invoiceType,jdbcType=VARCHAR},</if>
+      <if test="invoiceContent != null">#{invoiceContent,jdbcType=VARCHAR},</if>
+      <if test="amount != null">#{amount,jdbcType=DECIMAL},</if>
+      <if test="status != null">#{status,jdbcType=VARCHAR},</if>
+      <if test="invoiceNo != null">#{invoiceNo,jdbcType=VARCHAR},</if>
+      <if test="fileUrl != null">#{fileUrl,jdbcType=VARCHAR},</if>
+      <if test="createdTime != null">#{createdTime,jdbcType=TIMESTAMP},</if>
+      <if test="processedTime != null">#{processedTime,jdbcType=TIMESTAMP},</if>
+      <if test="processorUserId != null">#{processorUserId,jdbcType=BIGINT},</if>
+      <if test="remark != null">#{remark,jdbcType=VARCHAR},</if>
+      <if test="deleteFlag != null">#{deleteFlag,jdbcType=VARCHAR},</if>
+    </trim>
+  </insert>
+
+  <update id="updateByPrimaryKeySelective" parameterType="com.jsh.erp.datasource.entities.InvoiceRequest">
+    update jsh_invoice_request
+    <set>
+      <if test="settlementId != null">settlement_id = #{settlementId,jdbcType=BIGINT},</if>
+      <if test="sessionId != null">session_id = #{sessionId,jdbcType=BIGINT},</if>
+      <if test="depotId != null">depot_id = #{depotId,jdbcType=BIGINT},</if>
+      <if test="memberId != null">member_id = #{memberId,jdbcType=BIGINT},</if>
+      <if test="buyerType != null">buyer_type = #{buyerType,jdbcType=VARCHAR},</if>
+      <if test="buyerName != null">buyer_name = #{buyerName,jdbcType=VARCHAR},</if>
+      <if test="taxNo != null">tax_no = #{taxNo,jdbcType=VARCHAR},</if>
+      <if test="email != null">email = #{email,jdbcType=VARCHAR},</if>
+      <if test="phone != null">phone = #{phone,jdbcType=VARCHAR},</if>
+      <if test="invoiceType != null">invoice_type = #{invoiceType,jdbcType=VARCHAR},</if>
+      <if test="invoiceContent != null">invoice_content = #{invoiceContent,jdbcType=VARCHAR},</if>
+      <if test="amount != null">amount = #{amount,jdbcType=DECIMAL},</if>
+      <if test="status != null">status = #{status,jdbcType=VARCHAR},</if>
+      <if test="invoiceNo != null">invoice_no = #{invoiceNo,jdbcType=VARCHAR},</if>
+      <if test="fileUrl != null">file_url = #{fileUrl,jdbcType=VARCHAR},</if>
+      <if test="createdTime != null">created_time = #{createdTime,jdbcType=TIMESTAMP},</if>
+      <if test="processedTime != null">processed_time = #{processedTime,jdbcType=TIMESTAMP},</if>
+      <if test="processorUserId != null">processor_user_id = #{processorUserId,jdbcType=BIGINT},</if>
+      <if test="remark != null">remark = #{remark,jdbcType=VARCHAR},</if>
+      <if test="tenantId != null">tenant_id = #{tenantId,jdbcType=BIGINT},</if>
+      <if test="deleteFlag != null">delete_flag = #{deleteFlag,jdbcType=VARCHAR},</if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <update id="updateByPrimaryKey" parameterType="com.jsh.erp.datasource.entities.InvoiceRequest">
+    update jsh_invoice_request
+    set settlement_id = #{settlementId,jdbcType=BIGINT},
+      session_id = #{sessionId,jdbcType=BIGINT},
+      depot_id = #{depotId,jdbcType=BIGINT},
+      member_id = #{memberId,jdbcType=BIGINT},
+      buyer_type = #{buyerType,jdbcType=VARCHAR},
+      buyer_name = #{buyerName,jdbcType=VARCHAR},
+      tax_no = #{taxNo,jdbcType=VARCHAR},
+      email = #{email,jdbcType=VARCHAR},
+      phone = #{phone,jdbcType=VARCHAR},
+      invoice_type = #{invoiceType,jdbcType=VARCHAR},
+      invoice_content = #{invoiceContent,jdbcType=VARCHAR},
+      amount = #{amount,jdbcType=DECIMAL},
+      status = #{status,jdbcType=VARCHAR},
+      invoice_no = #{invoiceNo,jdbcType=VARCHAR},
+      file_url = #{fileUrl,jdbcType=VARCHAR},
+      created_time = #{createdTime,jdbcType=TIMESTAMP},
+      processed_time = #{processedTime,jdbcType=TIMESTAMP},
+      processor_user_id = #{processorUserId,jdbcType=BIGINT},
+      remark = #{remark,jdbcType=VARCHAR},
+      tenant_id = #{tenantId,jdbcType=BIGINT},
+      delete_flag = #{deleteFlag,jdbcType=VARCHAR}
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <select id="selectList" resultMap="BaseResultMap">
+    select *
+    from jsh_invoice_request
+    where ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+      <if test="depotId != null">
+        and depot_id = #{depotId}
+      </if>
+      <if test="status != null and status != ''">
+        and status = #{status}
+      </if>
+      <if test="keyword != null and keyword != ''">
+        and (buyer_name like concat('%',#{keyword},'%') or tax_no like concat('%',#{keyword},'%') or email like concat('%',#{keyword},'%'))
+      </if>
+    order by created_time desc, id desc
+    <if test="offset != null and rows != null">
+      limit #{offset},#{rows}
+    </if>
+  </select>
+
+  <select id="countList" resultType="java.lang.Long">
+    select count(1)
+    from jsh_invoice_request
+    where ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+      <if test="depotId != null">
+        and depot_id = #{depotId}
+      </if>
+      <if test="status != null and status != ''">
+        and status = #{status}
+      </if>
+      <if test="keyword != null and keyword != ''">
+        and (buyer_name like concat('%',#{keyword},'%') or tax_no like concat('%',#{keyword},'%') or email like concat('%',#{keyword},'%'))
+      </if>
+  </select>
+</mapper>
