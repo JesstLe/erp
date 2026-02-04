@@ -166,6 +166,27 @@ public class CashierSessionService {
     }
 
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public int update(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
+        Long sessionId = obj.getLong("sessionId");
+        String remark = obj.getString("remark");
+        CashierSession db = cashierSessionMapper.selectByPrimaryKey(sessionId);
+        if (db == null) {
+            return 0;
+        }
+        if (tenantId != null && db.getTenantId() != null && !tenantId.equals(db.getTenantId())) {
+            return 0;
+        }
+        if (db.getStatus() != null && !"OPEN".equals(db.getStatus())) {
+            return 0;
+        }
+        CashierSession session = new CashierSession();
+        session.setId(sessionId);
+        session.setTenantId(tenantId);
+        session.setRemark(remark);
+        return cashierSessionMapper.updateByPrimaryKeySelective(session);
+    }
+
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public int closeSession(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
         Long sessionId = obj.getLong("sessionId");
         CashierSession db = cashierSessionMapper.selectByPrimaryKey(sessionId);

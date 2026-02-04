@@ -13,7 +13,7 @@
       </div>
       <div class="actions">
         <a-button icon="reload" @click="loadSeats" style="margin-right: 10px">刷新</a-button>
-        <a-button type="danger" @click="$router.push('/')">退出前台</a-button>
+        <a-button type="danger" @click="handleExitFrontDesk">退出前台</a-button>
       </div>
     </div>
 
@@ -145,12 +145,31 @@
     </a-modal>
 
     <cashier-desk-modal
+      ref="deskModal"
       :visible="deskVisible"
       :seat="deskSeat"
       :session="deskSession"
       @close="handleDeskClose"
       @checkout="handleDeskCheckout"
     />
+
+    <a-modal
+      v-model="exitConfirmVisible"
+      title="退出前台"
+      :footer="null"
+      :maskClosable="false">
+      <div style="margin-bottom: 12px">
+        <div v-if="exitConfirmSeat">当前座席：{{ exitConfirmSeat.name }}</div>
+        <div v-if="exitConfirmSession">当前会话：{{ exitConfirmSession.id }}</div>
+        <div v-if="exitConfirmSession" style="margin-top: 6px">检测到未结算会话，请选择退出方式</div>
+      </div>
+      <div style="display:flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap">
+        <a-button @click="exitConfirmVisible=false">取消</a-button>
+        <a-button type="default" @click="exitOnly">仅退出</a-button>
+        <a-button type="primary" @click="exitGoSettle">去结算</a-button>
+        <a-button type="danger" @click="exitForceClear">强制清台</a-button>
+      </div>
+    </a-modal>
   </div>
 </template>
 
@@ -209,7 +228,10 @@ export default {
       shiftForm: { openingAmount: 0, closingAmount: 0, remark: '' },
       deskVisible: false,
       deskSeat: null,
-      deskSession: null
+      deskSession: null,
+      exitConfirmVisible: false,
+      exitConfirmSeat: null,
+      exitConfirmSession: null
     }
   },
   created() {
@@ -285,6 +307,75 @@ export default {
       this.deskVisible = false
       this.deskSeat = null
       this.deskSession = null
+    },
+    resetFrontDeskState() {
+      this.currentSeat = null
+      this.currentSession = null
+      this.deskVisible = false
+      this.deskSeat = null
+      this.deskSession = null
+    },
+    async handleExitFrontDesk() {
+      let seat = this.deskSeat || this.currentSeat
+      if (!seat) {
+        this.resetFrontDeskState()
+        this.$router.push('/')
+        return
+      }
+      const currentRes = await cashierCurrentSessionBySeat({ seatId: seat.id })
+      if (currentRes.code === 200 && currentRes.data && currentRes.data.id) {
+        this.exitConfirmSeat = seat
+        this.exitConfirmSession = currentRes.data
+        this.exitConfirmVisible = true
+        return
+      }
+      this.resetFrontDeskState()
+      this.$router.push('/')
+    },
+    exitOnly() {
+      this.exitConfirmVisible = false
+      this.exitConfirmSeat = null
+      this.exitConfirmSession = null
+      this.resetFrontDeskState()
+      this.$router.push('/')
+    },
+    exitGoSettle() {
+      this.exitConfirmVisible = false
+      const seat = this.exitConfirmSeat
+      const session = this.exitConfirmSession
+      this.exitConfirmSeat = null
+      this.exitConfirmSession = null
+      if (seat && session) {
+        this.deskSeat = seat
+        this.deskSession = session
+        this.deskVisible = true
+        this.$nextTick(() => {
+          if (this.$refs.deskModal && this.$refs.deskModal.setActiveTab) {
+            this.$refs.deskModal.setActiveTab('settle')
+          }
+        })
+      }
+    },
+    async exitForceClear() {
+      const seat = this.exitConfirmSeat
+      const session = this.exitConfirmSession
+      this.exitConfirmVisible = false
+      this.exitConfirmSeat = null
+      this.exitConfirmSession = null
+      if (session && session.id) {
+        const res = await cashierCloseSession({ sessionId: session.id })
+        if (res.code === 200) {
+          this.$message.success('清台成功')
+          await this.loadSeats()
+          this.resetFrontDeskState()
+          this.$router.push('/')
+          return
+        }
+        this.$message.error(res.data || '清台失败')
+        return
+      }
+      this.resetFrontDeskState()
+      this.$router.push('/')
     },
     async handleDeskCheckout(payload) {
       const res = await cashierSettlementCheckout(payload)

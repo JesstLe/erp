@@ -103,6 +103,23 @@ public class CashierSessionController extends BaseController {
         return res;
     }
 
+    @PutMapping(value = "/update")
+    @ApiOperation(value = "更新会话(主单信息)")
+    public BaseResponseInfo update(@RequestBody JSONObject obj, HttpServletRequest request) throws Exception {
+        BaseResponseInfo res = new BaseResponseInfo();
+        try {
+            User userInfo = userService.getCurrentUser();
+            Long tenantId = resolveTenantId(userInfo);
+            int result = cashierSessionService.update(obj, tenantId, request);
+            res.code = 200;
+            res.data = result;
+        } catch (Exception e) {
+            res.code = 500;
+            res.data = "更新失败";
+        }
+        return res;
+    }
+
     @GetMapping(value = "/detail")
     @ApiOperation(value = "会话详情(服务+产品汇总)")
     public BaseResponseInfo detail(@RequestParam("sessionId") Long sessionId, HttpServletRequest request) throws Exception {

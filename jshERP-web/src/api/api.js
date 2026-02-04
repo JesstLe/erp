@@ -118,6 +118,7 @@ const cashierOpenSession = (params)=>postAction("/cashier/session/open",params);
 const cashierCloseSession = (params)=>postAction("/cashier/session/close",params);
 const cashierCurrentSessionBySeat = (params)=>getAction("/cashier/session/currentBySeat",params);
 const cashierBindMember = (params)=>putAction("/cashier/session/bindMember",params);
+const cashierSessionUpdate = (params)=>putAction("/cashier/session/update",params);
 const cashierSessionDetail = (params)=>getAction("/cashier/session/detail",params);
 
 const cashierServiceItemList = (params)=>getAction("/cashier/serviceItem/list",params);
@@ -147,6 +148,7 @@ const cashierCartProductAdd = (params)=>postAction("/cashier/cart/product/add",p
 const cashierCartProductUpdateQty = (params)=>putAction("/cashier/cart/product/updateQty",params);
 const cashierCartProductDelete = (params)=>postAction("/cashier/cart/product/delete",params);
 
+const cashierSettlementPreview = (params)=>getAction("/cashier/settlement/preview",params);
 const cashierSettlementCheckout = (params)=>postAction("/cashier/settlement/checkout",params);
 
 export {
@@ -246,6 +248,7 @@ export {
   cashierCloseSession,
   cashierCurrentSessionBySeat,
   cashierBindMember,
+  cashierSessionUpdate,
   cashierSessionDetail,
   cashierServiceItemList,
   cashierAddServiceItem,
@@ -269,6 +272,7 @@ export {
   cashierCartProductAdd,
   cashierCartProductUpdateQty,
   cashierCartProductDelete,
+  cashierSettlementPreview,
   cashierSettlementCheckout
 }
 

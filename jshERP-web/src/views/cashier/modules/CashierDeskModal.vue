@@ -23,7 +23,7 @@
             <a-tab-pane key="settle" tab="结算" />
           </a-tabs>
           <div class="header-right">
-            <a-button type="danger" @click="handleCheckout">结算</a-button>
+            <a-button type="danger" @click="handleHeaderCheckout">{{ activeTab === 'settle' ? '确认结算' : '结算' }}</a-button>
           </div>
         </div>
 
@@ -72,7 +72,7 @@
           </div>
 
           <div class="desk-right">
-            <div class="right-filter">
+            <div class="right-filter" v-if="activeTab === 'service' || activeTab === 'product'">
               <div class="filter-item">
                 <span class="filter-label">{{ activeTab === 'product' ? '产品分类：' : '项目分类：' }}</span>
                 <a-select v-model="categoryId" style="width: 180px" :allowClear="true" placeholder="全部">
@@ -107,9 +107,61 @@
               </div>
             </div>
 
-            <div class="right-empty" v-else>
-              <div class="empty-title">{{ tabTitle }}</div>
-              <div class="empty-sub">该页将在下一阶段补齐更完整的流程</div>
+            <div class="right-panel" v-else-if="activeTab === 'bill'">
+              <a-card size="small" :bordered="false">
+                <a-descriptions :column="1" size="small" bordered>
+                  <a-descriptions-item label="座席">{{ seatName }}</a-descriptions-item>
+                  <a-descriptions-item label="会话">{{ sessionId }}</a-descriptions-item>
+                  <a-descriptions-item label="开台时间">{{ sessionStartTime }}</a-descriptions-item>
+                  <a-descriptions-item label="会员">{{ memberLabel }}</a-descriptions-item>
+                </a-descriptions>
+                <div style="margin-top: 12px">
+                  <a-form layout="vertical">
+                    <a-form-item label="备注">
+                      <a-input v-model="billRemark" placeholder="请输入主单备注" />
+                    </a-form-item>
+                    <a-button type="primary" @click="handleSaveBillRemark">保存</a-button>
+                  </a-form>
+                </div>
+              </a-card>
+            </div>
+
+            <div class="right-panel" v-else-if="activeTab === 'member'">
+              <a-card size="small" :bordered="false">
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom: 12px; flex-wrap: wrap">
+                  <a-input v-model="memberKeyword" style="width: 260px" placeholder="刷卡/手机号/姓名" @pressEnter="handleMemberSearch" />
+                  <a-button type="primary" @click="handleMemberSearch">查询</a-button>
+                  <a-button v-if="detail && detail.member" @click="handleUnbindMember">取消绑定</a-button>
+                </div>
+                <a-table
+                  size="small"
+                  bordered
+                  rowKey="id"
+                  :columns="memberColumns"
+                  :dataSource="memberList"
+                  :pagination="false">
+                  <span slot="action" slot-scope="text, record">
+                    <a-button type="primary" size="small" @click="handleBindMember(record)">绑定</a-button>
+                  </span>
+                </a-table>
+              </a-card>
+            </div>
+
+            <div class="right-panel" v-else-if="activeTab === 'settle'">
+              <a-card size="small" :bordered="false">
+                <a-descriptions :column="1" size="small" bordered>
+                  <a-descriptions-item label="项目金额">¥ {{ formatMoney(settlePreview.serviceTotalAmount) }}</a-descriptions-item>
+                  <a-descriptions-item label="产品金额">¥ {{ formatMoney(settlePreview.productTotalAmount) }}</a-descriptions-item>
+                  <a-descriptions-item label="合计">¥ {{ formatMoney(settlePreview.totalAmount) }}</a-descriptions-item>
+                </a-descriptions>
+                <div style="margin-top: 12px; display:flex; align-items:center; gap: 12px">
+                  <div>结算后清台</div>
+                  <a-switch v-model="settleClearSeat" />
+                </div>
+                <div style="margin-top: 12px">
+                  <a-button type="danger" @click="handleCheckout">确认结算</a-button>
+                </div>
+              </a-card>
             </div>
           </div>
         </div>
@@ -120,12 +172,15 @@
 
 <script>
 import { getAction } from '@/api/manage'
+import dayjs from 'dayjs'
 import {
   cashierSessionDetail,
+  cashierSessionUpdate,
   cashierServiceItemList,
   cashierCartProductAdd,
   cashierCartProductUpdateQty,
   cashierCartProductDelete,
+  cashierBindMember,
   cashierServiceOrderQuickAddItem,
   cashierServiceOrderItemUpdateQty,
   cashierServiceOrderItemDelete
@@ -147,6 +202,18 @@ export default {
       categories: [],
       serviceItems: [],
       products: [],
+      billRemark: '',
+      memberKeyword: '',
+      memberList: [],
+      memberColumns: [
+        { title: '会员卡号', dataIndex: 'supplier', width: 160 },
+        { title: '联系人', dataIndex: 'contacts', width: 120 },
+        { title: '手机号码', dataIndex: 'telephone', width: 140 },
+        { title: '预付款', dataIndex: 'advanceIn', width: 100 },
+        { title: '操作', key: 'action', scopedSlots: { customRender: 'action' }, width: 90 }
+      ],
+      settlePreview: { serviceTotalAmount: 0, productTotalAmount: 0, totalAmount: 0 },
+      settleClearSeat: true,
       bodyStyle: {
         padding: '0px',
         height: '100vh'
@@ -180,6 +247,15 @@ export default {
       if (!this.detail) return '0.00'
       return this.formatMoney(this.detail.totalAmount)
     },
+    sessionStartTime() {
+      if (!this.detail || !this.detail.session || !this.detail.session.startTime) return ''
+      return dayjs(this.detail.session.startTime).format('YYYY-MM-DD HH:mm:ss')
+    },
+    memberLabel() {
+      if (!this.detail || !this.detail.member) return '未绑定'
+      const m = this.detail.member
+      return m.supplier || m.contacts || m.telephone || m.id
+    },
     tabTitle() {
       const map = {
         bill: '主单信息',
@@ -197,6 +273,9 @@ export default {
     }
   },
   methods: {
+    setActiveTab(key) {
+      this.handleTabChange(key)
+    },
     rowKey(r) {
       return `${r.type}-${r.id}`
     },
@@ -208,6 +287,11 @@ export default {
       this.activeTab = 'service'
       this.keyword = ''
       this.categoryId = undefined
+      this.billRemark = ''
+      this.memberKeyword = ''
+      this.memberList = []
+      this.settlePreview = { serviceTotalAmount: 0, productTotalAmount: 0, totalAmount: 0 }
+      this.settleClearSeat = true
       await this.loadDetail()
       await this.loadServiceItems()
     },
@@ -216,9 +300,19 @@ export default {
       const res = await cashierSessionDetail({ sessionId: this.sessionId })
       if (res.code === 200) {
         this.detail = res.data
+        this.billRemark = (this.detail && this.detail.session && this.detail.session.remark) ? this.detail.session.remark : ''
         return
       }
       this.detail = null
+    },
+    async loadSettlePreview() {
+      if (!this.sessionId) return
+      const res = await getAction('/cashier/settlement/preview', { sessionId: this.sessionId })
+      if (res.code === 200) {
+        this.settlePreview = res.data || { serviceTotalAmount: 0, productTotalAmount: 0, totalAmount: 0 }
+        return
+      }
+      this.settlePreview = { serviceTotalAmount: 0, productTotalAmount: 0, totalAmount: 0 }
     },
     async loadServiceItems() {
       const res = await cashierServiceItemList({
@@ -249,6 +343,18 @@ export default {
     },
     handleTabChange(key) {
       this.activeTab = key
+      if (key === 'bill') {
+        this.loadDetail()
+        return
+      }
+      if (key === 'member') {
+        this.memberList = []
+        return
+      }
+      if (key === 'settle') {
+        this.loadSettlePreview()
+        return
+      }
       if (key === 'service') {
         this.handleSearch()
         return
@@ -256,6 +362,62 @@ export default {
       if (key === 'product') {
         this.loadProducts()
       }
+    },
+    async handleSaveBillRemark() {
+      if (!this.sessionId) return
+      const res = await cashierSessionUpdate({ sessionId: this.sessionId, remark: this.billRemark })
+      if (res.code === 200) {
+        this.$message.success('保存成功')
+        await this.loadDetail()
+        return
+      }
+      this.$message.error(res.data || '保存失败')
+    },
+    async handleMemberSearch() {
+      const key = (this.memberKeyword || '').trim()
+      const res = await getAction('/supplier/list', {
+        currentPage: 1,
+        pageSize: 20,
+        search: JSON.stringify({
+          type: '会员',
+          supplier: key,
+          contacts: key,
+          telephone: key,
+          phonenum: key
+        })
+      })
+      if (res.code === 200 && res.data) {
+        this.memberList = res.data.rows || []
+        return
+      }
+      this.memberList = []
+    },
+    async handleBindMember(member) {
+      if (!this.sessionId) return
+      const res = await cashierBindMember({ sessionId: this.sessionId, memberId: member.id })
+      if (res.code === 200) {
+        this.$message.success('绑定成功')
+        await this.loadDetail()
+        return
+      }
+      this.$message.error(res.data || '绑定失败')
+    },
+    async handleUnbindMember() {
+      if (!this.sessionId) return
+      const res = await cashierBindMember({ sessionId: this.sessionId, memberId: null })
+      if (res.code === 200) {
+        this.$message.success('已取消绑定')
+        await this.loadDetail()
+        return
+      }
+      this.$message.error(res.data || '操作失败')
+    },
+    handleHeaderCheckout() {
+      if (this.activeTab === 'settle') {
+        this.handleCheckout()
+        return
+      }
+      this.handleTabChange('settle')
     },
     async handleSearch() {
       if (this.activeTab === 'service') {
@@ -340,7 +502,7 @@ export default {
     },
     async handleCheckout() {
       if (!this.sessionId) return
-      this.$emit('checkout', { sessionId: this.sessionId, clearSeat: true })
+      this.$emit('checkout', { sessionId: this.sessionId, clearSeat: this.settleClearSeat })
     }
   }
 }
