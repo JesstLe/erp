@@ -23,6 +23,7 @@ public class CashierCartService {
     private CashierSessionService cashierSessionService;
 
     public List<CashierSessionProductItem> listProductsBySessionId(Long sessionId, Long tenantId) throws Exception {
+        cashierSessionService.ensureSessionPermission(sessionId, tenantId);
         return cashierSessionProductItemMapper.selectBySessionId(sessionId, tenantId);
     }
 
@@ -40,6 +41,7 @@ public class CashierCartService {
         if (tenantId != null && db.getTenantId() != null && !tenantId.equals(db.getTenantId())) {
             return 0;
         }
+        cashierSessionService.ensureSessionPermission(db.getSessionId(), tenantId);
         BigDecimal unitPrice = db.getUnitPrice() == null ? BigDecimal.ZERO : db.getUnitPrice();
         BigDecimal amount = unitPrice.multiply(qty).setScale(6, RoundingMode.HALF_UP);
         CashierSessionProductItem update = new CashierSessionProductItem();
@@ -56,6 +58,14 @@ public class CashierCartService {
         if (id == null) {
             return 0;
         }
+        CashierSessionProductItem db = cashierSessionProductItemMapper.selectByPrimaryKey(id);
+        if (db == null) {
+            return 0;
+        }
+        if (tenantId != null && db.getTenantId() != null && !tenantId.equals(db.getTenantId())) {
+            return 0;
+        }
+        cashierSessionService.ensureSessionPermission(db.getSessionId(), tenantId);
         CashierSessionProductItem update = new CashierSessionProductItem();
         update.setId(id);
         update.setTenantId(tenantId);
@@ -77,10 +87,7 @@ public class CashierCartService {
             unitPrice = BigDecimal.ZERO;
         }
 
-        CashierSession session = cashierSessionService.getById(sessionId);
-        if (session == null || (tenantId != null && session.getTenantId() != null && !tenantId.equals(session.getTenantId()))) {
-            throw new IllegalArgumentException("会话不存在");
-        }
+        CashierSession session = cashierSessionService.ensureSessionPermission(sessionId, tenantId);
         if (!"OPEN".equalsIgnoreCase(session.getStatus())) {
             throw new IllegalArgumentException("会话已关闭");
         }

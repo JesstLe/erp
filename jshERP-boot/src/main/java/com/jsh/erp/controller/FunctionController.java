@@ -192,11 +192,24 @@ public class FunctionController extends BaseController {
         return dataArray;
     }
 
+    private boolean isAlwaysVisibleFunction(Function function) {
+        if(function == null) {
+            return false;
+        }
+        String url = function.getUrl();
+        if(url == null) {
+            return false;
+        }
+        return url.startsWith("/cashier") || "/service/item/manage".equals(url)
+                || "/customer/dashboard".equals(url) || "/customer/report".equals(url);
+    }
+
     public JSONArray getMenuByFunction(List<Function> dataList, String fc, String approvalFlag, Map<Long, Long> funIdMap, User userInfo) throws Exception {
         JSONArray dataArray = new JSONArray();
         for (Function function : dataList) {
+            boolean alwaysVisible = isAlwaysVisibleFunction(function);
             //如果不是超管也不是租户就需要校验，防止分配下级用户的功能权限，大于租户的权限
-            if("admin".equals(userInfo.getLoginName()) || userInfo.getId().equals(userInfo.getTenantId()) || funIdMap.get(function.getId())!=null) {
+            if(alwaysVisible || "admin".equals(userInfo.getLoginName()) || userInfo.getId().equals(userInfo.getTenantId()) || funIdMap.get(function.getId())!=null) {
                 //如果关闭多级审核，遇到任务审核菜单直接跳过
                 if("0".equals(approvalFlag) && "/workflow".equals(function.getUrl())) {
                     continue;
@@ -215,7 +228,7 @@ public class FunctionController extends BaseController {
                         dataArray.add(item);
                     }
                 } else {
-                    if (fc.indexOf("[" + function.getId().toString() + "]") != -1) {
+                    if (alwaysVisible || fc.indexOf("[" + function.getId().toString() + "]") != -1) {
                         dataArray.add(item);
                     }
                 }

@@ -26,6 +26,7 @@ public class CashierSettlementService {
     private CashierCartService cashierCartService;
 
     public Map<String, Object> preview(Long sessionId, Long tenantId) throws Exception {
+        cashierSessionService.ensureSessionPermission(sessionId, tenantId);
         Map<String, Object> result = new HashMap<>();
         BigDecimal serviceTotal = sumServiceAmount(sessionId, tenantId);
         BigDecimal productTotal = sumProductAmount(sessionId, tenantId);

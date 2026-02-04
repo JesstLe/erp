@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.jsh.erp.datasource.entities.CashierShift;
 import com.jsh.erp.datasource.mappers.CashierShiftMapper;
 import com.jsh.erp.datasource.mappers.ServiceOrderItemMapper;
+import com.jsh.erp.service.DepotService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,13 +24,18 @@ public class CashierShiftService {
     @Resource
     private ServiceOrderItemMapper serviceOrderItemMapper;
 
+    @Resource
+    private DepotService depotService;
+
     public CashierShift getOpenShift(Long depotId, Long cashierUserId, Long tenantId) throws Exception {
+        depotService.ensureCurrentUserDepotPermission(depotId);
         return cashierShiftMapper.selectOpenShift(depotId, cashierUserId, tenantId);
     }
 
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public CashierShift openShift(JSONObject obj, Long tenantId, Long cashierUserId, HttpServletRequest request) throws Exception {
         Long depotId = obj.getLong("depotId");
+        depotService.ensureCurrentUserDepotPermission(depotId);
         CashierShift existed = cashierShiftMapper.selectOpenShift(depotId, cashierUserId, tenantId);
         if (existed != null) {
             return existed;
@@ -56,6 +62,13 @@ public class CashierShiftService {
         if (shift == null) {
             return 0;
         }
+        if (tenantId != null && shift.getTenantId() != null && !tenantId.equals(shift.getTenantId())) {
+            return 0;
+        }
+        if (cashierUserId != null && shift.getCashierUserId() != null && !cashierUserId.equals(shift.getCashierUserId())) {
+            return 0;
+        }
+        depotService.ensureCurrentUserDepotPermission(shift.getDepotId());
         Date endTime = new Date();
         BigDecimal closingAmount = obj.getBigDecimal("closingAmount");
         if (closingAmount == null) {
@@ -86,4 +99,3 @@ public class CashierShiftService {
         return cashierShiftMapper.updateByPrimaryKeySelective(update);
     }
 }
-

@@ -21,7 +21,9 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class DepotService {
@@ -315,12 +317,18 @@ public class DepotService {
     public JSONArray findDepotByCurrentUser() throws Exception {
         JSONArray arr = new JSONArray();
         String type = "UserDepot";
-        Long userId = userService.getCurrentUser().getId();
+        User currentUser = userService.getCurrentUser();
+        Long userId = currentUser.getId();
         List<Depot> dataList = findUserDepot();
         //开始拼接json数据
         if (null != dataList) {
-            boolean depotFlag = systemConfigService.getDepotFlag();
-            if(depotFlag) {
+            boolean enforceUserDepot = systemConfigService.getDepotFlag();
+            if(currentUser.getTenantId() != null && currentUser.getTenantId() != 0L
+                    && !"admin".equals(currentUser.getLoginName())
+                    && !currentUser.getId().equals(currentUser.getTenantId())) {
+                enforceUserDepot = true;
+            }
+            if(enforceUserDepot) {
                 List<UserBusiness> list = userBusinessService.getBasicData(userId.toString(), type);
                 if(list!=null && list.size()>0) {
                     String depotStr = list.get(0).getValue();
@@ -370,6 +378,29 @@ public class DepotService {
             depotStr = depotStr.substring(0, depotStr.length()-1);
         }
         return depotStr;
+    }
+
+    public Set<Long> getCurrentUserDepotIdSet() throws Exception {
+        Set<Long> ids = new HashSet<>();
+        String depotStr = findDepotStrByCurrentUser();
+        if(StringUtil.isNotEmpty(depotStr)) {
+            for(String s: depotStr.split(",")) {
+                if(StringUtil.isNotEmpty(s)) {
+                    ids.add(Long.parseLong(s.trim()));
+                }
+            }
+        }
+        return ids;
+    }
+
+    public void ensureCurrentUserDepotPermission(Long depotId) throws Exception {
+        if(depotId == null) {
+            return;
+        }
+        Set<Long> ids = getCurrentUserDepotIdSet();
+        if(ids.isEmpty() || !ids.contains(depotId)) {
+            throw new RuntimeException("无门店权限");
+        }
     }
 
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)

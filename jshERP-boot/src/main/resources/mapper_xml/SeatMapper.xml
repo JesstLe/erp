@@ -138,6 +138,25 @@
     </if>
   </select>
 
+  <select id="selectByConditionWithDepotIds" resultMap="BaseResultMap">
+    select *
+    from jsh_seat
+    where 1=1
+    <if test="name != null and name != ''">
+        and name like concat('%', #{name}, '%')
+    </if>
+    <if test="depotIdList != null and depotIdList.size() > 0">
+        and depot_id in
+        <foreach collection="depotIdList" item="id" open="(" close=")" separator=",">
+          #{id}
+        </foreach>
+    </if>
+    and ifnull(delete_flag,'0') !='1'
+    <if test="offset != null and rows != null">
+        limit #{offset},#{rows}
+    </if>
+  </select>
+
   <select id="countsByCondition" resultType="java.lang.Long">
     select count(id)
     from jsh_seat
@@ -147,6 +166,22 @@
     </if>
     <if test="depotId != null">
         and depot_id = #{depotId}
+    </if>
+    and ifnull(delete_flag,'0') !='1'
+  </select>
+
+  <select id="countsByConditionWithDepotIds" resultType="java.lang.Long">
+    select count(id)
+    from jsh_seat
+    where 1=1
+    <if test="name != null and name != ''">
+        and name like concat('%', #{name}, '%')
+    </if>
+    <if test="depotIdList != null and depotIdList.size() > 0">
+        and depot_id in
+        <foreach collection="depotIdList" item="id" open="(" close=")" separator=",">
+          #{id}
+        </foreach>
     </if>
     and ifnull(delete_flag,'0') !='1'
   </select>

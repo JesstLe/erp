@@ -22,9 +22,12 @@ public interface CreditBillMapper {
     List<CreditBill> selectByStatus(@Param("status") String status,
                                     @Param("tenantId") Long tenantId);
 
+    List<CreditBill> selectByStatusAndDepotIds(@Param("status") String status,
+                                               @Param("depotIdList") List<Long> depotIdList,
+                                               @Param("tenantId") Long tenantId);
+
     List<CreditBill> selectByDepotAndTime(@Param("depotId") Long depotId,
                                           @Param("startTime") Date startTime,
                                           @Param("endTime") Date endTime,
                                           @Param("tenantId") Long tenantId);
 }
-

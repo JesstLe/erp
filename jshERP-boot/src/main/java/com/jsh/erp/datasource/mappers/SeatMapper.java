@@ -22,6 +22,14 @@ public interface SeatMapper {
                                  @Param("offset") Integer offset, 
                                  @Param("rows") Integer rows);
 
+    List<Seat> selectByConditionWithDepotIds(@Param("name") String name,
+                                             @Param("depotIdList") List<Long> depotIdList,
+                                             @Param("offset") Integer offset,
+                                             @Param("rows") Integer rows);
+
     Long countsByCondition(@Param("name") String name, 
                            @Param("depotId") Long depotId);
+
+    Long countsByConditionWithDepotIds(@Param("name") String name,
+                                       @Param("depotIdList") List<Long> depotIdList);
 }

@@ -1,14 +1,17 @@
 package com.jsh.erp.service.cashier;
 
 import com.alibaba.fastjson.JSONObject;
+import com.jsh.erp.datasource.entities.CashierSession;
 import com.jsh.erp.datasource.entities.CommissionRule;
 import com.jsh.erp.datasource.entities.ServiceItem;
 import com.jsh.erp.datasource.entities.ServiceOrder;
 import com.jsh.erp.datasource.entities.ServiceOrderItem;
+import com.jsh.erp.datasource.mappers.CashierSessionMapper;
 import com.jsh.erp.datasource.mappers.CommissionRuleMapper;
 import com.jsh.erp.datasource.mappers.ServiceItemMapper;
 import com.jsh.erp.datasource.mappers.ServiceOrderItemMapper;
 import com.jsh.erp.datasource.mappers.ServiceOrderMapper;
+import com.jsh.erp.service.DepotService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +28,9 @@ public class ServiceOrderService {
     private ServiceOrderMapper serviceOrderMapper;
 
     @Resource
+    private CashierSessionMapper cashierSessionMapper;
+
+    @Resource
     private ServiceOrderItemMapper serviceOrderItemMapper;
 
     @Resource
@@ -33,11 +39,40 @@ public class ServiceOrderService {
     @Resource
     private CommissionRuleMapper commissionRuleMapper;
 
+    @Resource
+    private DepotService depotService;
+
+    private CashierSession ensureSessionPermission(Long sessionId, Long tenantId) throws Exception {
+        CashierSession session = cashierSessionMapper.selectByPrimaryKey(sessionId);
+        if (session == null) {
+            throw new RuntimeException("会话不存在");
+        }
+        if (tenantId != null && session.getTenantId() != null && !tenantId.equals(session.getTenantId())) {
+            throw new RuntimeException("无权限");
+        }
+        depotService.ensureCurrentUserDepotPermission(session.getDepotId());
+        return session;
+    }
+
+    private ServiceOrder ensureOrderPermission(Long orderId, Long tenantId) throws Exception {
+        ServiceOrder order = serviceOrderMapper.selectByPrimaryKey(orderId);
+        if (order == null) {
+            throw new RuntimeException("服务单不存在");
+        }
+        if (tenantId != null && order.getTenantId() != null && !tenantId.equals(order.getTenantId())) {
+            throw new RuntimeException("无权限");
+        }
+        ensureSessionPermission(order.getSessionId(), tenantId);
+        return order;
+    }
+
     public List<ServiceOrder> listBySessionId(Long sessionId, Long tenantId) throws Exception {
+        ensureSessionPermission(sessionId, tenantId);
         return serviceOrderMapper.selectBySessionId(sessionId, tenantId);
     }
 
     public List<ServiceOrderItem> listItemsByOrderId(Long orderId, Long tenantId) throws Exception {
+        ensureOrderPermission(orderId, tenantId);
         return serviceOrderItemMapper.selectByOrderId(orderId, tenantId);
     }
 
@@ -47,6 +82,10 @@ public class ServiceOrderService {
         Long serviceItemId = obj.getLong("serviceItemId");
         if (sessionId == null || serviceItemId == null) {
             throw new IllegalArgumentException("参数错误");
+        }
+        CashierSession session = ensureSessionPermission(sessionId, tenantId);
+        if (!"OPEN".equalsIgnoreCase(session.getStatus())) {
+            throw new IllegalArgumentException("会话已关闭");
         }
         ServiceOrder order = serviceOrderMapper.selectOpenDeskOrder(sessionId, tenantId);
         if (order == null) {
@@ -73,6 +112,10 @@ public class ServiceOrderService {
         Long sessionId = obj.getLong("sessionId");
         Long technicianId = obj.getLong("technicianId");
         String remark = obj.getString("remark");
+        CashierSession session = ensureSessionPermission(sessionId, tenantId);
+        if (!"OPEN".equalsIgnoreCase(session.getStatus())) {
+            throw new IllegalArgumentException("会话已关闭");
+        }
 
         ServiceOrder order = new ServiceOrder();
         order.setSessionId(sessionId);
@@ -93,6 +136,10 @@ public class ServiceOrderService {
         BigDecimal qty = obj.getBigDecimal("qty");
         if (qty == null) {
             qty = BigDecimal.ONE;
+        }
+        ServiceOrder order = ensureOrderPermission(serviceOrderId, tenantId);
+        if (order.getStatus() != null && !"OPEN".equalsIgnoreCase(order.getStatus())) {
+            throw new IllegalArgumentException("服务单已完成");
         }
         ServiceItem serviceItem = serviceItemMapper.selectByPrimaryKey(serviceItemId);
         BigDecimal unitPrice = serviceItem == null || serviceItem.getPrice() == null ? BigDecimal.ZERO : serviceItem.getPrice();
@@ -125,6 +172,7 @@ public class ServiceOrderService {
         if (tenantId != null && db.getTenantId() != null && !tenantId.equals(db.getTenantId())) {
             return 0;
         }
+        ensureOrderPermission(db.getServiceOrderId(), tenantId);
         BigDecimal unitPrice = db.getUnitPrice();
         if (unitPrice == null && db.getServiceItemId() != null) {
             ServiceItem serviceItem = serviceItemMapper.selectByPrimaryKey(db.getServiceItemId());
@@ -146,6 +194,14 @@ public class ServiceOrderService {
         if (id == null) {
             return 0;
         }
+        ServiceOrderItem db = serviceOrderItemMapper.selectByPrimaryKey(id);
+        if (db == null) {
+            return 0;
+        }
+        if (tenantId != null && db.getTenantId() != null && !tenantId.equals(db.getTenantId())) {
+            return 0;
+        }
+        ensureOrderPermission(db.getServiceOrderId(), tenantId);
         ServiceOrderItem update = new ServiceOrderItem();
         update.setId(id);
         update.setTenantId(tenantId);
@@ -156,10 +212,7 @@ public class ServiceOrderService {
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public int finishOrder(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
         Long serviceOrderId = obj.getLong("serviceOrderId");
-        ServiceOrder order = serviceOrderMapper.selectByPrimaryKey(serviceOrderId);
-        if (order == null) {
-            return 0;
-        }
+        ServiceOrder order = ensureOrderPermission(serviceOrderId, tenantId);
         List<ServiceOrderItem> items = serviceOrderItemMapper.selectByOrderId(serviceOrderId, tenantId);
         List<CommissionRule> rules = commissionRuleMapper.selectEnabledRules(tenantId);
         for (ServiceOrderItem item : items) {

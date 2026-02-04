@@ -104,6 +104,25 @@
     order by created_time desc, id desc
   </select>
 
+  <select id="selectByStatusAndDepotIds" resultMap="BaseResultMap">
+    select b.*
+    from jsh_credit_bill b
+      left join jsh_cashier_session s on s.id = b.session_id
+    where b.status = #{status}
+      and ifnull(b.delete_flag,'0') != '1'
+      and ifnull(s.delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and b.tenant_id = #{tenantId}
+      </if>
+      <if test="depotIdList != null and depotIdList.size() > 0">
+        and s.depot_id in
+        <foreach collection="depotIdList" item="id" open="(" close=")" separator=",">
+          #{id}
+        </foreach>
+      </if>
+    order by b.created_time desc, b.id desc
+  </select>
+
   <select id="selectByDepotAndTime" resultMap="BaseResultMap">
     select b.*
     from jsh_credit_bill b
