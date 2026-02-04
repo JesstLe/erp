@@ -144,7 +144,7 @@
               if(res.code === 200){
                 that.$emit('ok');
               }else{
-                that.$message.warning(res.data.message);
+                that.$message.warning((res.data && res.data.message) || res.data || res.message || '保存失败');
               }
             }).finally(() => {
               that.confirmLoading = false;

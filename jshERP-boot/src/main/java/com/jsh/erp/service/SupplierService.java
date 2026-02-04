@@ -154,7 +154,12 @@ public class SupplierService {
             supplier.setEnabled(true);
             User userInfo=userService.getCurrentUser();
             supplier.setCreator(userInfo==null?null:userInfo.getId());
-            supplier.setTenantId(resolveTenantId(userInfo));
+            if(supplier.getDeleteFlag() == null) {
+                supplier.setDeleteFlag(BusinessConstants.DELETE_FLAG_EXISTS);
+            }
+            if(supplier.getAdvanceIn() == null) {
+                supplier.setAdvanceIn(BigDecimal.ZERO);
+            }
             result=supplierMapper.insertSelective(supplier);
             //新增客户时给当前用户和租户自动授权
             setUserCustomerPermission(request, supplier);
