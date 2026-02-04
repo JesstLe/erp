@@ -885,4 +885,11 @@ export default {
   margin-top: 6px;
   font-size: 12px;
 }
+
+.right-panel {
+  flex: 1;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 4px;
+}
 </style>

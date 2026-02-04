@@ -106,6 +106,9 @@
       ImportFileModal,
       JDate
     },
+    activated() {
+      this.loadData()
+    },
     data () {
       return {
         labelCol: {
