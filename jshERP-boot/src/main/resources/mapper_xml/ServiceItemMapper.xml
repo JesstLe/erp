@@ -29,9 +29,9 @@
   </delete>
 
   <insert id="insert" parameterType="com.jsh.erp.datasource.entities.ServiceItem">
-    insert into jsh_service_item (id, name, price, duration_min, enabled, sort, delete_flag)
+    insert into jsh_service_item (id, name, price, duration_min, enabled, sort, tenant_id, delete_flag)
     values (#{id,jdbcType=BIGINT}, #{name,jdbcType=VARCHAR}, #{price,jdbcType=DECIMAL}, #{durationMin,jdbcType=INTEGER},
-      #{enabled,jdbcType=BIT}, #{sort,jdbcType=VARCHAR}, #{deleteFlag,jdbcType=VARCHAR})
+      #{enabled,jdbcType=BIT}, #{sort,jdbcType=VARCHAR}, #{tenantId,jdbcType=BIGINT}, #{deleteFlag,jdbcType=VARCHAR})
   </insert>
 
   <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.ServiceItem">
@@ -55,6 +55,9 @@
       <if test="sort != null">
         sort,
       </if>
+      <if test="tenantId != null">
+        tenant_id,
+      </if>
       <if test="deleteFlag != null">
         delete_flag,
       </if>
@@ -77,6 +80,9 @@
       </if>
       <if test="sort != null">
         #{sort,jdbcType=VARCHAR},
+      </if>
+      <if test="tenantId != null">
+        #{tenantId,jdbcType=BIGINT},
       </if>
       <if test="deleteFlag != null">
         #{deleteFlag,jdbcType=VARCHAR},
