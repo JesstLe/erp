@@ -16,31 +16,42 @@ public interface SupplierMapperEx {
             @Param("contacts") String contacts,
             @Param("phonenum") String phonenum,
             @Param("telephone") String telephone,
+            @Param("tenantId") Long tenantId,
             @Param("creatorArray") String[] creatorArray);
 
     List<Supplier> findByAll(
             @Param("supplier") String supplier,
             @Param("type") String type,
             @Param("phonenum") String phonenum,
-            @Param("telephone") String telephone);
+            @Param("telephone") String telephone,
+            @Param("tenantId") Long tenantId);
 
     int batchDeleteSupplierByIds(@Param("updateTime") Date updateTime, @Param("updater") Long updater, @Param("ids") String ids[]);
 
     Supplier getSupplierByNameAndType(
             @Param("supplier") String supplier,
-            @Param("type") String type);
+            @Param("type") String type,
+            @Param("tenantId") Long tenantId);
 
-    List<SupplierSimple> getAllCustomer();
+    List<SupplierSimple> getAllCustomer(@Param("tenantId") Long tenantId);
 
     List<Supplier> findByTypeAndKey(
             @Param("type") String type,
             @Param("key") String key,
-            @Param("limit") Integer limit);
+            @Param("limit") Integer limit,
+            @Param("tenantId") Long tenantId);
 
     Supplier getInfoById(
-            @Param("id") Long id);
+            @Param("id") Long id,
+            @Param("tenantId") Long tenantId);
 
     Supplier getInfoByName(
             @Param("name") String name,
-            @Param("type") String type);
+            @Param("type") String type,
+            @Param("tenantId") Long tenantId);
+
+    List<Supplier> searchMember(
+            @Param("key") String key,
+            @Param("tenantId") Long tenantId,
+            @Param("limit") Integer limit);
 }

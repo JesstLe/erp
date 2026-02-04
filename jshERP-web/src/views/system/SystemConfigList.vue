@@ -48,9 +48,9 @@
         </a-row>
         <a-row class="form-row" :gutter="24">
           <a-col :lg="12" :md="12" :sm="24">
-            <a-form-item :labelCol="labelCol" :wrapperCol="wrapperCol" label="分配仓库权限">
+            <a-form-item :labelCol="labelCol" :wrapperCol="wrapperCol" label="分配门店权限">
               <a-switch checked-children="启用" un-checked-children="关闭" v-model="depotFlagSwitch" @change="onDepotChange"></a-switch>
-              （启用后，需要到<b>用户管理</b>进行<b>分配仓库</b>，针对专人管理仓库的场景）
+              （启用后，需要到<b>用户管理</b>进行<b>分配门店</b>，针对子门店独立登录的场景）
             </a-form-item>
           </a-col>
           <a-col :lg="12" :md="12" :sm="24">

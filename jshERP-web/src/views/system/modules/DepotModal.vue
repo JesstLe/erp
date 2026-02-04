@@ -22,11 +22,11 @@
       </template>
       <a-spin :spinning="confirmLoading">
         <a-form :form="form" id="depotModal">
-          <a-form-item :labelCol="labelCol" :wrapperCol="wrapperCol" label="仓库名称">
-            <a-input placeholder="请输入仓库名称" v-decorator.trim="[ 'name', validatorRules.name]" />
+          <a-form-item :labelCol="labelCol" :wrapperCol="wrapperCol" label="门店名称">
+            <a-input placeholder="请输入门店名称" v-decorator.trim="[ 'name', validatorRules.name]" />
           </a-form-item>
-          <a-form-item :labelCol="labelCol" :wrapperCol="wrapperCol" label="仓库地址">
-            <a-input placeholder="请输入仓库地址" v-decorator.trim="[ 'address' ]" />
+          <a-form-item :labelCol="labelCol" :wrapperCol="wrapperCol" label="门店地址">
+            <a-input placeholder="请输入门店地址" v-decorator.trim="[ 'address' ]" />
           </a-form-item>
           <a-form-item :labelCol="labelCol" :wrapperCol="wrapperCol" label="仓储费">
             <a-input placeholder="请输入仓储费" v-decorator.trim="[ 'warehousing' ]" suffix="元/天/KG"/>
@@ -81,7 +81,7 @@
         validatorRules:{
           name:{
             rules: [
-              { required: true, message: '请输入仓库名称!' },
+              { required: true, message: '请输入门店名称!' },
               { min: 2, max: 30, message: '长度在 2 到 30 个字符', trigger: 'blur' },
               { validator: this.validateDepotName}
             ]}

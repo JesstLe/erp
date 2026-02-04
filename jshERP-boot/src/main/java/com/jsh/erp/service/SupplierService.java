@@ -93,7 +93,9 @@ public class SupplierService {
         try{
             String [] creatorArray = depotHeadService.getCreatorArray();
             PageUtils.startPage();
-            list = supplierMapperEx.selectByConditionSupplier(supplier, type, contacts, phonenum, telephone, creatorArray);
+            User userInfo = userService.getCurrentUser();
+            Long tenantId = resolveTenantId(userInfo);
+            list = supplierMapperEx.selectByConditionSupplier(supplier, type, contacts, phonenum, telephone, tenantId, creatorArray);
             for(Supplier s : list) {
                 Integer supplierId = s.getId().intValue();
                 String beginTime = Tools.getYearBegin();
@@ -152,6 +154,7 @@ public class SupplierService {
             supplier.setEnabled(true);
             User userInfo=userService.getCurrentUser();
             supplier.setCreator(userInfo==null?null:userInfo.getId());
+            supplier.setTenantId(resolveTenantId(userInfo));
             result=supplierMapper.insertSelective(supplier);
             //新增客户时给当前用户和租户自动授权
             setUserCustomerPermission(request, supplier);
@@ -291,7 +294,8 @@ public class SupplierService {
     public List<Supplier> findBySelectCus(String key, Long organId, Integer limit)throws Exception {
         List<Supplier> list=null;
         try{
-            list = supplierMapperEx.findByTypeAndKey("客户", key, limit);
+            Long tenantId = resolveTenantId(userService.getCurrentUser());
+            list = supplierMapperEx.findByTypeAndKey("客户", key, limit, tenantId);
             if(organId!=null) {
                 list = addOrganToList(list, organId);
             }
@@ -304,7 +308,8 @@ public class SupplierService {
     public List<Supplier> findBySelectSup(String key, Long organId, Integer limit)throws Exception {
         List<Supplier> list=null;
         try{
-            list = supplierMapperEx.findByTypeAndKey("供应商", key, limit);
+            Long tenantId = resolveTenantId(userService.getCurrentUser());
+            list = supplierMapperEx.findByTypeAndKey("供应商", key, limit, tenantId);
             if(organId!=null) {
                 list = addOrganToList(list, organId);
             }
@@ -317,11 +322,23 @@ public class SupplierService {
     public List<Supplier> findBySelectRetail(String key, Long organId, Integer limit)throws Exception {
         List<Supplier> list=null;
         try{
-            list = supplierMapperEx.findByTypeAndKey("会员", key, limit);
+            Long tenantId = resolveTenantId(userService.getCurrentUser());
+            list = supplierMapperEx.findByTypeAndKey("会员", key, limit, tenantId);
             if(organId!=null) {
                 list = addOrganToList(list, organId);
             }
         }catch(Exception e){
+            JshException.readFail(logger, e);
+        }
+        return list;
+    }
+
+    public List<Supplier> searchMember(String key, Integer limit) throws Exception {
+        List<Supplier> list = new ArrayList<>();
+        try {
+            Long tenantId = resolveTenantId(userService.getCurrentUser());
+            list = supplierMapperEx.searchMember(key, tenantId, limit);
+        } catch (Exception e) {
             JshException.readFail(logger, e);
         }
         return list;
@@ -342,7 +359,13 @@ public class SupplierService {
         }
         if(!isExist) {
             //列表里面不存在则追加
-            Supplier info = supplierMapperEx.getInfoById(organId);
+            Long tenantId = null;
+            try {
+                tenantId = resolveTenantId(userService.getCurrentUser());
+            } catch (Exception e) {
+                tenantId = null;
+            }
+            Supplier info = supplierMapperEx.getInfoById(organId, tenantId);
             if(info!=null) {
                 list.add(info);
             }
@@ -400,7 +423,8 @@ public class SupplierService {
     public List<Supplier> findByAll(String supplier, String type, String phonenum, String telephone) throws Exception{
         List<Supplier> list=null;
         try{
-            list = supplierMapperEx.findByAll(supplier, type, phonenum, telephone);
+            Long tenantId = resolveTenantId(userService.getCurrentUser());
+            list = supplierMapperEx.findByAll(supplier, type, phonenum, telephone, tenantId);
         }catch(Exception e){
             JshException.readFail(logger, e);
         }
@@ -664,7 +688,7 @@ public class SupplierService {
     private void setUserCustomerPermission(HttpServletRequest request, Supplier supplier) throws Exception {
         if("客户".equals(supplier.getType())) {
             User user = userService.getCurrentUser();
-            Supplier sInfo = supplierMapperEx.getSupplierByNameAndType(supplier.getSupplier(), supplier.getType());
+            Supplier sInfo = supplierMapperEx.getSupplierByNameAndType(supplier.getSupplier(), supplier.getType(), resolveTenantId(user));
             String ubKey = "[" + sInfo.getId() + "]";
             //授权当前用户
             setPermissionByParam(user.getId(), ubKey);
@@ -714,10 +738,35 @@ public class SupplierService {
     }
 
     public List<SupplierSimple> getAllCustomer() {
-        return supplierMapperEx.getAllCustomer();
+        Long tenantId = null;
+        try {
+            tenantId = resolveTenantId(userService.getCurrentUser());
+        } catch (Exception e) {
+            tenantId = null;
+        }
+        return supplierMapperEx.getAllCustomer(tenantId);
     }
 
     public Supplier getInfoByName(String name, String type) {
-        return supplierMapperEx.getInfoByName(name, type);
+        Long tenantId = null;
+        try {
+            tenantId = resolveTenantId(userService.getCurrentUser());
+        } catch (Exception e) {
+            tenantId = null;
+        }
+        return supplierMapperEx.getInfoByName(name, type, tenantId);
+    }
+
+    private Long resolveTenantId(User userInfo) {
+        if (userInfo == null) {
+            return null;
+        }
+        if ("admin".equals(userInfo.getLoginName())) {
+            return null;
+        }
+        if (userInfo.getTenantId() == null || userInfo.getTenantId() == 0L) {
+            return null;
+        }
+        return userInfo.getTenantId();
     }
 }

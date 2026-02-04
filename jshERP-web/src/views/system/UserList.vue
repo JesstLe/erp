@@ -47,7 +47,7 @@
             :rowSelection="{selectedRowKeys: selectedRowKeys, onChange: onSelectChange}"
             @change="handleTableChange">
             <span slot="action" slot-scope="text, record">
-              <a v-if="btnEnableList.indexOf(1)>-1 && depotFlag === '1' " @click="btnSetDepot(record)">分配仓库</a>
+              <a v-if="btnEnableList.indexOf(1)>-1 && depotFlag === '1' " @click="btnSetDepot(record)">分配门店</a>
               <a-divider v-if="btnEnableList.indexOf(1)>-1 && depotFlag === '1'" type="vertical" />
               <a v-if="btnEnableList.indexOf(1)>-1 && customerFlag === '1'" @click="btnSetCustomer(record)">分配客户</a>
               <a-divider v-if="btnEnableList.indexOf(1)>-1 && customerFlag === '1'" type="vertical" />
@@ -188,7 +188,7 @@
       },
       btnSetDepot(record) {
         this.$refs.userDepotModal.edit(record);
-        this.$refs.userDepotModal.title = "分配仓库给：" + record.username
+        this.$refs.userDepotModal.title = "分配门店给：" + record.username
         this.$refs.userDepotModal.disableSubmit = false;
       },
       btnSetCustomer(record) {

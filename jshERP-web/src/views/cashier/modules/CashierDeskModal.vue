@@ -205,6 +205,7 @@ export default {
       billRemark: '',
       memberKeyword: '',
       memberList: [],
+      memberSearchTimer: null,
       memberColumns: [
         { title: '会员卡号', dataIndex: 'supplier', width: 160 },
         { title: '联系人', dataIndex: 'contacts', width: 120 },
@@ -270,6 +271,9 @@ export default {
       if (v) {
         this.bootstrap()
       }
+    },
+    memberKeyword() {
+      this.scheduleMemberSearch()
     }
   },
   methods: {
@@ -342,6 +346,10 @@ export default {
       this.products = []
     },
     handleTabChange(key) {
+      if (this.memberSearchTimer) {
+        clearTimeout(this.memberSearchTimer)
+        this.memberSearchTimer = null
+      }
       this.activeTab = key
       if (key === 'bill') {
         this.loadDetail()
@@ -373,21 +381,35 @@ export default {
       }
       this.$message.error(res.data || '保存失败')
     },
-    async handleMemberSearch() {
+    scheduleMemberSearch() {
+      if (!this.visible) return
+      if (this.activeTab !== 'member') return
+      if (this.memberSearchTimer) {
+        clearTimeout(this.memberSearchTimer)
+        this.memberSearchTimer = null
+      }
       const key = (this.memberKeyword || '').trim()
-      const res = await getAction('/supplier/list', {
-        currentPage: 1,
-        pageSize: 20,
-        search: JSON.stringify({
-          type: '会员',
-          supplier: key,
-          contacts: key,
-          telephone: key,
-          phonenum: key
-        })
+      if (!key) {
+        this.memberList = []
+        return
+      }
+      this.memberSearchTimer = setTimeout(() => {
+        this.handleMemberSearch()
+      }, 300)
+    },
+    async handleMemberSearch() {
+      if (this.activeTab !== 'member') return
+      const key = (this.memberKeyword || '').trim()
+      if (!key) {
+        this.memberList = []
+        return
+      }
+      const res = await getAction('/supplier/searchMember', {
+        key,
+        limit: 20
       })
-      if (res.code === 200 && res.data) {
-        this.memberList = res.data.rows || []
+      if (res.code === 200) {
+        this.memberList = res.data || []
         return
       }
       this.memberList = []

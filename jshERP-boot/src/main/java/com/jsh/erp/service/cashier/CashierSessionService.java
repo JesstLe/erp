@@ -12,6 +12,7 @@ import com.jsh.erp.datasource.mappers.CashierSessionMapper;
 import com.jsh.erp.datasource.mappers.ServiceItemMapper;
 import com.jsh.erp.datasource.mappers.SupplierMapper;
 import com.jsh.erp.datasource.mappers.SeatMapper;
+import com.jsh.erp.service.DepotService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +44,9 @@ public class CashierSessionService {
     @Resource
     private ServiceItemMapper serviceItemMapper;
 
+    @Resource
+    private DepotService depotService;
+
     public CashierSession getCurrentBySeatId(Long seatId, Long tenantId) throws Exception {
         return cashierSessionMapper.selectCurrentBySeatId(seatId, tenantId);
     }
@@ -59,6 +63,7 @@ public class CashierSessionService {
         if (tenantId != null && session.getTenantId() != null && !tenantId.equals(session.getTenantId())) {
             return null;
         }
+        ensureDepotPermission(session.getDepotId());
         Seat seat = session.getSeatId() == null ? null : seatMapper.selectByPrimaryKey(session.getSeatId());
         Supplier member = session.getMemberId() == null ? null : supplierMapper.selectByPrimaryKey(session.getMemberId());
 
@@ -132,6 +137,31 @@ public class CashierSessionService {
             return existed;
         }
 
+        Seat seatDb = seatId == null ? null : seatMapper.selectByPrimaryKey(seatId);
+        if (seatDb == null) {
+            throw new RuntimeException("座席不存在");
+        }
+        if (tenantId != null && seatDb.getTenantId() != null && !tenantId.equals(seatDb.getTenantId())) {
+            throw new RuntimeException("无权限");
+        }
+        if (depotId == null || seatDb.getDepotId() == null || !depotId.equals(seatDb.getDepotId())) {
+            throw new RuntimeException("座席与门店不匹配");
+        }
+        String depotStr = depotService.findDepotStrByCurrentUser();
+        if (depotStr == null || depotStr.trim().length() == 0) {
+            throw new RuntimeException("无门店权限");
+        }
+        boolean allow = false;
+        for (String s : depotStr.split(",")) {
+            if (s != null && s.trim().length() > 0 && depotId.toString().equals(s.trim())) {
+                allow = true;
+                break;
+            }
+        }
+        if (!allow) {
+            throw new RuntimeException("无门店权限");
+        }
+
         CashierSession session = new CashierSession();
         session.setSeatId(seatId);
         session.setDepotId(depotId);
@@ -158,9 +188,16 @@ public class CashierSessionService {
     public int bindMember(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
         Long sessionId = obj.getLong("sessionId");
         Long memberId = obj.getLong("memberId");
+        CashierSession db = cashierSessionMapper.selectByPrimaryKey(sessionId);
+        if (db == null) {
+            return 0;
+        }
+        if (tenantId != null && db.getTenantId() != null && !tenantId.equals(db.getTenantId())) {
+            return 0;
+        }
+        ensureDepotPermission(db.getDepotId());
         CashierSession session = new CashierSession();
         session.setId(sessionId);
-        session.setTenantId(tenantId);
         session.setMemberId(memberId);
         return cashierSessionMapper.updateByPrimaryKeySelective(session);
     }
@@ -179,9 +216,9 @@ public class CashierSessionService {
         if (db.getStatus() != null && !"OPEN".equals(db.getStatus())) {
             return 0;
         }
+        ensureDepotPermission(db.getDepotId());
         CashierSession session = new CashierSession();
         session.setId(sessionId);
-        session.setTenantId(tenantId);
         session.setRemark(remark);
         return cashierSessionMapper.updateByPrimaryKeySelective(session);
     }
@@ -193,9 +230,12 @@ public class CashierSessionService {
         if (db == null) {
             return 0;
         }
+        if (tenantId != null && db.getTenantId() != null && !tenantId.equals(db.getTenantId())) {
+            return 0;
+        }
+        ensureDepotPermission(db.getDepotId());
         CashierSession session = new CashierSession();
         session.setId(sessionId);
-        session.setTenantId(tenantId);
         session.setStatus("CLOSED");
         session.setEndTime(new Date());
         int result = cashierSessionMapper.updateByPrimaryKeySelective(session);
@@ -206,5 +246,21 @@ public class CashierSessionService {
             seatMapper.updateByPrimaryKeySelective(seat);
         }
         return result;
+    }
+
+    private void ensureDepotPermission(Long depotId) throws Exception {
+        if (depotId == null) {
+            return;
+        }
+        String depotStr = depotService.findDepotStrByCurrentUser();
+        if (depotStr == null || depotStr.trim().length() == 0) {
+            throw new RuntimeException("无门店权限");
+        }
+        for (String s : depotStr.split(",")) {
+            if (s != null && s.trim().length() > 0 && depotId.toString().equals(s.trim())) {
+                return;
+            }
+        }
+        throw new RuntimeException("无门店权限");
     }
 }

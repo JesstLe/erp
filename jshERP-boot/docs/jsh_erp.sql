@@ -122,9 +122,9 @@ CREATE TABLE `jsh_depot`  (
 -- ----------------------------
 -- Records of jsh_depot
 -- ----------------------------
-INSERT INTO `jsh_depot` VALUES (14, '仓库1', 'dizhi', 12.000000, 12.000000, 0, '1', '描述', 131, b'1', 63, '0', b'1');
-INSERT INTO `jsh_depot` VALUES (15, '仓库2', '地址100', 555.000000, 666.000000, 0, '2', 'dfdf', 131, b'1', 63, '0', b'0');
-INSERT INTO `jsh_depot` VALUES (17, '仓库3', '123123', 123.000000, 123.000000, 0, '3', '123', 131, b'1', 63, '0', b'0');
+INSERT INTO `jsh_depot` VALUES (14, '门店1', 'dizhi', 12.000000, 12.000000, 0, '1', '描述', 131, b'1', 63, '0', b'1');
+INSERT INTO `jsh_depot` VALUES (15, '门店2', '地址100', 555.000000, 666.000000, 0, '2', 'dfdf', 131, b'1', 63, '0', b'0');
+INSERT INTO `jsh_depot` VALUES (17, '门店3', '123123', 123.000000, 123.000000, 0, '3', '123', 131, b'1', 63, '0', b'0');
 
 -- ----------------------------
 -- Table structure for jsh_depot_head

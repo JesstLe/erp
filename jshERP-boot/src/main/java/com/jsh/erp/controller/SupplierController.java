@@ -81,6 +81,24 @@ public class SupplierController extends BaseController {
         return getDataTable(list);
     }
 
+    @GetMapping(value = "/searchMember")
+    @ApiOperation(value = "会员关键字检索")
+    public BaseResponseInfo searchMember(@RequestParam(value = "key", required = false) String key,
+                                         @RequestParam(value = "limit", required = false) Integer limit,
+                                         HttpServletRequest request) throws Exception {
+        BaseResponseInfo res = new BaseResponseInfo();
+        try {
+            List<Supplier> list = supplierService.searchMember(key, limit);
+            res.code = 200;
+            res.data = list;
+        } catch (Exception e) {
+            logger.error(e.getMessage(), e);
+            res.code = 500;
+            res.data = "获取数据失败";
+        }
+        return res;
+    }
+
     @PostMapping(value = "/add")
     @ApiOperation(value = "新增")
     public String addResource(@RequestBody JSONObject obj, HttpServletRequest request)throws Exception {

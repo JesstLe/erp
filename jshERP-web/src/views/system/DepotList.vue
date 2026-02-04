@@ -9,8 +9,8 @@
           <a-form layout="inline" @keyup.enter.native="searchQuery">
             <a-row :gutter="24">
               <a-col :md="6" :sm="24">
-                <a-form-item label="仓库名称" :labelCol="labelCol" :wrapperCol="wrapperCol">
-                  <a-input placeholder="请输入仓库名称查询" v-model="queryParam.name"></a-input>
+                <a-form-item label="门店名称" :labelCol="labelCol" :wrapperCol="wrapperCol">
+                  <a-input placeholder="请输入门店名称查询" v-model="queryParam.name"></a-input>
                 </a-form-item>
               </a-col>
               <a-col :md="6" :sm="24">
@@ -132,8 +132,8 @@
             width: 200,
             scopedSlots: { customRender: 'action' },
           },
-          {title: '仓库名称', dataIndex: 'name', width: 200},
-          {title: '仓库地址', dataIndex: 'address', width: 200},
+          {title: '门店名称', dataIndex: 'name', width: 200},
+          {title: '门店地址', dataIndex: 'address', width: 200},
           {title: '仓储费', dataIndex: 'warehousing', width: 80},
           {title: '搬运费', dataIndex: 'truckage', width: 80},
           {title: '负责人', dataIndex: 'principalName', width: 80},
