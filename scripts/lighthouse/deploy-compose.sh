@@ -90,9 +90,11 @@ if [[ -z "$REPO_URL" ]]; then
   exit 2
 fi
 
-SSH_OPTS=(-p "$SSH_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10)
+SSH_OPTS=(-p "$SSH_PORT" -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10)
 if [[ -n "$SSH_KEY" ]]; then
-  SSH_OPTS+=(-i "$SSH_KEY" -o IdentitiesOnly=yes)
+  SSH_OPTS+=(-i "$SSH_KEY" -o IdentitiesOnly=yes -o BatchMode=yes)
+else
+  SSH_OPTS+=(-o BatchMode=no -o PreferredAuthentications=publickey,password,keyboard-interactive)
 fi
 if [[ -n "$SSH_EXTRA_OPTS" ]]; then
   SSH_OPTS+=($SSH_EXTRA_OPTS)
