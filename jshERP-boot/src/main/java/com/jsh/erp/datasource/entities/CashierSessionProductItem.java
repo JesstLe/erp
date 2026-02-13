@@ -12,11 +12,21 @@ public class CashierSessionProductItem {
 
     private String materialNameSnap;
 
+    private String barCodeSnap;
+
+    private String unitSnap;
+
     private BigDecimal unitPrice;
 
     private BigDecimal qty;
 
     private BigDecimal amount;
+
+    private Long salesManId;
+
+    private BigDecimal commissionPercent;
+
+    private BigDecimal commissionAmount;
 
     private Date createTime;
 
@@ -56,6 +66,22 @@ public class CashierSessionProductItem {
         this.materialNameSnap = materialNameSnap == null ? null : materialNameSnap.trim();
     }
 
+    public String getBarCodeSnap() {
+        return barCodeSnap;
+    }
+
+    public void setBarCodeSnap(String barCodeSnap) {
+        this.barCodeSnap = barCodeSnap == null ? null : barCodeSnap.trim();
+    }
+
+    public String getUnitSnap() {
+        return unitSnap;
+    }
+
+    public void setUnitSnap(String unitSnap) {
+        this.unitSnap = unitSnap == null ? null : unitSnap.trim();
+    }
+
     public BigDecimal getUnitPrice() {
         return unitPrice;
     }
@@ -78,6 +104,30 @@ public class CashierSessionProductItem {
 
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
+    }
+
+    public Long getSalesManId() {
+        return salesManId;
+    }
+
+    public void setSalesManId(Long salesManId) {
+        this.salesManId = salesManId;
+    }
+
+    public BigDecimal getCommissionPercent() {
+        return commissionPercent;
+    }
+
+    public void setCommissionPercent(BigDecimal commissionPercent) {
+        this.commissionPercent = commissionPercent;
+    }
+
+    public BigDecimal getCommissionAmount() {
+        return commissionAmount;
+    }
+
+    public void setCommissionAmount(BigDecimal commissionAmount) {
+        this.commissionAmount = commissionAmount;
     }
 
     public Date getCreateTime() {

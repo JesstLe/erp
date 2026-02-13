@@ -112,6 +112,9 @@ public class CashierSessionService {
                 row.put("qty", it.getQty());
                 row.put("unitPrice", it.getUnitPrice());
                 row.put("amount", it.getAmount());
+                row.put("salesManId", it.getSalesManId());
+                row.put("commissionPercent", it.getCommissionPercent());
+                row.put("commissionAmount", it.getCommissionAmount());
                 row.put("refType", "PRODUCT");
                 row.put("refId", it.getMaterialId());
                 items.add(row);

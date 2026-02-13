@@ -3,6 +3,7 @@ package com.jsh.erp.service.cashier;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.jsh.erp.constants.BusinessConstants;
 import com.jsh.erp.datasource.entities.CashierSettlement;
 import com.jsh.erp.datasource.entities.CashierSettlementPayment;
 import com.jsh.erp.datasource.entities.CashierSessionProductItem;
@@ -11,9 +12,13 @@ import com.jsh.erp.datasource.entities.CashierSession;
 import com.jsh.erp.datasource.entities.Supplier;
 import com.jsh.erp.datasource.entities.ServiceOrder;
 import com.jsh.erp.datasource.entities.ServiceOrderItem;
+import com.jsh.erp.datasource.entities.DepotHead;
+import com.jsh.erp.datasource.entities.MaterialExtend;
 import com.jsh.erp.datasource.mappers.CashierSettlementMapper;
 import com.jsh.erp.datasource.mappers.CashierSettlementPaymentMapper;
 import com.jsh.erp.datasource.mappers.InvoiceRequestMapper;
+import com.jsh.erp.service.DepotHeadService;
+import com.jsh.erp.service.MaterialExtendService;
 import com.jsh.erp.service.SupplierService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +56,15 @@ public class CashierSettlementService {
     @Resource
     private SupplierService supplierService;
 
+    @Resource
+    private DepotHeadService depotHeadService;
+
+    @Resource
+    private MaterialExtendService materialExtendService;
+
+    @Resource
+    private CashierServiceTimerService cashierServiceTimerService;
+
     public Map<String, Object> preview(Long sessionId, Long tenantId) throws Exception {
         Map<String, Object> detail = cashierSessionService.getDetail(sessionId, tenantId);
         Map<String, Object> result = new HashMap<>();
@@ -76,6 +90,8 @@ public class CashierSettlementService {
         if (sessionId == null) {
             throw new RuntimeException("参数错误");
         }
+
+        cashierServiceTimerService.ensureServiceFinishedBeforeCheckout(sessionId, tenantId);
 
         CashierSession session = cashierSessionService.ensureSessionPermission(sessionId, tenantId);
         if (session.getStatus() != null && !"OPEN".equals(session.getStatus())) {
@@ -235,6 +251,8 @@ public class CashierSettlementService {
             }
         }
 
+        createRetailOutStock(session, settlement, tenantId, request);
+
         if (clearSeat == null || clearSeat) {
             JSONObject close = new JSONObject();
             close.put("sessionId", sessionId);
@@ -251,6 +269,89 @@ public class CashierSettlementService {
         preview.put("balanceBefore", balanceBefore);
         preview.put("balanceAfter", balanceAfter);
         return preview;
+    }
+
+    private void createRetailOutStock(CashierSession session, CashierSettlement settlement, Long tenantId, HttpServletRequest request) throws Exception {
+        if (session == null || settlement == null || settlement.getSessionId() == null) {
+            return;
+        }
+        List<CashierSessionProductItem> items = cashierCartService.listProductsBySessionId(settlement.getSessionId(), tenantId);
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        if (session.getDepotId() == null) {
+            throw new RuntimeException("未设置门店仓库，无法扣减库存");
+        }
+
+        JSONArray rows = new JSONArray();
+        for (CashierSessionProductItem item : items) {
+            if (item == null || item.getDeleteFlag() != null && "1".equals(item.getDeleteFlag())) {
+                continue;
+            }
+            if (item.getQty() == null || item.getQty().compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            if (item.getQty().stripTrailingZeros().scale() > 0) {
+                throw new RuntimeException("产品数量必须为整数");
+            }
+
+            MaterialExtend me = null;
+            if (item.getBarCodeSnap() != null && !item.getBarCodeSnap().trim().isEmpty()) {
+                me = materialExtendService.getInfoByBarCode(item.getBarCodeSnap());
+            }
+            if (me == null && item.getMaterialId() != null) {
+                me = materialExtendService.getMaterialExtend(item.getMaterialId());
+                if (me != null && me.getMaterialId() == null) {
+                    me = null;
+                }
+            }
+            if (me == null && item.getMaterialId() != null) {
+                List<Long> mIds = java.util.Collections.singletonList(item.getMaterialId());
+                List<MaterialExtend> meList = materialExtendService.getListByMIds(mIds);
+                if (meList != null && !meList.isEmpty()) {
+                    me = meList.get(0);
+                }
+            }
+            if (me == null || me.getBarCode() == null || me.getBarCode().trim().isEmpty()) {
+                throw new RuntimeException("商品缺少条码，无法扣减库存");
+            }
+            if (me.getCommodityUnit() == null || me.getCommodityUnit().trim().isEmpty()) {
+                throw new RuntimeException("商品缺少单位，无法扣减库存");
+            }
+
+            JSONObject row = new JSONObject();
+            row.put("barCode", me.getBarCode());
+            row.put("unit", item.getUnitSnap() != null && !item.getUnitSnap().trim().isEmpty() ? item.getUnitSnap() : me.getCommodityUnit());
+            row.put("operNumber", item.getQty().intValue());
+            row.put("depotId", session.getDepotId());
+            if (item.getUnitPrice() != null) {
+                row.put("unitPrice", item.getUnitPrice());
+            }
+            if (item.getAmount() != null) {
+                row.put("allPrice", item.getAmount());
+            }
+            rows.add(row);
+        }
+
+        if (rows.isEmpty()) {
+            return;
+        }
+
+        DepotHead head = new DepotHead();
+        head.setType(BusinessConstants.DEPOTHEAD_TYPE_OUT);
+        head.setSubType(BusinessConstants.SUB_TYPE_RETAIL);
+        head.setNumber("LS" + new SimpleDateFormat("yyyyMMddHHmmss").format(new Date()) + (settlement.getId() == null ? "" : settlement.getId().toString()));
+        head.setOperTime(new Date());
+        head.setOrganId(session.getMemberId());
+        head.setChangeAmount(settlement.getTotalAmount());
+        head.setTotalPrice(settlement.getTotalAmount());
+        head.setPayType("现付");
+        head.setStatus(BusinessConstants.BILLS_STATUS_AUDIT);
+        head.setRemark("收银结算:" + settlement.getSettlementNo());
+        head.setTenantId(tenantId);
+        head.setDeleteFlag(BusinessConstants.DELETE_FLAG_EXISTS);
+
+        depotHeadService.addDepotHeadAndDetail(JSON.toJSONString(head), rows.toJSONString(), request);
     }
 
     private BigDecimal sumServiceAmount(Long sessionId, Long tenantId) throws Exception {

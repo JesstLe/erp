@@ -35,6 +35,16 @@
                 <span>会话：{{ sessionId }}</span>
                 <span v-if="detail && detail.member">会员：{{ detail.member.name || detail.member.supplier || detail.member.telephone || detail.member.id }}</span>
               </div>
+              <div class="left-timer" v-if="sessionId">
+                <div v-if="timer && timer.status === 'RUNNING'" class="timer-running">
+                  <a-icon type="hourglass" spin />
+                  <span class="timer-text">服务剩余：{{ remainTimeStr }}</span>
+                  <a-button size="small" type="link" @click="handleFinishTimer">手动结束</a-button>
+                </div>
+                <div v-else class="timer-idle">
+                  <a-button size="small" type="primary" icon="play-circle" @click="showStartTimerModal">开始服务计时</a-button>
+                </div>
+              </div>
             </div>
 
             <div class="left-list">
@@ -45,6 +55,37 @@
                 :rowKey="rowKey"
                 :pagination="false"
               >
+                <template slot="sales" slot-scope="text, record">
+                  <div v-if="record.refType === 'PRODUCT'">
+                    <a-select
+                      :value="record.salesManId"
+                      size="small"
+                      style="width: 120px"
+                      :allowClear="true"
+                      placeholder="销售员"
+                      @change="v => handleSalesChange(record, v)"
+                    >
+                      <a-select-option v-for="p in salesManOptions" :key="p.id" :value="p.id">
+                        {{ p.name }}
+                      </a-select-option>
+                    </a-select>
+                  </div>
+                  <div v-else>-</div>
+                </template>
+                <template slot="commission" slot-scope="text, record">
+                  <div v-if="record.refType === 'PRODUCT'">
+                    <a-input-number
+                      :min="0"
+                      :max="100"
+                      :step="1"
+                      :value="Number(record.commissionPercent || 0)"
+                      size="small"
+                      style="width: 90px"
+                      @change="v => handleCommissionChange(record, v)"
+                    />
+                  </div>
+                  <div v-else>-</div>
+                </template>
                 <template slot="qty" slot-scope="text, record">
                   <a-input-number
                     :min="1"
@@ -103,7 +144,10 @@
             <div class="right-grid" v-else-if="activeTab === 'product'">
               <div v-for="item in products" :key="item.id" class="grid-item" @click="handleAddProduct(item)">
                 <div class="grid-name">{{ item.name }}</div>
-                <div class="grid-sub">¥ {{ formatMoney(item.commodityDecimal || item.purchaseDecimal || item.unitPrice || item.price) }}</div>
+                <div class="grid-sub">
+                  <span>¥ {{ formatMoney(item.commodityDecimal || item.purchaseDecimal || item.unitPrice || item.price) }}</span>
+                  <span style="margin-left: 8px">库存：{{ item.stock == null ? '-' : item.stock }}</span>
+                </div>
               </div>
             </div>
 
@@ -229,6 +273,20 @@
         </div>
       </div>
     </a-modal>
+
+    <a-modal
+      title="开始服务计时"
+      v-model="startTimerVisible"
+      @ok="handleStartTimer"
+      :confirmLoading="startTimerLoading"
+      destroyOnClose
+    >
+      <a-form layout="vertical">
+        <a-form-item label="服务时长（分钟）">
+          <a-input-number v-model="startTimerDuration" :min="1" style="width: 100%" placeholder="请输入服务时长" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 
@@ -241,11 +299,15 @@ import {
   cashierServiceItemList,
   cashierCartProductAdd,
   cashierCartProductUpdateQty,
+  cashierCartProductUpdateSales,
   cashierCartProductDelete,
   cashierBindMember,
   cashierServiceOrderQuickAddItem,
   cashierServiceOrderItemUpdateQty,
-  cashierServiceOrderItemDelete
+  cashierServiceOrderItemDelete,
+  cashierTimerCurrent,
+  cashierTimerStart,
+  cashierTimerFinish
 } from '@/api/api'
 
 export default {
@@ -314,9 +376,18 @@ export default {
         { title: '名称', dataIndex: 'name' },
         { title: '单价', dataIndex: 'unitPrice', width: 90 },
         { title: '数量', key: 'qty', scopedSlots: { customRender: 'qty' }, width: 120 },
+        { title: '销售员', key: 'sales', scopedSlots: { customRender: 'sales' }, width: 140 },
+        { title: '提成%', key: 'commission', scopedSlots: { customRender: 'commission' }, width: 110 },
         { title: '金额', dataIndex: 'amount', width: 90 },
         { title: '操作', key: 'action', scopedSlots: { customRender: 'action' }, width: 80 }
-      ]
+      ],
+      salesManOptions: [],
+      timer: null,
+      remainSeconds: 0,
+      timerInterval: null,
+      startTimerVisible: false,
+      startTimerDuration: 60,
+      startTimerLoading: false
     }
   },
   computed: {
@@ -372,9 +443,22 @@ export default {
     payChange() {
       return this.payDiff > 0 ? this.payDiff : 0
     },
+    remainTimeStr() {
+      if (this.remainSeconds <= 0) return '00:00:00'
+      const h = Math.floor(this.remainSeconds / 3600)
+      const m = Math.floor((this.remainSeconds % 3600) / 60)
+      const s = this.remainSeconds % 60
+      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+    },
     canCheckout() {
       const total = Number((this.settlePreview && this.settlePreview.totalAmount) || 0)
       if (this.paySum + 1e-9 < total) return false
+
+      // 检查倒计时是否结束
+      if (this.timer && this.timer.status === 'RUNNING' && this.remainSeconds > 0) {
+        return false
+      }
+
       const cardPay = Number((this.settleForm && this.settleForm.payments && this.settleForm.payments.CARD) || 0)
       if (cardPay > 0) {
         if (!this.detail || !this.detail.member || !this.detail.member.id) return false
@@ -443,7 +527,17 @@ export default {
         }
       }
       await this.loadDetail()
+      await this.loadSalesMen()
       await this.loadServiceItems()
+      await this.loadTimer()
+    },
+    async loadSalesMen() {
+      const res = await getAction('/person/getPersonByNumType', { type: '1' })
+      if (res && res.code === 200) {
+        this.salesManOptions = res.data || []
+        return
+      }
+      this.salesManOptions = []
     },
     async loadDetail() {
       if (!this.sessionId) return
@@ -454,6 +548,79 @@ export default {
         return
       }
       this.detail = null
+    },
+    async loadTimer() {
+      if (!this.sessionId) return
+      this.stopLocalTimer()
+      const res = await cashierTimerCurrent({ sessionId: this.sessionId })
+      if (res.code === 200) {
+        this.timer = res.data.timer
+        this.remainSeconds = res.data.remainSeconds
+        if (this.timer && this.timer.status === 'RUNNING') {
+          this.startLocalTimer()
+        }
+      }
+    },
+    startLocalTimer() {
+      this.stopLocalTimer()
+      this.timerInterval = setInterval(() => {
+        if (this.remainSeconds > 0) {
+          this.remainSeconds--
+        } else {
+          this.stopLocalTimer()
+          this.loadTimer() // 触发后端自动更新状态
+        }
+      }, 1000)
+    },
+    stopLocalTimer() {
+      if (this.timerInterval) {
+        clearInterval(this.timerInterval)
+        this.timerInterval = null
+      }
+    },
+    showStartTimerModal() {
+      this.startTimerDuration = 60
+      this.startTimerVisible = true
+    },
+    async handleStartTimer() {
+      if (!this.startTimerDuration || this.startTimerDuration <= 0) {
+        this.$message.warning('请输入有效的服务时长')
+        return
+      }
+      this.startTimerLoading = true
+      try {
+        const res = await cashierTimerStart({
+          sessionId: this.sessionId,
+          durationSeconds: this.startTimerDuration * 60
+        })
+        if (res.code === 200) {
+          this.$message.success('计时已开始')
+          this.startTimerVisible = false
+          await this.loadTimer()
+        } else {
+          this.$message.error(res.data || '开始计时失败')
+        }
+      } catch (e) {
+        this.$message.error('系统错误')
+      } finally {
+        this.startTimerLoading = false
+      }
+    },
+    async handleFinishTimer() {
+      const that = this
+      this.$confirm({
+        title: '确认提前结束服务？',
+        content: '结束计时后将允许进行结算。',
+        async onOk() {
+          const res = await cashierTimerFinish({ sessionId: that.sessionId })
+          if (res.code === 200) {
+            that.$message.success('计时已结束')
+            await that.loadTimer()
+          } else {
+            that.$message.error(res.data || '结束计时失败')
+          }
+        }
+      })
     },
     async loadSettlePreview() {
       if (!this.sessionId) return
@@ -485,14 +652,16 @@ export default {
       this.serviceItems = []
     },
     async loadProducts() {
-      const res = await getAction('/material/list', {
+      const depotId = this.detail && this.detail.session ? this.detail.session.depotId : null
+      const params = {
         currentPage: 1,
         pageSize: 200,
-        search: JSON.stringify({
-          categoryId: this.categoryId,
-          materialParam: this.keyword
-        })
-      })
+        depotIds: depotId ? String(depotId) : undefined,
+        materialParam: (this.keyword || '').trim(),
+        zeroStock: 1
+      }
+      if (this.categoryId) params.categoryId = this.categoryId
+      const res = await getAction('/material/getListWithStock', params)
       if (res.code === 200 && res.data) {
         this.products = res.data.rows || []
         return
@@ -622,6 +791,8 @@ export default {
         sessionId: this.sessionId,
         materialId: item.id,
         materialName: item.name,
+        barCode: item.mBarCode,
+        unit: item.commodityUnit,
         unitPrice: item.commodityDecimal,
         qty: 1
       })
@@ -630,6 +801,33 @@ export default {
         return
       }
       this.$message.error(res.data || '添加产品失败')
+    },
+    async handleSalesChange(record, salesManId) {
+      if (!record || record.refType !== 'PRODUCT') return
+      const res = await cashierCartProductUpdateSales({
+        id: record.id,
+        salesManId,
+        commissionPercent: record.commissionPercent || 0
+      })
+      if (res.code === 200) {
+        await this.loadDetail()
+        return
+      }
+      this.$message.error(res.data || '修改失败')
+    },
+    async handleCommissionChange(record, commissionPercent) {
+      if (!record || record.refType !== 'PRODUCT') return
+      const v = commissionPercent == null ? 0 : Number(commissionPercent)
+      const res = await cashierCartProductUpdateSales({
+        id: record.id,
+        salesManId: record.salesManId || null,
+        commissionPercent: isNaN(v) ? 0 : v
+      })
+      if (res.code === 200) {
+        await this.loadDetail()
+        return
+      }
+      this.$message.error(res.data || '修改失败')
     },
     async handleQtyChange(record, qty) {
       if (!qty || qty <= 0) return
@@ -775,10 +973,37 @@ export default {
 
 .left-meta {
   margin-top: 6px;
-  color: rgba(0, 0, 0, 0.65);
+  color: rgba(0, 0, 0, 0.45);
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+  font-size: 12px;
+}
+
+.left-timer {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #fffbe6;
+  border: 1px solid #ffe58f;
+  border-radius: 4px;
+
+  .timer-running {
+    display: flex;
+    align-items: center;
+    color: #856404;
+
+    .timer-text {
+      margin: 0 12px;
+      font-weight: bold;
+      font-family: monospace;
+      font-size: 14px;
+    }
+  }
+
+  .timer-idle {
+    display: flex;
+    justify-content: center;
+  }
 }
 
 .left-list {

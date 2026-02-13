@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.jsh.erp.datasource.mappers.CashierServiceTimerMapper">
+  <resultMap id="BaseResultMap" type="com.jsh.erp.datasource.entities.CashierServiceTimer">
+    <id column="id" jdbcType="BIGINT" property="id" />
+    <result column="session_id" jdbcType="BIGINT" property="sessionId" />
+    <result column="seat_id" jdbcType="BIGINT" property="seatId" />
+    <result column="status" jdbcType="VARCHAR" property="status" />
+    <result column="duration_seconds" jdbcType="INTEGER" property="durationSeconds" />
+    <result column="start_time" jdbcType="TIMESTAMP" property="startTime" />
+    <result column="end_time" jdbcType="TIMESTAMP" property="endTime" />
+    <result column="tenant_id" jdbcType="BIGINT" property="tenantId" />
+    <result column="delete_flag" jdbcType="VARCHAR" property="deleteFlag" />
+  </resultMap>
+
+  <sql id="Base_Column_List">
+    id, session_id, seat_id, status, duration_seconds, start_time, end_time, tenant_id, delete_flag
+  </sql>
+
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from jsh_cashier_service_timer
+    where id = #{id,jdbcType=BIGINT}
+  </select>
+
+  <insert id="insertSelective" parameterType="com.jsh.erp.datasource.entities.CashierServiceTimer" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+    insert into jsh_cashier_service_timer
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="id != null">id,</if>
+      <if test="sessionId != null">session_id,</if>
+      <if test="seatId != null">seat_id,</if>
+      <if test="status != null">status,</if>
+      <if test="durationSeconds != null">duration_seconds,</if>
+      <if test="startTime != null">start_time,</if>
+      <if test="endTime != null">end_time,</if>
+      <if test="tenantId != null">tenant_id,</if>
+      <if test="deleteFlag != null">delete_flag,</if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="id != null">#{id,jdbcType=BIGINT},</if>
+      <if test="sessionId != null">#{sessionId,jdbcType=BIGINT},</if>
+      <if test="seatId != null">#{seatId,jdbcType=BIGINT},</if>
+      <if test="status != null">#{status,jdbcType=VARCHAR},</if>
+      <if test="durationSeconds != null">#{durationSeconds,jdbcType=INTEGER},</if>
+      <if test="startTime != null">#{startTime,jdbcType=TIMESTAMP},</if>
+      <if test="endTime != null">#{endTime,jdbcType=TIMESTAMP},</if>
+      <if test="tenantId != null">#{tenantId,jdbcType=BIGINT},</if>
+      <if test="deleteFlag != null">#{deleteFlag,jdbcType=VARCHAR},</if>
+    </trim>
+  </insert>
+
+  <update id="updateByPrimaryKeySelective" parameterType="com.jsh.erp.datasource.entities.CashierServiceTimer">
+    update jsh_cashier_service_timer
+    <set>
+      <if test="sessionId != null">session_id = #{sessionId,jdbcType=BIGINT},</if>
+      <if test="seatId != null">seat_id = #{seatId,jdbcType=BIGINT},</if>
+      <if test="status != null">status = #{status,jdbcType=VARCHAR},</if>
+      <if test="durationSeconds != null">duration_seconds = #{durationSeconds,jdbcType=INTEGER},</if>
+      <if test="startTime != null">start_time = #{startTime,jdbcType=TIMESTAMP},</if>
+      <if test="endTime != null">end_time = #{endTime,jdbcType=TIMESTAMP},</if>
+      <if test="tenantId != null">tenant_id = #{tenantId,jdbcType=BIGINT},</if>
+      <if test="deleteFlag != null">delete_flag = #{deleteFlag,jdbcType=VARCHAR},</if>
+    </set>
+    where id = #{id,jdbcType=BIGINT}
+  </update>
+
+  <select id="selectLatestBySessionId" resultMap="BaseResultMap">
+    select *
+    from jsh_cashier_service_timer
+    where session_id = #{sessionId}
+      and ifnull(delete_flag,'0') != '1'
+      <if test="tenantId != null">
+        and tenant_id = #{tenantId}
+      </if>
+    order by id desc
+    limit 1
+  </select>
+</mapper>
+

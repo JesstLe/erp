@@ -44,11 +44,17 @@ public class CashierCartService {
         cashierSessionService.ensureSessionPermission(db.getSessionId(), tenantId);
         BigDecimal unitPrice = db.getUnitPrice() == null ? BigDecimal.ZERO : db.getUnitPrice();
         BigDecimal amount = unitPrice.multiply(qty).setScale(6, RoundingMode.HALF_UP);
+        BigDecimal commissionPercent = db.getCommissionPercent() == null ? BigDecimal.ZERO : db.getCommissionPercent();
+        if (commissionPercent.compareTo(BigDecimal.ZERO) < 0) {
+            commissionPercent = BigDecimal.ZERO;
+        }
+        BigDecimal commissionAmount = amount.multiply(commissionPercent).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
         CashierSessionProductItem update = new CashierSessionProductItem();
         update.setId(id);
         update.setTenantId(tenantId);
         update.setQty(qty);
         update.setAmount(amount);
+        update.setCommissionAmount(commissionAmount);
         return cashierSessionProductItemMapper.updateByPrimaryKeySelective(update);
     }
 
@@ -78,13 +84,20 @@ public class CashierCartService {
         Long sessionId = obj.getLong("sessionId");
         Long materialId = obj.getLong("materialId");
         String materialName = obj.getString("materialName");
+        String barCode = obj.getString("barCode");
+        String unit = obj.getString("unit");
         BigDecimal unitPrice = obj.getBigDecimal("unitPrice");
         BigDecimal qty = obj.getBigDecimal("qty");
+        Long salesManId = obj.getLong("salesManId");
+        BigDecimal commissionPercent = obj.getBigDecimal("commissionPercent");
         if (qty == null || qty.compareTo(BigDecimal.ZERO) <= 0) {
             qty = BigDecimal.ONE;
         }
         if (unitPrice == null || unitPrice.compareTo(BigDecimal.ZERO) < 0) {
             unitPrice = BigDecimal.ZERO;
+        }
+        if (commissionPercent == null || commissionPercent.compareTo(BigDecimal.ZERO) < 0) {
+            commissionPercent = BigDecimal.ZERO;
         }
 
         CashierSession session = cashierSessionService.ensureSessionPermission(sessionId, tenantId);
@@ -96,31 +109,77 @@ public class CashierCartService {
         if (existed != null) {
             BigDecimal newQty = existed.getQty() == null ? qty : existed.getQty().add(qty);
             BigDecimal newAmount = unitPrice.multiply(newQty).setScale(6, RoundingMode.HALF_UP);
+            BigDecimal newCommissionAmount = newAmount.multiply(commissionPercent).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
             CashierSessionProductItem update = new CashierSessionProductItem();
             update.setId(existed.getId());
             update.setTenantId(tenantId);
             update.setQty(newQty);
             update.setUnitPrice(unitPrice);
             update.setAmount(newAmount);
+            update.setSalesManId(salesManId);
+            update.setCommissionPercent(commissionPercent);
+            update.setCommissionAmount(newCommissionAmount);
             if (materialName != null && materialName.length() > 0) {
                 update.setMaterialNameSnap(materialName);
+            }
+            if (barCode != null && barCode.length() > 0) {
+                update.setBarCodeSnap(barCode);
+            }
+            if (unit != null && unit.length() > 0) {
+                update.setUnitSnap(unit);
             }
             cashierSessionProductItemMapper.updateByPrimaryKeySelective(update);
             return cashierSessionProductItemMapper.selectByPrimaryKey(existed.getId());
         }
 
         BigDecimal amount = unitPrice.multiply(qty).setScale(6, RoundingMode.HALF_UP);
+        BigDecimal commissionAmount = amount.multiply(commissionPercent).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
         CashierSessionProductItem record = new CashierSessionProductItem();
         record.setSessionId(sessionId);
         record.setMaterialId(materialId);
         record.setMaterialNameSnap(materialName);
+        record.setBarCodeSnap(barCode);
+        record.setUnitSnap(unit);
         record.setUnitPrice(unitPrice);
         record.setQty(qty);
         record.setAmount(amount);
+        record.setSalesManId(salesManId);
+        record.setCommissionPercent(commissionPercent);
+        record.setCommissionAmount(commissionAmount);
         record.setCreateTime(new Date());
         record.setTenantId(tenantId);
         record.setDeleteFlag("0");
         cashierSessionProductItemMapper.insertSelective(record);
         return record;
+    }
+
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public int updateProductSales(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
+        Long id = obj.getLong("id");
+        Long salesManId = obj.getLong("salesManId");
+        BigDecimal commissionPercent = obj.getBigDecimal("commissionPercent");
+        if (id == null) {
+            return 0;
+        }
+        CashierSessionProductItem db = cashierSessionProductItemMapper.selectByPrimaryKey(id);
+        if (db == null) {
+            return 0;
+        }
+        if (tenantId != null && db.getTenantId() != null && !tenantId.equals(db.getTenantId())) {
+            return 0;
+        }
+        cashierSessionService.ensureSessionPermission(db.getSessionId(), tenantId);
+        if (commissionPercent == null || commissionPercent.compareTo(BigDecimal.ZERO) < 0) {
+            commissionPercent = BigDecimal.ZERO;
+        }
+        BigDecimal amount = db.getAmount() == null ? BigDecimal.ZERO : db.getAmount();
+        BigDecimal commissionAmount = amount.multiply(commissionPercent).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
+        CashierSessionProductItem update = new CashierSessionProductItem();
+        update.setId(id);
+        update.setTenantId(tenantId);
+        update.setSalesManId(salesManId);
+        update.setCommissionPercent(commissionPercent);
+        update.setCommissionAmount(commissionAmount);
+        return cashierSessionProductItemMapper.updateByPrimaryKeySelective(update);
     }
 }
