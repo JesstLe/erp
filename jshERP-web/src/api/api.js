@@ -146,6 +146,7 @@ const cashierShiftHandover = (params)=>postAction("/cashier/shift/handover",para
 
 const cashierCartProductAdd = (params)=>postAction("/cashier/cart/product/add",params);
 const cashierCartProductUpdateQty = (params)=>putAction("/cashier/cart/product/updateQty",params);
+const cashierCartProductUpdateSales = (params)=>putAction("/cashier/cart/product/updateSales",params);
 const cashierCartProductDelete = (params)=>postAction("/cashier/cart/product/delete",params);
 
 const cashierSettlementPreview = (params)=>getAction("/cashier/settlement/preview",params);
@@ -154,6 +155,10 @@ const cashierSettlementCheckout = (params)=>postAction("/cashier/settlement/chec
 const cashierInvoiceRequestList = (params)=>getAction("/cashier/invoiceRequest/list",params);
 const cashierInvoiceRequestMarkIssued = (params)=>putAction("/cashier/invoiceRequest/markIssued",params);
 const cashierInvoiceRequestReject = (params)=>putAction("/cashier/invoiceRequest/reject",params);
+
+const cashierTimerCurrent = (params)=>getAction("/cashier/timer/current",params);
+const cashierTimerStart = (params)=>postAction("/cashier/timer/start",params);
+const cashierTimerFinish = (params)=>postAction("/cashier/timer/finish",params);
 
 export {
   getBuyAndSaleStatistics,
@@ -275,12 +280,16 @@ export {
   cashierShiftHandover,
   cashierCartProductAdd,
   cashierCartProductUpdateQty,
+  cashierCartProductUpdateSales,
   cashierCartProductDelete,
   cashierSettlementPreview,
   cashierSettlementCheckout,
   cashierInvoiceRequestList,
   cashierInvoiceRequestMarkIssued,
-  cashierInvoiceRequestReject
+  cashierInvoiceRequestReject,
+  cashierTimerCurrent,
+  cashierTimerStart,
+  cashierTimerFinish
 }
 
 

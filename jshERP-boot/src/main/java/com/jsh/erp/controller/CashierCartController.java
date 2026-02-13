@@ -81,6 +81,23 @@ public class CashierCartController extends BaseController {
         return res;
     }
 
+    @PutMapping(value = "/updateSales")
+    @ApiOperation(value = "修改购物车产品销售员与提成")
+    public BaseResponseInfo updateSales(@RequestBody JSONObject obj, HttpServletRequest request) throws Exception {
+        BaseResponseInfo res = new BaseResponseInfo();
+        try {
+            User userInfo = userService.getCurrentUser();
+            Long tenantId = resolveTenantId(userInfo);
+            int result = cashierCartService.updateProductSales(obj, tenantId, request);
+            res.code = 200;
+            res.data = result;
+        } catch (Exception e) {
+            res.code = 500;
+            res.data = "修改失败";
+        }
+        return res;
+    }
+
     @PostMapping(value = "/delete")
     @ApiOperation(value = "删除购物车产品(软删除)")
     public BaseResponseInfo delete(@RequestBody JSONObject obj, HttpServletRequest request) throws Exception {
