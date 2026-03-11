@@ -2,21 +2,21 @@ import Vue from 'vue'
 import axios from 'axios'
 import store from '@/store'
 import { VueAxios } from './axios'
-import {Modal, notification} from 'ant-design-vue'
-import { ACCESS_TOKEN } from "@/store/mutation-types"
+import { Modal, notification } from 'ant-design-vue'
+import { ACCESS_TOKEN } from '@/store/mutation-types'
 
 /**
  * 【指定 axios的 baseURL】
- * 如果手工指定 baseURL: '/jshERP-boot'
+ * 如果手工指定 baseURL: '/erp-boot'
  * 则映射后端域名，通过 vue.config.js
  * @type {*|string}
  */
-let apiBaseUrl = window._CONFIG['domianURL'] || "/jshERP-boot";
+let apiBaseUrl = window._CONFIG['domianURL'] || '/erp-boot'
 //console.log("apiBaseUrl= ",apiBaseUrl)
 // 创建 axios 实例
 const service = axios.create({
   baseURL: apiBaseUrl, // api base_url
-  timeout: 300000 // 请求超时时间
+  timeout: 300000, // 请求超时时间
 })
 
 const err = (error) => {
@@ -25,10 +25,10 @@ const err = (error) => {
     const token = Vue.ls.get(ACCESS_TOKEN)
     switch (error.response.status) {
       case 403:
-        notification.error({ message: '系统提示', description: '拒绝访问',duration: 4})
+        notification.error({ message: '系统提示', description: '拒绝访问', duration: 4 })
         break
       case 500:
-        if(token && data==="loginOut"){
+        if (token && data === 'loginOut') {
           Modal.error({
             title: '登录已过期',
             content: '很抱歉，登录已过期，请重新登录',
@@ -37,18 +37,18 @@ const err = (error) => {
             onOk: () => {
               Vue.ls.remove(ACCESS_TOKEN)
               window.location.reload()
-            }
+            },
           })
         }
         break
       case 404:
-          notification.error({ message: '系统提示', description:'很抱歉，资源未找到!',duration: 4})
+        notification.error({ message: '系统提示', description: '很抱歉，资源未找到!', duration: 4 })
         break
       case 504:
-        notification.error({ message: '系统提示', description: '网络超时'})
+        notification.error({ message: '系统提示', description: '网络超时' })
         break
       case 401:
-        notification.error({ message: '系统提示', description:'未授权，请重新登录',duration: 4})
+        notification.error({ message: '系统提示', description: '未授权，请重新登录', duration: 4 })
         if (token) {
           store.dispatch('Logout').then(() => {
             setTimeout(() => {
@@ -61,38 +61,38 @@ const err = (error) => {
         notification.error({
           message: '系统提示',
           description: data.message,
-          duration: 4
+          duration: 4,
         })
         break
     }
   }
   return Promise.reject(error)
-};
+}
 
 // request interceptor
-service.interceptors.request.use(config => {
-  const token = Vue.ls.get(ACCESS_TOKEN)
-  if (token) {
-    config.headers[ 'X-Access-Token' ] = token // 让每个请求携带自定义 token 请根据实际情况自行修改
+service.interceptors.request.use(
+  (config) => {
+    const token = Vue.ls.get(ACCESS_TOKEN)
+    if (token) {
+      config.headers['X-Access-Token'] = token // 让每个请求携带自定义 token 请根据实际情况自行修改
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
   }
-  return config
-},(error) => {
-  return Promise.reject(error)
-})
+)
 
 // response interceptor
 service.interceptors.response.use((response) => {
-    return response.data
-  }, err)
+  return response.data
+}, err)
 
 const installer = {
   vm: {},
-  install (Vue, router = {}) {
+  install(Vue, router = {}) {
     Vue.use(VueAxios, router, service)
-  }
+  },
 }
 
-export {
-  installer as VueAxios,
-  service as axios
-}
+export { installer as VueAxios, service as axios }
