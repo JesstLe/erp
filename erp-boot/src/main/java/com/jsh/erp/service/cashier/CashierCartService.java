@@ -158,6 +158,7 @@ public class CashierCartService {
         Long id = obj.getLong("id");
         Long salesManId = obj.getLong("salesManId");
         BigDecimal commissionPercent = obj.getBigDecimal("commissionPercent");
+        BigDecimal discountPercent = obj.getBigDecimal("discountPercent");
         if (id == null) {
             return 0;
         }
@@ -169,17 +170,39 @@ public class CashierCartService {
             return 0;
         }
         cashierSessionService.ensureSessionPermission(db.getSessionId(), tenantId);
+
+        // 处理折扣
+        if (discountPercent == null || discountPercent.compareTo(BigDecimal.ZERO) < 0) {
+            discountPercent = BigDecimal.ZERO;
+        }
+        if (discountPercent.compareTo(new BigDecimal("100")) > 0) {
+            discountPercent = new BigDecimal("100");
+        }
+
+        // 处理提成
         if (commissionPercent == null || commissionPercent.compareTo(BigDecimal.ZERO) < 0) {
             commissionPercent = BigDecimal.ZERO;
         }
-        BigDecimal amount = db.getAmount() == null ? BigDecimal.ZERO : db.getAmount();
-        BigDecimal commissionAmount = amount.multiply(commissionPercent).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
+
+        // 计算折扣后的金额 = 原价 * (1 - 折扣率/100)
+        BigDecimal unitPrice = db.getUnitPrice() != null ? db.getUnitPrice() : BigDecimal.ZERO;
+        BigDecimal qty = db.getQty() != null ? db.getQty() : BigDecimal.ONE;
+        BigDecimal originalAmount = unitPrice.multiply(qty);
+        BigDecimal discountAmount = originalAmount.multiply(discountPercent).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
+        BigDecimal finalAmount = originalAmount.subtract(discountAmount);
+
+        // 计算提成金额（基于折扣后的金额）
+        BigDecimal commissionAmount = finalAmount.multiply(commissionPercent).divide(new BigDecimal("100"), 6, RoundingMode.HALF_UP);
+
         CashierSessionProductItem update = new CashierSessionProductItem();
         update.setId(id);
         update.setTenantId(tenantId);
         update.setSalesManId(salesManId);
         update.setCommissionPercent(commissionPercent);
         update.setCommissionAmount(commissionAmount);
+        update.setDiscountPercent(discountPercent);
+        update.setDiscountAmount(discountAmount);
+        update.setAmount(finalAmount);
         return cashierSessionProductItemMapper.updateByPrimaryKeySelective(update);
     }
 }

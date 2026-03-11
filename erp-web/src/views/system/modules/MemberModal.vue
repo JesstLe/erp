@@ -42,7 +42,17 @@
             </a-col>
             <a-col :span="24/2">
               <a-form-item :labelCol="labelCol" :wrapperCol="wrapperCol" label="联系电话">
-                <a-input placeholder="请输入联系电话" v-decorator.trim="[ 'phoneNum' ]" />
+                <a-input v-decorator.trim="[ 'phoneNum' ]" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="24/2">
+              <a-form-item :labelCol="labelCol" :wrapperCol="wrapperCol" label="住址">
+                <a-input v-decorator.trim="[ 'address' ]" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="24/2">
+              <a-form-item :labelCol="labelCol" :wrapperCol="wrapperCol" label="预付款">
+                <a-input-number v-decorator="[ 'advanceIn' ]" :min="0" :step="0.01" style="width: 100%" />
               </a-form-item>
             </a-col>
             <a-col :span="24/2">
@@ -113,7 +123,7 @@
         this.visible = true;
         this.$nextTick(() => {
           this.form.setFieldsValue(pick(this.model,'supplier', 'contacts', 'telephone', 'email',
-            'phoneNum', 'sort', 'description'))
+            'phoneNum', 'address', 'advanceIn', 'sort', 'description'))
           autoJumpNextInput('memberModal')
         });
       },

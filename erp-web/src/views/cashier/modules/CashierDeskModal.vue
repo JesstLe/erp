@@ -18,6 +18,7 @@
           <a-tabs :activeKey="activeTab" @change="handleTabChange">
             <a-tab-pane key="bill" tab="主单信息" />
             <a-tab-pane key="member" tab="会员刷卡" />
+            <a-tab-pane key="technician" tab="选择技师" />
             <a-tab-pane key="service" tab="项目列表" />
             <a-tab-pane key="product" tab="产品列表" />
             <a-tab-pane key="settle" tab="结算" />
@@ -94,6 +95,20 @@
                     @change="v => handleQtyChange(record, v)"
                   />
                 </template>
+                <template slot="discount" slot-scope="text, record">
+                  <div v-if="record.refType === 'PRODUCT'">
+                    <a-input-number
+                      :min="0"
+                      :max="100"
+                      :step="1"
+                      :value="Number(record.discountPercent || 0)"
+                      size="small"
+                      style="width: 70px"
+                      @change="v => handleDiscountChange(record, v)"
+                    />
+                  </div>
+                  <div v-else>-</div>
+                </template>
                 <template slot="action" slot-scope="text, record">
                   <a-button size="small" type="link" @click="handleRemove(record)">删除</a-button>
                 </template>
@@ -166,6 +181,45 @@
                     </a-form-item>
                     <a-button type="primary" @click="handleSaveBillRemark">保存</a-button>
                   </a-form>
+                </div>
+              </a-card>
+            </div>
+
+            <div class="right-panel" v-else-if="activeTab === 'technician'">
+              <a-card size="small" :bordered="false">
+                <div slot="title">
+                  <span>选择技师</span>
+                  <a-button type="link" size="small" @click="handleConfirmTechnicians" style="float: right; margin-top: -5px">确认</a-button>
+                </div>
+                <div class="technician-list">
+                  <a-checkbox-group v-model="selectedTechnicians" style="width: 100%">
+                    <a-row :gutter="[8, 8]">
+                      <a-col :span="12" v-for="tech in salesManOptions" :key="tech.id">
+                        <div class="technician-item" :class="{ selected: selectedTechnicians.indexOf(tech.id) > -1 }">
+                          <a-checkbox :value="tech.id">
+                            <span class="tech-name">{{ tech.name }}</span>
+                          </a-checkbox>
+                          <div v-if="selectedTechnicians.indexOf(tech.id) > -1" class="tech-duration">
+                            <a-input-number
+                              :min="1"
+                              :max="480"
+                              v-model="technicianDurations[tech.id]"
+                              size="small"
+                              style="width: 80px"
+                            />
+                            <span class="duration-label">分钟</span>
+                          </div>
+                        </div>
+                      </a-col>
+                    </a-row>
+                  </a-checkbox-group>
+                </div>
+                <div v-if="selectedTechnicians.length > 0" style="margin-top: 16px; padding-top: 12px; border-top: 1px solid #f0f0f0">
+                  <a-alert type="info" show-icon>
+                    <template slot="message">
+                      已选择 <strong>{{ selectedTechnicians.length }}</strong> 位技师
+                    </template>
+                  </a-alert>
                 </div>
               </a-card>
             </div>
@@ -333,7 +387,7 @@ export default {
       memberColumns: [
         { title: '会员卡号', dataIndex: 'supplier', width: 160 },
         { title: '联系人', dataIndex: 'contacts', width: 120 },
-        { title: '手机号码', dataIndex: 'telephone', width: 140 },
+        { title: '住址', dataIndex: 'address', width: 200 },
         { title: '预付款', dataIndex: 'advanceIn', width: 100 },
         { title: '操作', key: 'action', scopedSlots: { customRender: 'action' }, width: 90 }
       ],
@@ -375,9 +429,10 @@ export default {
         { title: '类型', dataIndex: 'type', width: 70 },
         { title: '名称', dataIndex: 'name' },
         { title: '单价', dataIndex: 'unitPrice', width: 90 },
-        { title: '数量', key: 'qty', scopedSlots: { customRender: 'qty' }, width: 120 },
+        { title: '数量', key: 'qty', scopedSlots: { customRender: 'qty' }, width: 80 },
+        { title: '折扣%', key: 'discount', scopedSlots: { customRender: 'discount' }, width: 90 },
         { title: '销售员', key: 'sales', scopedSlots: { customRender: 'sales' }, width: 140 },
-        { title: '提成%', key: 'commission', scopedSlots: { customRender: 'commission' }, width: 110 },
+        { title: '提成%', key: 'commission', scopedSlots: { customRender: 'commission' }, width: 90 },
         { title: '金额', dataIndex: 'amount', width: 90 },
         { title: '操作', key: 'action', scopedSlots: { customRender: 'action' }, width: 80 }
       ],
@@ -387,7 +442,10 @@ export default {
       timerInterval: null,
       startTimerVisible: false,
       startTimerDuration: 60,
-      startTimerLoading: false
+      startTimerLoading: false,
+      // 技师选择相关
+      selectedTechnicians: [],
+      technicianDurations: {}
     }
   },
   computed: {
@@ -416,7 +474,11 @@ export default {
     memberLabel() {
       if (!this.detail || !this.detail.member) return '未绑定'
       const m = this.detail.member
-      return m.supplier || m.contacts || m.telephone || m.id
+      let label = m.supplier || m.contacts || m.id
+      if (m.address) {
+        label += ` (${m.address})`
+      }
+      return label
     },
     tabTitle() {
       const map = {
@@ -764,6 +826,26 @@ export default {
       }
       this.handleTabChange('settle')
     },
+    handleConfirmTechnicians() {
+      if (this.selectedTechnicians.length === 0) {
+        this.$message.warning('请至少选择一位技师')
+        return
+      }
+      // 检查是否每位技师都设置了时长
+      const notSet = this.selectedTechnicians.filter(id => !this.technicianDurations[id])
+      if (notSet.length > 0) {
+        this.$message.warning('请为每位技师设置服务时长')
+        return
+      }
+      // 显示已选择的技师信息（可以后续与后端交互保存）
+      const techNames = this.selectedTechnicians.map(id => {
+        const tech = this.salesManOptions.find(t => t.id === id)
+        return tech ? tech.name : id
+      }).join(', ')
+      const durations = this.selectedTechnicians.map(id => this.technicianDurations[id]).join(', ')
+      this.$message.success(`已选择技师：${techNames}，时长：${durations}分钟`)
+      // TODO: 后续可以调用后端API保存技师选择信息
+    },
     async handleSearch() {
       if (this.activeTab === 'service') {
         await this.loadServiceItems()
@@ -821,7 +903,23 @@ export default {
       const res = await cashierCartProductUpdateSales({
         id: record.id,
         salesManId: record.salesManId || null,
-        commissionPercent: isNaN(v) ? 0 : v
+        commissionPercent: isNaN(v) ? 0 : v,
+        discountPercent: record.discountPercent || 0
+      })
+      if (res.code === 200) {
+        await this.loadDetail()
+        return
+      }
+      this.$message.error(res.data || '修改失败')
+    },
+    async handleDiscountChange(record, discountPercent) {
+      if (!record || record.refType !== 'PRODUCT') return
+      const v = discountPercent == null ? 0 : Number(discountPercent)
+      const res = await cashierCartProductUpdateSales({
+        id: record.id,
+        salesManId: record.salesManId || null,
+        commissionPercent: record.commissionPercent || 0,
+        discountPercent: isNaN(v) ? 0 : v
       })
       if (res.code === 200) {
         await this.loadDetail()
@@ -1116,5 +1214,40 @@ export default {
   overflow-y: auto;
   background: #fff;
   border-radius: 4px;
+}
+
+/* 技师选择样式 */
+.technician-list {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.technician-item {
+  background: #fafafa;
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  padding: 10px 12px;
+  transition: all 0.3s;
+}
+
+.technician-item.selected {
+  background: #e6f7ff;
+  border-color: #1890ff;
+}
+
+.tech-name {
+  font-weight: 500;
+}
+
+.tech-duration {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.duration-label {
+  color: rgba(0, 0, 0, 0.65);
+  font-size: 12px;
 }
 </style>

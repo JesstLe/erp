@@ -115,6 +115,8 @@ public class CashierSessionService {
                 row.put("salesManId", it.getSalesManId());
                 row.put("commissionPercent", it.getCommissionPercent());
                 row.put("commissionAmount", it.getCommissionAmount());
+                row.put("discountPercent", it.getDiscountPercent());
+                row.put("discountAmount", it.getDiscountAmount());
                 row.put("refType", "PRODUCT");
                 row.put("refId", it.getMaterialId());
                 items.add(row);
