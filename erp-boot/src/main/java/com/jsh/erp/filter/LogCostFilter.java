@@ -13,9 +13,9 @@ import java.io.IOException;
 
 @WebFilter(filterName = "LogCostFilter", urlPatterns = {"/*"},
         initParams = {@WebInitParam(name = "filterPath",
-                      value = "/jshERP-boot/platformConfig/getPlatform#/jshERP-boot/v2/api-docs#/jshERP-boot/webjars#" +
-                              "/jshERP-boot/systemConfig/static#/jshERP-boot/api/plugin/wechat/weChat/share#" +
-                              "/jshERP-boot/api/plugin/general-ledger/pdf/voucher#/jshERP-boot/api/plugin/tenant-statistics/tenantClean")})
+                      value = "/erp-boot/platformConfig/getPlatform#/erp-boot/v2/api-docs#/erp-boot/webjars#" +
+                              "/erp-boot/systemConfig/static#/erp-boot/api/plugin/wechat/weChat/share#" +
+                              "/erp-boot/api/plugin/general-ledger/pdf/voucher#/erp-boot/api/plugin/tenant-statistics/tenantClean")})
 public class LogCostFilter implements Filter {
 
     private static final String FILTER_PATH = "filterPath";
@@ -49,10 +49,10 @@ public class LogCostFilter implements Filter {
             chain.doFilter(request, response);
             return;
         }
-        if (requestUrl.equals("/jshERP-boot/doc.html") || requestUrl.equals("/jshERP-boot/user/login")
-                || requestUrl.equals("/jshERP-boot/user/register") || requestUrl.equals("/jshERP-boot/user/weixinLogin")
-                || requestUrl.equals("/jshERP-boot/user/weixinBind") || requestUrl.equals("/jshERP-boot/user/registerUser")
-                || requestUrl.equals("/jshERP-boot/user/randomImage")) {
+        if (requestUrl.equals("/erp-boot/doc.html") || requestUrl.equals("/erp-boot/user/login")
+                || requestUrl.equals("/erp-boot/user/register") || requestUrl.equals("/erp-boot/user/weixinLogin")
+                || requestUrl.equals("/erp-boot/user/weixinBind") || requestUrl.equals("/erp-boot/user/registerUser")
+                || requestUrl.equals("/erp-boot/user/randomImage")) {
             chain.doFilter(request, response);
             return;
         }
@@ -65,7 +65,7 @@ public class LogCostFilter implements Filter {
             }
         }
         servletResponse.setStatus(500);
-        if(!requestUrl.equals("/jshERP-boot/user/logout") && !requestUrl.equals("/jshERP-boot/function/findMenuByPNumber")) {
+        if(!requestUrl.equals("/erp-boot/user/logout") && !requestUrl.equals("/erp-boot/function/findMenuByPNumber")) {
             servletResponse.getWriter().write("loginOut");
         }
     }

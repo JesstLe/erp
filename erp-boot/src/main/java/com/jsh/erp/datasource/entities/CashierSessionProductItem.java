@@ -28,6 +28,10 @@ public class CashierSessionProductItem {
 
     private BigDecimal commissionAmount;
 
+    private BigDecimal discountPercent;
+
+    private BigDecimal discountAmount;
+
     private Date createTime;
 
     private Long tenantId;
@@ -128,6 +132,22 @@ public class CashierSessionProductItem {
 
     public void setCommissionAmount(BigDecimal commissionAmount) {
         this.commissionAmount = commissionAmount;
+    }
+
+    public BigDecimal getDiscountPercent() {
+        return discountPercent;
+    }
+
+    public void setDiscountPercent(BigDecimal discountPercent) {
+        this.discountPercent = discountPercent;
+    }
+
+    public BigDecimal getDiscountAmount() {
+        return discountAmount;
+    }
+
+    public void setDiscountAmount(BigDecimal discountAmount) {
+        this.discountAmount = discountAmount;
     }
 
     public Date getCreateTime() {
