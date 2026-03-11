@@ -1,6 +1,6 @@
 # 开发初衷
-* 博足ERP立志为中小企业提供开源好用的ERP软件，降低企业的信息化成本
-* 个人开发者也可以使用博足ERP进行二次开发，加快完成开发任务
+* 通用ERP立志为中小企业提供开源好用的ERP软件，降低企业的信息化成本
+* 个人开发者也可以使用通用ERP进行二次开发，加快完成开发任务
 * 初学JAVA的小伙伴可以下载源代码来进行学习交流
 
 # 技术框架
@@ -45,24 +45,24 @@
 
 # 系统美图
 * 首页
-![输入图片说明](jshERP-web/public/static/screenshot/1.jpg)
+![输入图片说明](erp-web/public/static/screenshot/1.jpg)
 * 零售管理
-![输入图片说明](jshERP-web/public/static/screenshot/2.jpg)
+![输入图片说明](erp-web/public/static/screenshot/2.jpg)
 * 采购管理
-![输入图片说明](jshERP-web/public/static/screenshot/3.jpg)
+![输入图片说明](erp-web/public/static/screenshot/3.jpg)
 * 销售管理
-![输入图片说明](jshERP-web/public/static/screenshot/4.jpg)
+![输入图片说明](erp-web/public/static/screenshot/4.jpg)
 * 仓库管理
-![输入图片说明](jshERP-web/public/static/screenshot/5.jpg)
+![输入图片说明](erp-web/public/static/screenshot/5.jpg)
 * 财务管理
-![输入图片说明](jshERP-web/public/static/screenshot/6.jpg)
+![输入图片说明](erp-web/public/static/screenshot/6.jpg)
 * 报表查询
-![输入图片说明](jshERP-web/public/static/screenshot/7.jpg)
+![输入图片说明](erp-web/public/static/screenshot/7.jpg)
 * 商品管理
-![输入图片说明](jshERP-web/public/static/screenshot/8.jpg)
+![输入图片说明](erp-web/public/static/screenshot/8.jpg)
 * 基本资料
-![输入图片说明](jshERP-web/public/static/screenshot/9.jpg)
+![输入图片说明](erp-web/public/static/screenshot/9.jpg)
 * 系统管理
-![输入图片说明](jshERP-web/public/static/screenshot/10.jpg)
+![输入图片说明](erp-web/public/static/screenshot/10.jpg)
 
 

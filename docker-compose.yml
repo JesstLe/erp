@@ -10,7 +10,7 @@ services:
       TZ: Asia/Shanghai
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./jshERP-boot/docs/jsh_erp.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./erp-boot/docs/jsh_erp.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
 
   redis:
     image: redis:6.2.14-alpine
@@ -30,12 +30,12 @@ services:
       SPRING_REDIS_PORT: 6379
       FILE_PATH: /data/upload
       SERVER_TOMCAT_BASEDIR: /data/tomcat
-      SERVER_SERVLET_CONTEXT_PATH: /jshERP-boot
+      SERVER_SERVLET_CONTEXT_PATH: /erp-boot
       SERVER_PORT: 9999
       TZ: Asia/Shanghai
     volumes:
-      - ./.data/jshERP/upload:/data/upload
-      - ./.data/jshERP/tomcat:/data/tomcat
+      - ./.data/erp/upload:/data/upload
+      - ./.data/erp/tomcat:/data/tomcat
     depends_on:
       - mysql
       - redis
