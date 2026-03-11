@@ -165,6 +165,9 @@ public class SupplierService {
             if(supplier.getAdvanceIn() == null) {
                 supplier.setAdvanceIn(BigDecimal.ZERO);
             }
+            if(supplier.getGiftAmount() == null) {
+                supplier.setGiftAmount(BigDecimal.ZERO);
+            }
             if(supplier.getCreateTime() == null) {
                 supplier.setCreateTime(new Date());
             }

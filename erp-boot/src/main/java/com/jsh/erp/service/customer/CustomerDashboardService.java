@@ -59,6 +59,22 @@ public class CustomerDashboardService {
         return customerDashboardMapperEx.listRecentMembers(limit);
     }
 
+    public Map<String, Object> paymentMethods(String range, String start, String end, Long depotId) {
+        DateRange dr = resolveRange(range, start, end);
+        BigDecimal wechatAmount = customerDashboardMapperEx.sumPaymentAmount(dr.startTime, dr.endTime, depotId, "WECHAT");
+        BigDecimal alipayAmount = customerDashboardMapperEx.sumPaymentAmount(dr.startTime, dr.endTime, depotId, "ALIPAY");
+        BigDecimal groupBuyAmount = customerDashboardMapperEx.sumPaymentAmount(dr.startTime, dr.endTime, depotId, "GROUP_BUY");
+        BigDecimal meituanAmount = customerDashboardMapperEx.sumPaymentAmount(dr.startTime, dr.endTime, depotId, "MEITUAN");
+        BigDecimal douyinAmount = customerDashboardMapperEx.sumPaymentAmount(dr.startTime, dr.endTime, depotId, "DOUYIN");
+        Map<String, Object> map = new HashMap<>();
+        map.put("wechatAmount", wechatAmount == null ? BigDecimal.ZERO : wechatAmount);
+        map.put("alipayAmount", alipayAmount == null ? BigDecimal.ZERO : alipayAmount);
+        map.put("groupBuyAmount", groupBuyAmount == null ? BigDecimal.ZERO : groupBuyAmount);
+        map.put("meituanAmount", meituanAmount == null ? BigDecimal.ZERO : meituanAmount);
+        map.put("douyinAmount", douyinAmount == null ? BigDecimal.ZERO : douyinAmount);
+        return map;
+    }
+
     private static BigDecimal safeAdd(BigDecimal a, BigDecimal b) {
         BigDecimal x = a == null ? BigDecimal.ZERO : a;
         BigDecimal y = b == null ? BigDecimal.ZERO : b;

@@ -5,8 +5,16 @@ import { constantRouterMap } from '@/config/router.config'
 //update-begin-author:taoyan date:20191011 for:TASK #3214 【优化】访问online功能测试 浏览器控制台抛出异常
 try {
   const originalPush = Router.prototype.push
-  Router.prototype.push = function push(location) {
-    return originalPush.call(this, location).catch(err => err)
+  Router.prototype.push = function push(location, onResolve, onReject) {
+    if (onResolve || onReject) {
+      return originalPush.call(this, location, onResolve, onReject)
+    }
+    return originalPush.call(this, location).catch(err => {
+      if (err && err.name === 'NavigationDuplicated') {
+        return err
+      }
+      throw err
+    })
   }
 } catch (e) {
 }

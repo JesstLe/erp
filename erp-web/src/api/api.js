@@ -160,6 +160,10 @@ const cashierTimerCurrent = (params)=>getAction("/cashier/timer/current",params)
 const cashierTimerStart = (params)=>postAction("/cashier/timer/start",params);
 const cashierTimerFinish = (params)=>postAction("/cashier/timer/finish",params);
 
+const cashierServiceOrderItemUpdateDiscount = (params)=>putAction("/cashier/serviceOrder/item/updateDiscount",params);
+const cashierServiceOrderItemUpdateCommission = (params)=>putAction("/cashier/serviceOrder/item/updateCommission",params);
+const cashierServiceOrderItemUpdateDiscountAndCommission = (params)=>putAction("/cashier/serviceOrder/item/updateDiscountAndCommission",params);
+
 export {
   getBuyAndSaleStatistics,
   buyOrSalePrice,
@@ -289,7 +293,10 @@ export {
   cashierInvoiceRequestReject,
   cashierTimerCurrent,
   cashierTimerStart,
-  cashierTimerFinish
+  cashierTimerFinish,
+  cashierServiceOrderItemUpdateDiscount,
+  cashierServiceOrderItemUpdateCommission,
+  cashierServiceOrderItemUpdateDiscountAndCommission
 }
 
 

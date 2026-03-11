@@ -347,16 +347,40 @@
           this.activePage = this.linkList[this.linkList.length - 1]
         }
       },
+      resolveTabRoute(key, routeInfo) {
+        if (routeInfo && routeInfo.fullPath) {
+          return routeInfo
+        }
+        const resolved = this.$router.resolve({ path: key }).route
+        if (!resolved || !resolved.matched || resolved.matched.length === 0) {
+          return null
+        }
+        const matched = resolved.matched[resolved.matched.length - 1]
+        return {
+          name: resolved.name || (matched && matched.name),
+          path: resolved.path,
+          fullPath: resolved.fullPath,
+          params: resolved.params,
+          query: resolved.query,
+          meta: Object.assign({}, resolved.meta || {}, (matched && matched.meta) || {})
+        }
+      },
       //动态路由title显示配置的菜单title而不是其对应路由的title
-      dynamicRouterShow(key, id, title, component){
-        let keyIndex = this.linkList.indexOf(key)
+      dynamicRouterShow(key, id, title, component, routeInfo){
+        const resolvedRoute = this.resolveTabRoute(key, routeInfo)
+        if (!resolvedRoute || !resolvedRoute.fullPath) {
+          console.error('[TabLayout] tab route resolve failed:', key)
+          return
+        }
+        const pageKey = resolvedRoute.fullPath
+        let keyIndex = this.linkList.indexOf(pageKey)
         if(keyIndex>=0){
           //切换历史页签
           let currRouter = this.pageList[keyIndex]
           let meta = Object.assign({},currRouter.meta,{title:title})
           this.pageList.splice(keyIndex, 1, Object.assign({},currRouter,{meta:meta}))
-          this.activePage = key
-          if (key === this.activePage) {
+          this.activePage = pageKey
+          if (pageKey === this.activePage) {
             this.changeTitle(title)
           }
         } else {
@@ -365,20 +389,22 @@
             let index = component.lastIndexOf("\/");
             component = component.substring(index + 1, component.length);
           }
-          this.pageList.push({
-            name: title,
-            path: key,
-            fullPath: key,
-            meta: {
-              id: id,
-              icon: key,
-              title: title,
-              componentName: component,
-              keepAlive: true
-            }
+          const routeMeta = Object.assign({}, resolvedRoute.meta, {
+            id: id,
+            title: title,
+            componentName: component || (resolvedRoute.meta && resolvedRoute.meta.componentName),
+            keepAlive: resolvedRoute.meta && resolvedRoute.meta.keepAlive !== undefined ? resolvedRoute.meta.keepAlive : true
           })
-          this.linkList.push(key)
-          this.activePage = key
+          this.pageList.push({
+            name: resolvedRoute.name,
+            path: resolvedRoute.path,
+            fullPath: resolvedRoute.fullPath,
+            params: resolvedRoute.params,
+            query: resolvedRoute.query,
+            meta: routeMeta
+          })
+          this.linkList.push(pageKey)
+          this.activePage = pageKey
         }
       },
     }

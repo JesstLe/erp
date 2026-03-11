@@ -95,5 +95,23 @@ public class CustomerDashboardController extends BaseController {
         }
         return res;
     }
+
+    @GetMapping(value = "/paymentMethods")
+    @ApiOperation(value = "顾客看板-支付方式统计")
+    public BaseResponseInfo paymentMethods(@RequestParam(value = "range", required = false) String range,
+                                          @RequestParam(value = "start", required = false) String start,
+                                          @RequestParam(value = "end", required = false) String end,
+                                          @RequestParam(value = "depotId", required = false) Long depotId,
+                                          HttpServletRequest request) throws Exception {
+        BaseResponseInfo res = new BaseResponseInfo();
+        try {
+            res.code = 200;
+            res.data = customerDashboardService.paymentMethods(range, start, end, depotId);
+        } catch (Exception e) {
+            res.code = 500;
+            res.data = "获取失败";
+        }
+        return res;
+    }
 }
 

@@ -24,6 +24,7 @@ import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.File;
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -304,6 +305,7 @@ public class SupplierController extends BaseController {
                     //客户名称
                     item.put("supplier", supplier.getSupplier());
                     item.put("advanceIn", supplier.getAdvanceIn()); //预付款金额
+                    item.put("giftAmount", supplier.getGiftAmount() != null ? supplier.getGiftAmount() : BigDecimal.ZERO); //赠送金额
                     dataArray.add(item);
                 }
             }

@@ -154,9 +154,29 @@
       myMenuSelect(value){
         //此处触发动态路由被点击事件
         this.findMenuBykey(this.menus,value.key)
-        this.$emit("dynamicRouterShow",value.key, this.activeMenu.id, this.activeMenu.text, this.activeMenu.component)
-        let storeKey = 'route:title:' + this.activeMenu.url
+        const resolvedRoute = this.resolveMenuRoute(value.key)
+        if (!resolvedRoute) {
+          console.error('[GlobalLayout] menu route resolve failed:', value.key, this.activeMenu)
+          return
+        }
+        this.$emit("dynamicRouterShow",resolvedRoute.fullPath, this.activeMenu.id, this.activeMenu.text, this.activeMenu.component, resolvedRoute)
+        let storeKey = 'route:title:' + resolvedRoute.fullPath
         this.$ls.set(storeKey, this.activeMenu.text)
+      },
+      resolveMenuRoute(key) {
+        const resolved = this.$router.resolve({ path: key }).route
+        if (!resolved || !resolved.matched || resolved.matched.length === 0) {
+          return null
+        }
+        const matched = resolved.matched[resolved.matched.length - 1]
+        return {
+          name: resolved.name || (matched && matched.name),
+          path: resolved.path,
+          fullPath: resolved.fullPath,
+          params: resolved.params,
+          query: resolved.query,
+          meta: Object.assign({}, resolved.meta || {}, (matched && matched.meta) || {})
+        }
       },
       findMenuBykey(menus,key){
         for(let i of menus){

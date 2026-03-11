@@ -9,6 +9,8 @@ public class Depot {
 
     private String address;
 
+    private String phone;
+
     private BigDecimal warehousing;
 
     private BigDecimal truckage;
@@ -51,6 +53,14 @@ public class Depot {
 
     public void setAddress(String address) {
         this.address = address == null ? null : address.trim();
+    }
+
+    public String getPhone() {
+        return phone;
+    }
+
+    public void setPhone(String phone) {
+        this.phone = phone == null ? null : phone.trim();
     }
 
     public BigDecimal getWarehousing() {
