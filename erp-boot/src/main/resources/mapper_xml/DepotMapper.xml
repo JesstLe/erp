@@ -5,6 +5,7 @@
     <id column="id" jdbcType="BIGINT" property="id" />
     <result column="name" jdbcType="VARCHAR" property="name" />
     <result column="address" jdbcType="VARCHAR" property="address" />
+    <result column="phone" jdbcType="VARCHAR" property="phone" />
     <result column="warehousing" jdbcType="DECIMAL" property="warehousing" />
     <result column="truckage" jdbcType="DECIMAL" property="truckage" />
     <result column="type" jdbcType="INTEGER" property="type" />
@@ -75,7 +76,7 @@
     </where>
   </sql>
   <sql id="Base_Column_List">
-    id, name, address, warehousing, truckage, type, sort, remark, principal, enabled, 
+    id, name, address, phone, warehousing, truckage, type, sort, remark, principal, enabled,
     tenant_id, delete_Flag, is_default
   </sql>
   <select id="selectByExample" parameterType="com.jsh.erp.datasource.entities.DepotExample" resultMap="BaseResultMap">

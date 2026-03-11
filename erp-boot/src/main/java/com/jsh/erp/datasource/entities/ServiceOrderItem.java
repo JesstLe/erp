@@ -17,6 +17,14 @@ public class ServiceOrderItem {
 
     private BigDecimal commissionAmount;
 
+    private Long technicianId;
+
+    private BigDecimal commissionPercent;
+
+    private BigDecimal discountPercent;
+
+    private BigDecimal discountAmount;
+
     private Long tenantId;
 
     private String deleteFlag;
@@ -75,6 +83,38 @@ public class ServiceOrderItem {
 
     public void setCommissionAmount(BigDecimal commissionAmount) {
         this.commissionAmount = commissionAmount;
+    }
+
+    public Long getTechnicianId() {
+        return technicianId;
+    }
+
+    public void setTechnicianId(Long technicianId) {
+        this.technicianId = technicianId;
+    }
+
+    public BigDecimal getCommissionPercent() {
+        return commissionPercent;
+    }
+
+    public void setCommissionPercent(BigDecimal commissionPercent) {
+        this.commissionPercent = commissionPercent;
+    }
+
+    public BigDecimal getDiscountPercent() {
+        return discountPercent;
+    }
+
+    public void setDiscountPercent(BigDecimal discountPercent) {
+        this.discountPercent = discountPercent;
+    }
+
+    public BigDecimal getDiscountAmount() {
+        return discountAmount;
+    }
+
+    public void setDiscountAmount(BigDecimal discountAmount) {
+        this.discountAmount = discountAmount;
     }
 
     public Long getTenantId() {

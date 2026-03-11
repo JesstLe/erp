@@ -96,6 +96,59 @@ public class ServiceOrderController extends BaseController {
         return res;
     }
 
+    @PutMapping(value = "/item/updateTechnician")
+    @ApiOperation(value = "修改服务单明细技师和提成")
+    public BaseResponseInfo updateItemTechnician(@RequestBody JSONObject obj, HttpServletRequest request) throws Exception {
+        BaseResponseInfo res = new BaseResponseInfo();
+        try {
+            User userInfo = userService.getCurrentUser();
+            Long tenantId = resolveTenantId(userInfo);
+            int result = serviceOrderService.updateItemTechnician(obj, tenantId, request);
+            res.code = 200;
+            res.data = result;
+        } catch (Exception e) {
+            res.code = 500;
+            res.data = "修改失败";
+        }
+        return res;
+    }
+
+    
+    @PutMapping(value = "/item/updateDiscount")
+    @ApiOperation(value = "修改服务单明细折扣")
+    public BaseResponseInfo updateItemDiscount(@RequestBody JSONObject obj, HttpServletRequest request) throws Exception {
+        BaseResponseInfo res = new BaseResponseInfo();
+        try {
+            User userInfo = userService.getCurrentUser();
+            Long tenantId = resolveTenantId(userInfo);
+            int result = serviceOrderService.updateItemDiscount(obj, tenantId, request);
+            res.code = 200;
+            res.data = result;
+        } catch (Exception e) {
+            res.code = 500;
+            res.data = "修改失败";
+        }
+        return res;
+    }
+
+    
+    @PutMapping(value = "/item/updateCommission")
+    @ApiOperation(value = "修改服务单明细提成")
+    public BaseResponseInfo updateItemCommission(@RequestBody JSONObject obj, HttpServletRequest request) throws Exception {
+        BaseResponseInfo res = new BaseResponseInfo();
+        try {
+            User userInfo = userService.getCurrentUser();
+            Long tenantId = resolveTenantId(userInfo);
+            int result = serviceOrderService.updateItemCommission(obj, tenantId, request);
+            res.code = 200;
+            res.data = result;
+        } catch (Exception e) {
+            res.code = 500;
+            res.data = "修改失败";
+        }
+        return res;
+    }
+
     @PostMapping(value = "/item/delete")
     @ApiOperation(value = "删除服务单明细(软删除)")
     public BaseResponseInfo deleteItem(@RequestBody JSONObject obj, HttpServletRequest request) throws Exception {

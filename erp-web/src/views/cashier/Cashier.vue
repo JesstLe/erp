@@ -372,31 +372,23 @@ export default {
     async handleSeatClick(seat) {
       this.currentSeat = seat
       if (seat.status === 1) {
-        this.$confirm({
-          title: '确认清台？',
-          onOk: async () => {
-            const currentRes = await cashierCurrentSessionBySeat({ seatId: seat.id })
-            if (currentRes.code === 200 && currentRes.data && currentRes.data.id) {
-              const closeRes = await cashierCloseSession({ sessionId: currentRes.data.id })
-              if (closeRes.code === 200) {
-                this.currentSession = null
-                this.loadSeats()
-                this.$message.success('清台成功')
-                return
-              }
-              this.$message.error('清台失败')
-              return
-            }
-            const fallback = await putAction('/seat/update', { id: seat.id, status: 0 })
-            if (fallback.code === 200) {
-              this.currentSession = null
-              this.loadSeats()
-              this.$message.success('清台成功')
-              return
-            }
-            this.$message.error('清台失败')
-          }
-        })
+        // 恢复已存在的会话，而不是清台
+        const currentRes = await cashierCurrentSessionBySeat({ seatId: seat.id })
+        if (currentRes.code === 200 && currentRes.data && currentRes.data.id) {
+          this.currentSession = currentRes.data
+          this.deskSeat = seat
+          this.deskSession = currentRes.data
+          this.deskVisible = true
+          return
+        }
+        // 如果会话不存在但状态为1，尝试重置状态
+        const fallback = await putAction('/seat/update', { id: seat.id, status: 0 })
+        if (fallback.code === 200) {
+          this.loadSeats()
+          this.$message.success('已重置座席状态')
+          return
+        }
+        this.$message.error('恢复会话失败')
         return
       }
       const res = await cashierOpenSession({ seatId: seat.id, depotId: this.selectedDepot })
@@ -500,6 +492,7 @@ export default {
     buildReceiptText(data) {
       const depot = (this.depots || []).find(d => d.id === this.selectedDepot)
       const depotName = depot && depot.depotName ? depot.depotName : ''
+      const depotPhone = depot && depot.phone ? depot.phone : ''
       const seatName = data && data.seat && data.seat.name ? data.seat.name : (this.deskSeat && this.deskSeat.name ? this.deskSeat.name : '')
       const settlementNo = data.settlementNo || ''
       const items = Array.isArray(data.items) ? data.items : []
@@ -509,6 +502,7 @@ export default {
       const productItems = items.filter(i => (i.refType || i.type) === 'PRODUCT' || i.type === '产品')
       const lines = []
       if (depotName) lines.push(depotName)
+      if (depotPhone) lines.push('电话：' + depotPhone)
       lines.push('消费小票')
       if (settlementNo) lines.push('结算单号：' + settlementNo)
       if (seatName) lines.push('座位/包间：' + seatName)

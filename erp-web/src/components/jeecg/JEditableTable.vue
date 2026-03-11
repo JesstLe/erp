@@ -2169,10 +2169,32 @@
       clearSelection() {
         this.selectedRowIds = []
       },
+      getOptionText(option) {
+        if (!option) {
+          return ''
+        }
+        if (option.componentOptions && option.componentOptions.children && option.componentOptions.children[0]) {
+          return String(option.componentOptions.children[0].text || '')
+        }
+        if (option.text) {
+          return String(option.text)
+        }
+        if (option.title) {
+          return String(option.title)
+        }
+        if (option.label) {
+          return String(option.label)
+        }
+        if (option.children && option.children.length > 0) {
+          const child = option.children[0]
+          return String((child && child.text) || '')
+        }
+        return ''
+      },
       /** 用于搜索下拉框中的内容 */
       handleSelectFilterOption(input, option, column) {
         if (column.allowSearch === true || column.allowInput === true) {
-          return option.componentOptions.children[0].text.toLowerCase().indexOf(input.toLowerCase()) >= 0
+          return this.getOptionText(option).toLowerCase().indexOf(input.toLowerCase()) >= 0
         }
         return true
       },
@@ -2792,7 +2814,7 @@
         this.elemValueChange(FormTypes.sel_search, row, column, value)
       },
       filterOption(input, option) {
-        return option.componentOptions.children[0].text.toLowerCase().indexOf(input.toLowerCase()) >= 0
+        return this.getOptionText(option).toLowerCase().indexOf(input.toLowerCase()) >= 0
       },
       getEllipsisWord(content, len){
         if(!content || content.length==0){

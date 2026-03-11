@@ -61,10 +61,23 @@
                     <a-select
                       :value="record.salesManId"
                       size="small"
-                      style="width: 120px"
+                      style="width: 100%"
                       :allowClear="true"
                       placeholder="销售员"
                       @change="v => handleSalesChange(record, v)"
+                    >
+                      <a-select-option v-for="p in salesManOptions" :key="p.id" :value="p.id">
+                        {{ p.name }}
+                      </a-select-option>
+                    </a-select>
+                  </div>
+                  <div v-else-if="record.refType === 'SERVICE'">
+                    <a-select
+                      :value="record.technicianId"
+                      size="small"
+                      style="width: 100%"
+                      :allowClear="true"
+                      @change="v => handleTechChange(record, v)"
                     >
                       <a-select-option v-for="p in salesManOptions" :key="p.id" :value="p.id">
                         {{ p.name }}
@@ -81,8 +94,19 @@
                       :step="1"
                       :value="Number(record.commissionPercent || 0)"
                       size="small"
-                      style="width: 90px"
+                      style="width: 100%"
                       @change="v => handleCommissionChange(record, v)"
+                    />
+                  </div>
+                  <div v-else-if="record.refType === 'SERVICE'">
+                    <a-input-number
+                      :min="0"
+                      :max="100"
+                      :step="1"
+                      :value="Number(record.commissionPercent || 0)"
+                      size="small"
+                      style="width: 100%"
+                      @change="v => handleServiceCommissionChange(record, v)"
                     />
                   </div>
                   <div v-else>-</div>
@@ -92,6 +116,7 @@
                     :min="1"
                     :value="record.qty"
                     size="small"
+                    style="width: 100%"
                     @change="v => handleQtyChange(record, v)"
                   />
                 </template>
@@ -103,8 +128,19 @@
                       :step="1"
                       :value="Number(record.discountPercent || 0)"
                       size="small"
-                      style="width: 70px"
+                      style="width: 100%"
                       @change="v => handleDiscountChange(record, v)"
+                    />
+                  </div>
+                  <div v-else-if="record.refType === 'SERVICE'">
+                    <a-input-number
+                      :min="0"
+                      :max="100"
+                      :step="1"
+                      :value="Number(record.discountPercent || 0)"
+                      size="small"
+                      style="width: 100%"
+                      @change="v => handleServiceDiscountChange(record, v)"
                     />
                   </div>
                   <div v-else>-</div>
@@ -122,7 +158,7 @@
               </div>
               <div class="footer-actions">
                 <a-button @click="handleReload">刷新</a-button>
-                <a-button @click="handleBack">返回房台</a-button>
+                <a-button @click="handleBack">返回前台</a-button>
               </div>
             </div>
           </div>
@@ -399,6 +435,8 @@ export default {
         { key: 'CASH', label: '现金' },
         { key: 'BANK', label: '银行卡/POS' },
         { key: 'CARD', label: '储值卡' },
+        { key: 'MEITUAN', label: '美团' },
+        { key: 'DOUYIN', label: '抖音' },
         { key: 'CREDIT', label: '挂账/签单' }
       ],
       settleForm: {
@@ -408,6 +446,8 @@ export default {
           CASH: 0,
           BANK: 0,
           CARD: 0,
+          MEITUAN: 0,
+          DOUYIN: 0,
           CREDIT: 0
         },
         needInvoice: false,
@@ -428,13 +468,13 @@ export default {
       columns: [
         { title: '类型', dataIndex: 'type', width: 70 },
         { title: '名称', dataIndex: 'name' },
-        { title: '单价', dataIndex: 'unitPrice', width: 90 },
+        { title: '单价', dataIndex: 'unitPrice', width: 80 },
         { title: '数量', key: 'qty', scopedSlots: { customRender: 'qty' }, width: 80 },
-        { title: '折扣%', key: 'discount', scopedSlots: { customRender: 'discount' }, width: 90 },
-        { title: '销售员', key: 'sales', scopedSlots: { customRender: 'sales' }, width: 140 },
+        { title: '折扣%', key: 'discount', scopedSlots: { customRender: 'discount' }, width: 80 },
+        { title: '销售员/技师', key: 'sales', scopedSlots: { customRender: 'sales' }, width: 130 },
         { title: '提成%', key: 'commission', scopedSlots: { customRender: 'commission' }, width: 90 },
-        { title: '金额', dataIndex: 'amount', width: 90 },
-        { title: '操作', key: 'action', scopedSlots: { customRender: 'action' }, width: 80 }
+        { title: '金额', dataIndex: 'amount', width: 80 },
+        { title: '操作', key: 'action', scopedSlots: { customRender: 'action' }, width: 60 }
       ],
       salesManOptions: [],
       timer: null,
@@ -445,7 +485,10 @@ export default {
       startTimerLoading: false,
       // 技师选择相关
       selectedTechnicians: [],
-      technicianDurations: {}
+      technicianDurations: {},
+      // 折扣和提成下拉选项
+      discountOptions: [0, 5, 10, 15, 20, 25, 30, 50, 80, 100],
+      commissionOptions: [0, 5, 10, 15, 20, 25, 30, 40, 50]
     }
   },
   computed: {
@@ -596,7 +639,12 @@ export default {
     async loadSalesMen() {
       const res = await getAction('/person/getPersonByNumType', { type: '1' })
       if (res && res.code === 200) {
-        this.salesManOptions = res.data || []
+        // API返回格式为 {value, text}，转换为 {id, name}
+        const rawData = res.data || []
+        this.salesManOptions = rawData.map(item => ({
+          id: item.value || item.id,
+          name: item.text || item.name
+        }))
         return
       }
       this.salesManOptions = []
@@ -695,11 +743,7 @@ export default {
       this.settlePreview = { serviceTotalAmount: 0, productTotalAmount: 0, totalAmount: 0 }
     },
     initDefaultPayment() {
-      const p = (this.settleForm && this.settleForm.payments) ? this.settleForm.payments : {}
-      const hasAny = Object.keys(p).some(k => Number(p[k] || 0) > 0)
-      if (hasAny) return
-      const total = Number((this.settlePreview && this.settlePreview.totalAmount) || 0)
-      this.$set(this.settleForm.payments, 'WECHAT', total)
+      // 默认不预填任何支付方式，由用户自己选择
     },
     async loadServiceItems() {
       const res = await cashierServiceItemList({
@@ -880,6 +924,8 @@ export default {
       })
       if (res.code === 200) {
         await this.loadDetail()
+        // 刷新产品列表以更新库存显示
+        await this.loadProducts()
         return
       }
       this.$message.error(res.data || '添加产品失败')
@@ -890,6 +936,49 @@ export default {
         id: record.id,
         salesManId,
         commissionPercent: record.commissionPercent || 0
+      })
+      if (res.code === 200) {
+        await this.loadDetail()
+        return
+      }
+      this.$message.error(res.data || '修改失败')
+    },
+    async handleTechChange(record, technicianId) {
+      if (!record || record.refType !== 'SERVICE') return
+      const res = await cashierServiceOrderItemUpdateTechnician({
+        id: record.id,
+        technicianId,
+        commissionPercent: record.commissionPercent || 0
+      })
+      if (res.code === 200) {
+        await this.loadDetail()
+        return
+      }
+      this.$message.error(res.data || '修改失败')
+    },
+    async handleServiceCommissionChange(record, commissionPercent) {
+      if (!record || record.refType !== 'SERVICE') return
+      const v = commissionPercent == null ? 0 : Number(commissionPercent)
+      const res = await cashierServiceOrderItemUpdateTechnician({
+        id: record.id,
+        technicianId: record.technicianId || null,
+        commissionPercent: isNaN(v) ? 0 : v,
+        discountPercent: record.discountPercent || 0
+      })
+      if (res.code === 200) {
+        await this.loadDetail()
+        return
+      }
+      this.$message.error(res.data || '修改失败')
+    },
+    async handleServiceDiscountChange(record, discountPercent) {
+      if (!record || record.refType !== 'SERVICE') return
+      const v = discountPercent == null ? 0 : Number(discountPercent)
+      const res = await cashierServiceOrderItemUpdateTechnician({
+        id: record.id,
+        technicianId: record.technicianId || null,
+        commissionPercent: record.commissionPercent || 0,
+        discountPercent: isNaN(v) ? 0 : v
       })
       if (res.code === 200) {
         await this.loadDetail()
@@ -968,6 +1057,7 @@ export default {
     },
     async handleReload() {
       await this.loadDetail()
+      await this.loadSalesMen()
     },
     handleBack() {
       this.$emit('close')

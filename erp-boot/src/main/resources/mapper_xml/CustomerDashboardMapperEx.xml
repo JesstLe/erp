@@ -125,5 +125,25 @@
             </otherwise>
         </choose>
     </select>
+
+    <select id="sumPaymentAmount" resultType="java.math.BigDecimal">
+        select ifnull(sum(p.amount), 0)
+        from jsh_cashier_settlement s
+        join jsh_cashier_settlement_payment p on p.settlement_id = s.id and ifnull(p.delete_flag,'0') != '1'
+        where s.status = 'PAID'
+          and ifnull(s.delete_flag,'0') != '1'
+          <if test="depotId != null">
+              and s.depot_id = #{depotId}
+          </if>
+          <if test="startTime != null">
+              and s.pay_time &gt;= #{startTime}
+          </if>
+          <if test="endTime != null">
+              and s.pay_time &lt; #{endTime}
+          </if>
+          <if test="paymentType != null">
+              and p.pay_method = #{paymentType}
+          </if>
+    </select>
 </mapper>
 

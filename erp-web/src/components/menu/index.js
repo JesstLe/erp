@@ -57,6 +57,25 @@ export default {
     }
   },
   methods: {
+    resolveMenuTo (menu) {
+      if (menu.route && menu.route === '0') {
+        return { path: menu.path || menu.url }
+      }
+      const resolvedRoute = this.$router.resolve({ path: menu.url }).route
+      if (resolvedRoute && resolvedRoute.matched && resolvedRoute.matched.length > 0) {
+        const matched = resolvedRoute.matched[resolvedRoute.matched.length - 1]
+        const routeName = resolvedRoute.name || (matched && matched.name)
+        if (routeName) {
+          return { name: routeName, params: resolvedRoute.params, query: resolvedRoute.query }
+        }
+        return { path: resolvedRoute.path, query: resolvedRoute.query }
+      }
+      if (menu.name) {
+        return { name: menu.name }
+      }
+      console.error('[SMenu] menu route resolve failed:', menu.url)
+      return { path: menu.url }
+    },
     // select menu item
     onOpenChange (openKeys) {
 
@@ -103,12 +122,7 @@ export default {
       return null
     },
     renderMenuItem (menu) {
-      const target = null
-      const tag = target && 'a' || 'router-link'
-      let props = { to: { name: menu.name } }
-      if(menu.route && menu.route === '0'){
-        props = { to: { path: menu.path } }
-      }
+      const props = { to: this.resolveMenuTo(menu) }
 
       const attrs = { href: menu.url, target: menu.text }
 
@@ -122,10 +136,10 @@ export default {
       }
       return (
         <Item {...{ key: menu.url }}>
-          <tag {...{ props, attrs }} title={menu.text}>
+          <router-link {...{ props, attrs }} title={menu.text}>
             {this.renderIcon(menu.icon)}
             <span>{menu.text}</span>
-          </tag>
+          </router-link>
         </Item>
       )
     },

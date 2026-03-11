@@ -24,6 +24,8 @@ public class Supplier {
 
     private BigDecimal advanceIn;
 
+    private BigDecimal giftAmount;
+
     private BigDecimal beginNeedGet;
 
     private BigDecimal beginNeedPay;
@@ -134,6 +136,14 @@ public class Supplier {
 
     public void setAdvanceIn(BigDecimal advanceIn) {
         this.advanceIn = advanceIn;
+    }
+
+    public BigDecimal getGiftAmount() {
+        return giftAmount;
+    }
+
+    public void setGiftAmount(BigDecimal giftAmount) {
+        this.giftAmount = giftAmount;
     }
 
     public BigDecimal getBeginNeedGet() {

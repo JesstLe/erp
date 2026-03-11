@@ -188,6 +188,105 @@ public class ServiceOrderService {
         return serviceOrderItemMapper.updateByPrimaryKeySelective(update);
     }
 
+ @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public int updateItemTechnician(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
+        Long id = obj.getLong("id");
+        if (id == null) {
+            return 0;
+        }
+        ServiceOrderItem db = serviceOrderItemMapper.selectByPrimaryKey(id);
+        if (tenantId != null && db.getTenantId() != null && !tenantId.equals(db.getTenantId())) {
+            return 0;
+        }
+        ensureOrderPermission(db.getServiceOrderId(), tenantId);
+        ServiceOrderItem update = new ServiceOrderItem();
+        update.setId(id);
+        Long technicianId = obj.getLong("technicianId");
+        if (technicianId != null) {
+            update.setTechnicianId(technicianId);
+        }
+        BigDecimal commissionPercent = obj.getBigDecimal("commissionPercent");
+        if (commissionPercent != null) {
+            update.setCommissionPercent(commissionPercent);
+            // 计算提成金额
+            BigDecimal amount = db.getAmount();
+            if (amount != null) {
+                BigDecimal commissionAmount = amount.multiply(commissionPercent).divide(new BigDecimal(100), 2, RoundingMode.HALF_UP);
+                update.setCommissionAmount(commissionAmount);
+            }
+        }
+        // 支持折扣百分比
+        BigDecimal discountPercent = obj.getBigDecimal("discountPercent");
+        if (discountPercent != null) {
+            update.setDiscountPercent(discountPercent);
+            // 计算折后金额
+            BigDecimal unitPrice = db.getUnitPrice();
+            if (unitPrice != null) {
+                BigDecimal discountAmount = unitPrice.multiply(discountPercent).divide(new BigDecimal(100), 2, RoundingMode.HALF_UP);
+                update.setDiscountAmount(discountAmount);
+            }
+        }
+        return serviceOrderItemMapper.updateByPrimaryKeySelective(update);
+    }
+
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public int updateItemDiscount(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
+        Long id = obj.getLong("id");
+        if (id == null) {
+            return 0;
+        }
+        ServiceOrderItem db = serviceOrderItemMapper.selectByPrimaryKey(id);
+        if (db == null) {
+            return 0;
+        }
+        if (tenantId != null && db.getTenantId() != null && !tenantId.equals(db.getTenantId())) {
+            return 0;
+        }
+        ensureOrderPermission(db.getServiceOrderId(), tenantId);
+        ServiceOrderItem update = new ServiceOrderItem();
+        update.setId(id);
+        BigDecimal discountPercent = obj.getBigDecimal("discountPercent");
+        if (discountPercent != null) {
+            update.setDiscountPercent(discountPercent);
+            // 计算折后金额
+            BigDecimal amount = db.getAmount();
+            if (amount != null) {
+                BigDecimal discountAmount = amount.multiply(discountPercent).divide(new BigDecimal(100), 2, RoundingMode.HALF_UP);
+                update.setDiscountAmount(discountAmount);
+            }
+        }
+        return serviceOrderItemMapper.updateByPrimaryKeySelective(update);
+    }
+
+    @Transactional(value = "transactionManager", rollbackFor = Exception.class)
+    public int updateItemCommission(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
+        Long id = obj.getLong("id");
+        if (id == null) {
+            return 0;
+        }
+        ServiceOrderItem db = serviceOrderItemMapper.selectByPrimaryKey(id);
+        if (db == null) {
+            return 0;
+        }
+        if (tenantId != null && db.getTenantId() != null && !tenantId.equals(db.getTenantId())) {
+            return 0;
+        }
+        ensureOrderPermission(db.getServiceOrderId(), tenantId);
+        ServiceOrderItem update = new ServiceOrderItem();
+        update.setId(id);
+        BigDecimal commissionPercent = obj.getBigDecimal("commissionPercent");
+        if (commissionPercent != null) {
+            update.setCommissionPercent(commissionPercent);
+            // 计算提成金额
+            BigDecimal amount = db.getAmount();
+            if (amount != null) {
+                BigDecimal commissionAmount = amount.multiply(commissionPercent).divide(new BigDecimal(100), 2, RoundingMode.HALF_UP);
+                update.setCommissionAmount(commissionAmount);
+            }
+        }
+        return serviceOrderItemMapper.updateByPrimaryKeySelective(update);
+    }
+
     @Transactional(value = "transactionManager", rollbackFor = Exception.class)
     public int deleteItem(JSONObject obj, Long tenantId, HttpServletRequest request) throws Exception {
         Long id = obj.getLong("id");

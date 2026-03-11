@@ -34,7 +34,7 @@
     <!-- update_end  author:zhaoxin date:20191129 for: 做头部菜单栏导航 -->
 
     <header-notice class="action"/>
-    <a-dropdown>
+    <a-dropdown v-if="isDesktop()">
       <span v-if="isDesktop()" class="action ant-dropdown-link user-dropdown-menu">
         <a-icon type="down-circle"/>
         <span style="margin-left:4px">欢迎您，{{ nickname() }}</span>
@@ -132,7 +132,7 @@
         this.searchMenuVisible = true
       },
       hiddenClick(){
-        this.shows = false
+        this.searchMenuVisible = false
       },
       /* update_end author:zhaoxin date:20191129 for: 做头部菜单栏导航*/
       ...mapActions(["Logout"]),
@@ -179,10 +179,24 @@
           }
         }
       },
-      filterOption(input, option) {
-        if(option && option.componentOptions && option.componentOptions.children && option.componentOptions.children[0]) {
-          return option.componentOptions.children[0].text.toLowerCase().indexOf(input.toLowerCase()) >= 0
+      getOptionText(option) {
+        if (!option) {
+          return ''
         }
+        if (option.text) {
+          return String(option.text)
+        }
+        if (option.componentOptions && option.componentOptions.children && option.componentOptions.children[0]) {
+          return String(option.componentOptions.children[0].text || '')
+        }
+        if (option.children && option.children.length > 0) {
+          const child = option.children[0]
+          return String((child && child.text) || '')
+        }
+        return ''
+      },
+      filterOption(input, option) {
+        return this.getOptionText(option).toLowerCase().indexOf(input.toLowerCase()) >= 0
       },
       // update_begin author:sunjianlei date:20191230 for: 解决外部链接打开失败的问题
       searchMethods(value) {

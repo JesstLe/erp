@@ -17,6 +17,7 @@ import com.jsh.erp.datasource.entities.MaterialExtend;
 import com.jsh.erp.datasource.mappers.CashierSettlementMapper;
 import com.jsh.erp.datasource.mappers.CashierSettlementPaymentMapper;
 import com.jsh.erp.datasource.mappers.InvoiceRequestMapper;
+import com.jsh.erp.datasource.mappers.SupplierMapper;
 import com.jsh.erp.service.DepotHeadService;
 import com.jsh.erp.service.MaterialExtendService;
 import com.jsh.erp.service.SupplierService;
@@ -55,6 +56,9 @@ public class CashierSettlementService {
 
     @Resource
     private SupplierService supplierService;
+
+    @Resource
+    private SupplierMapper supplierMapper;
 
     @Resource
     private DepotHeadService depotHeadService;
@@ -150,11 +154,27 @@ public class CashierSettlementService {
             if (member == null) {
                 member = supplierService.getSupplier(session.getMemberId());
             }
-            balanceBefore = member == null || member.getAdvanceIn() == null ? BigDecimal.ZERO : member.getAdvanceIn().setScale(2, RoundingMode.HALF_UP);
-            if (balanceBefore.compareTo(prepaidUsedAmount) < 0) {
+            // 获取实际储值和赠送金额
+            BigDecimal advanceIn = member == null || member.getAdvanceIn() == null ? BigDecimal.ZERO : member.getAdvanceIn();
+            BigDecimal giftAmount = member == null || member.getGiftAmount() == null ? BigDecimal.ZERO : member.getGiftAmount();
+            // 总可用余额 = 实际储值 + 赠送金额
+            BigDecimal totalBalance = advanceIn.add(giftAmount).setScale(2, RoundingMode.HALF_UP);
+            if (totalBalance.compareTo(prepaidUsedAmount) < 0) {
                 throw new RuntimeException("会员余额不足");
             }
-            balanceAfter = balanceBefore.subtract(prepaidUsedAmount).setScale(2, RoundingMode.HALF_UP);
+            // 优先使用实际储值，剩余部分使用赠送金额
+            BigDecimal usedAdvanceIn = prepaidUsedAmount.compareTo(advanceIn) > 0 ? advanceIn : prepaidUsedAmount;
+            BigDecimal usedGiftAmount = prepaidUsedAmount.subtract(usedAdvanceIn);
+            BigDecimal newAdvanceIn = advanceIn.subtract(usedAdvanceIn).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal newGiftAmount = giftAmount.subtract(usedGiftAmount).setScale(2, RoundingMode.HALF_UP);
+            // 更新会员余额（确保不为负数）
+            Supplier updateMember = new Supplier();
+            updateMember.setId(member.getId());
+            updateMember.setAdvanceIn(newAdvanceIn.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : newAdvanceIn);
+            updateMember.setGiftAmount(newGiftAmount.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : newGiftAmount);
+            supplierMapper.updateByPrimaryKeySelective(updateMember);
+            balanceBefore = totalBalance;
+            balanceAfter = newAdvanceIn.add(newGiftAmount).setScale(2, RoundingMode.HALF_UP);
         }
 
         CashierSettlement settlement = new CashierSettlement();

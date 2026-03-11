@@ -18,7 +18,7 @@
     </a-card>
 
     <a-row :gutter="24">
-      <a-col :sm="24" :md="12" :xl="6" :style="{ paddingRight: '0px', marginBottom: '12px' }">
+      <a-col :sm="24" :md="12" :xl="6" :style="{ marginBottom: '12px' }">
         <chart-card :loading="loading" title="收入总额">
           <a-tooltip title="统计周期内总收入（服务+商品）" slot="action">
             <a-icon type="info-circle-o" />
@@ -29,7 +29,7 @@
           </div>
         </chart-card>
       </a-col>
-      <a-col :sm="24" :md="12" :xl="6" :style="{ paddingRight: '0px', marginBottom: '12px' }">
+      <a-col :sm="24" :md="12" :xl="6" :style="{ marginBottom: '12px' }">
         <chart-card :loading="loading" title="消费人数">
           <a-tooltip title="统计周期内消费去重人数" slot="action">
             <a-icon type="info-circle-o" />
@@ -40,7 +40,7 @@
           </div>
         </chart-card>
       </a-col>
-      <a-col :sm="24" :md="12" :xl="6" :style="{ paddingRight: '0px', marginBottom: '12px' }">
+      <a-col :sm="24" :md="12" :xl="6" :style="{ marginBottom: '12px' }">
         <chart-card :loading="loading" title="会员总数">
           <a-tooltip title="当前有效会员总数" slot="action">
             <a-icon type="info-circle-o" />
@@ -51,7 +51,7 @@
           </div>
         </chart-card>
       </a-col>
-      <a-col :sm="24" :md="12" :xl="6" :style="{ paddingRight: '0px', marginBottom: '12px' }">
+      <a-col :sm="24" :md="12" :xl="6" :style="{ marginBottom: '12px' }">
         <chart-card :loading="loading" title="储值余额">
           <a-tooltip title="当前所有会员储值余额总计" slot="action">
             <a-icon type="info-circle-o" />
@@ -65,12 +65,23 @@
     </a-row>
 
     <a-row :gutter="24">
-      <a-col :sm="24" :md="24" :xl="8" :style="{ paddingRight: '0px', marginBottom: '12px' }">
+      <a-col :sm="24" :md="12" :xl="6" :style="{ marginBottom: '12px' }">
+        <a-card :loading="loading" :bordered="false" :body-style="{padding: '12px', height: '360px'}">
+          <div slot="title">支付方式</div>
+          <div class="payment-methods">
+            <div v-for="pm in paymentMethods" :key="pm.key" class="payment-item">
+              <div class="pm-label">{{ pm.label }}</div>
+              <div class="pm-value">￥{{ formatMoney(pm.amount) }}</div>
+            </div>
+          </div>
+        </a-card>
+      </a-col>
+      <a-col :sm="24" :md="24" :xl="6" :style="{ marginBottom: '12px' }">
         <a-card :loading="loading" :bordered="false" :body-style="{padding: '12px 0 0 0', height: '360px', overflow: 'hidden'}">
           <pie title="消费类型占比" :height="340" :dataSource="consumeTypeData"/>
         </a-card>
       </a-col>
-      <a-col :sm="24" :md="24" :xl="16" :style="{ paddingRight: '0px', marginBottom: '12px' }">
+      <a-col :sm="24" :md="24" :xl="12" :style="{ marginBottom: '12px' }">
         <a-card :loading="loading" :bordered="false" :body-style="{padding: '24px', height: '360px'}">
           <line-chart-multid
             title="营业额趋势"
@@ -84,7 +95,7 @@
     </a-row>
 
     <a-row :gutter="24">
-      <a-col :sm="24" :md="16" :xl="16" :style="{ paddingRight: '0px', marginBottom: '12px' }">
+      <a-col :sm="24" :md="16" :xl="16" :style="{ marginBottom: '12px' }">
         <a-card :loading="loading" :bordered="false" title="最近新增会员" style="min-height: 420px;">
           <a-table
             size="small"
@@ -100,7 +111,7 @@
           </a-table>
         </a-card>
       </a-col>
-      <a-col :sm="24" :md="8" :xl="8" :style="{ paddingRight: '0px', marginBottom: '12px' }">
+      <a-col :sm="24" :md="8" :xl="8" :style="{ marginBottom: '12px' }">
         <a-card :bordered="false" title="快捷入口" :body-style="{padding: '12px'}" style="min-height: 420px;">
           <div class="quick-nav-grid">
             <div class="quick-nav-item" @click="go('/system/member')">
@@ -147,6 +158,7 @@ export default {
         memberTotal: 0,
         storedBalance: 0
       },
+      paymentMethods: [],
       consumeTypeData: [],
       revenueTrendData: [],
       recentMembers: [],
@@ -161,10 +173,20 @@ export default {
     }
   },
   created() {
+    this.paymentMethods = this.getDefaultPaymentMethods()
     this.initDepots()
     this.reloadAll()
   },
   methods: {
+    getDefaultPaymentMethods() {
+      return [
+        { key: 'WECHAT', label: '微信', amount: 0 },
+        { key: 'ALIPAY', label: '支付宝', amount: 0 },
+        { key: 'GROUP_BUY', label: '团购', amount: 0 },
+        { key: 'MEITUAN', label: '美团', amount: 0 },
+        { key: 'DOUYIN', label: '抖音', amount: 0 }
+      ]
+    },
     go(path) {
       this.$router.push({ path })
     },
@@ -182,10 +204,14 @@ export default {
       return v
     },
     async initDepots() {
-      const res = await getAction('/depot/findDepotByCurrentUser')
-      if (res && res.code === 200) {
-        this.depots = res.data || []
-      } else {
+      try {
+        const res = await getAction('/depot/findDepotByCurrentUser')
+        if (res && res.code === 200) {
+          this.depots = res.data || []
+          return
+        }
+        this.depots = []
+      } catch (e) {
         this.depots = []
       }
     },
@@ -195,41 +221,93 @@ export default {
         this.loadSummary(),
         this.loadConsumeTypeRatio(),
         this.loadRevenueTrend(),
-        this.loadRecentMembers()
+        this.loadRecentMembers(),
+        this.loadPaymentMethods()
       ])
       this.loading = false
     },
+    async loadPaymentMethods() {
+      try {
+        const res = await getAction('/customer/dashboard/paymentMethods', { range: this.range, depotId: this.depotId })
+        if (res && res.code === 200 && res.data) {
+          const d = res.data
+          this.paymentMethods = [
+            { key: 'WECHAT', label: '微信', amount: d.wechatAmount || 0 },
+            { key: 'ALIPAY', label: '支付宝', amount: d.alipayAmount || 0 },
+            { key: 'GROUP_BUY', label: '团购', amount: d.groupBuyAmount || 0 },
+            { key: 'MEITUAN', label: '美团', amount: d.meituanAmount || 0 },
+            { key: 'DOUYIN', label: '抖音', amount: d.douyinAmount || 0 }
+          ]
+          return
+        }
+        this.paymentMethods = this.getDefaultPaymentMethods()
+      } catch (e) {
+        this.paymentMethods = this.getDefaultPaymentMethods()
+      }
+    },
     async loadSummary() {
-      const res = await getAction('/customer/dashboard/summary', { range: this.range, depotId: this.depotId })
-      if (res && res.code === 200) {
-        this.summary = res.data || this.summary
+      try {
+        const res = await getAction('/customer/dashboard/summary', { range: this.range, depotId: this.depotId })
+        if (res && res.code === 200) {
+          this.summary = res.data || this.summary
+          return
+        }
+        this.summary = {
+          incomeTotal: 0,
+          consumerCount: 0,
+          memberTotal: 0,
+          storedBalance: 0
+        }
+      } catch (e) {
+        this.summary = {
+          incomeTotal: 0,
+          consumerCount: 0,
+          memberTotal: 0,
+          storedBalance: 0
+        }
       }
     },
     async loadConsumeTypeRatio() {
-      const res = await getAction('/customer/dashboard/consumeTypeRatio', { range: this.range, depotId: this.depotId })
-      if (res && res.code === 200) {
-        const d = res.data || {}
-        this.consumeTypeData = [
-          { item: '服务', count: Number(d.serviceAmount || 0) },
-          { item: '商品', count: Number(d.productAmount || 0) }
-        ]
+      try {
+        const res = await getAction('/customer/dashboard/consumeTypeRatio', { range: this.range, depotId: this.depotId })
+        if (res && res.code === 200) {
+          const d = res.data || {}
+          this.consumeTypeData = [
+            { item: '服务', count: Number(d.serviceAmount || 0) },
+            { item: '商品', count: Number(d.productAmount || 0) }
+          ]
+          return
+        }
+        this.consumeTypeData = []
+      } catch (e) {
+        this.consumeTypeData = []
       }
     },
     async loadRevenueTrend() {
-      const res = await getAction('/customer/dashboard/revenueTrend', { range: this.range, depotId: this.depotId })
-      if (res && res.code === 200) {
-        const rows = (res.data && res.data.rows) ? res.data.rows : []
-        this.revenueTrendData = rows.map(r => ({
-          type: r.d,
-          amount: Number(r.amount || 0)
-        }))
+      try {
+        const res = await getAction('/customer/dashboard/revenueTrend', { range: this.range, depotId: this.depotId })
+        if (res && res.code === 200) {
+          const rows = (res.data && res.data.rows) ? res.data.rows : []
+          this.revenueTrendData = rows.map(r => ({
+            type: r.d,
+            amount: Number(r.amount || 0)
+          }))
+          return
+        }
+        this.revenueTrendData = []
+      } catch (e) {
+        this.revenueTrendData = []
       }
     },
     async loadRecentMembers() {
-      const res = await getAction('/customer/dashboard/recentMembers', { limit: 10 })
-      if (res && res.code === 200) {
-        this.recentMembers = res.data || []
-      } else {
+      try {
+        const res = await getAction('/customer/dashboard/recentMembers', { limit: 10 })
+        if (res && res.code === 200) {
+          this.recentMembers = res.data || []
+          return
+        }
+        this.recentMembers = []
+      } catch (e) {
         this.recentMembers = []
       }
     }
@@ -283,5 +361,26 @@ export default {
   font-size: 24px;
   margin-bottom: 8px;
 }
+.payment-methods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.payment-item {
+  width: 100%;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.pm-label {
+  font-weight: 500;
+  color: rgba(0,0,0,0.65);
+}
+.pm-value {
+  font-weight: 600;
+  color: #1890ff;
+}
 </style>
-

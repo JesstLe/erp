@@ -56,6 +56,11 @@
               </a-form-item>
             </a-col>
             <a-col :span="24/2">
+              <a-form-item :labelCol="labelCol" :wrapperCol="wrapperCol" label="赠送金额">
+                <a-input-number v-decorator="[ 'giftAmount' ]" :min="0" :step="0.01" style="width: 100%" />
+              </a-form-item>
+            </a-col>
+            <a-col :span="24/2">
               <a-form-item :labelCol="labelCol" :wrapperCol="wrapperCol" label="电子邮箱">
                 <a-input placeholder="请输入电子邮箱" v-decorator.trim="[ 'email' ]" />
               </a-form-item>
@@ -123,7 +128,7 @@
         this.visible = true;
         this.$nextTick(() => {
           this.form.setFieldsValue(pick(this.model,'supplier', 'contacts', 'telephone', 'email',
-            'phoneNum', 'address', 'advanceIn', 'sort', 'description'))
+            'phoneNum', 'address', 'advanceIn', 'giftAmount', 'sort', 'description'))
           autoJumpNextInput('memberModal')
         });
       },

@@ -264,12 +264,14 @@
     document.title = window.SYS_TITLE;
     //statistics
     var _hmt = _hmt || [];
-    (function() {
-      var hm = document.createElement("script");
-      hm.src = window._statistics;
-      var s = document.getElementsByTagName("script")[0];
-      s.parentNode.insertBefore(hm, s);
-    })();
+    if (statisticsCode && ['localhost', '127.0.0.1'].indexOf(window.location.hostname) === -1) {
+      (function() {
+        var hm = document.createElement("script");
+        hm.src = window._statistics;
+        var s = document.getElementsByTagName("script")[0];
+        s.parentNode.insertBefore(hm, s);
+      })();
+    }
   </script>
 </head>
 

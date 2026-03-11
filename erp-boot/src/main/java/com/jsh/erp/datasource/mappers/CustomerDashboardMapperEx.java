@@ -30,4 +30,9 @@ public interface CustomerDashboardMapperEx {
                                           @Param("depotId") Long depotId);
 
     List<Supplier> listRecentMembers(@Param("limit") Integer limit);
+
+    BigDecimal sumPaymentAmount(@Param("startTime") Date startTime,
+                               @Param("endTime") Date endTime,
+                               @Param("depotId") Long depotId,
+                               @Param("paymentType") String paymentType);
 }

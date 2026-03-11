@@ -85,7 +85,7 @@ export function generateIndexRouter(data) {
   let indexRouter = generateChildRouters(data)
   indexRouter.splice(0,0, {
     path: '/',
-    name: '首页',
+    name: 'dashboard',
     component: () => import('@/components/layouts/TabLayout'),
     meta: {
       title: '首页',
@@ -95,6 +95,16 @@ export function generateIndexRouter(data) {
     redirect: '/dashboard/analysis'
   })
   return indexRouter;
+}
+
+function buildRouteName(item, componentName) {
+  if (item && item.id !== undefined && item.id !== null) {
+    return `menu-${item.id}`
+  }
+  if (componentName) {
+    return `menu-${componentName}`
+  }
+  return `menu-${Date.now()}`
 }
 
 // 生成嵌套路由（子路由）
@@ -121,7 +131,7 @@ function generateChildRouters (data) {
     }
     let menu = {
       path: item.url,
-      name: item.text,
+      name: buildRouteName(item, componentName),
       meta: {
         id: item.id,
         title: item.text,
