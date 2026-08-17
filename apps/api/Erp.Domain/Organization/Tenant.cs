@@ -1,0 +1,43 @@
+using Erp.Domain.Common;
+
+namespace Erp.Domain.Organization;
+
+public sealed class Tenant : Entity
+{
+    private Tenant()
+    {
+    }
+
+    public Tenant(string code, string name)
+        : base(Guid.Empty)
+    {
+        Code = Require(code, 32, nameof(code));
+        Name = Require(name, 100, nameof(name));
+        TenantId = Id;
+        Status = TenantStatus.Enabled;
+    }
+
+    public string Code { get; private set; } = string.Empty;
+
+    public string Name { get; private set; } = string.Empty;
+
+    public TenantStatus Status { get; private set; }
+
+    private static string Require(string value, int maxLength, string field)
+    {
+        var normalized = value.Trim();
+        if (normalized.Length is 0 || normalized.Length > maxLength)
+        {
+            throw new DomainRuleException("VALIDATION_FAILED", $"{field}长度不正确");
+        }
+
+        return normalized;
+    }
+}
+
+public enum TenantStatus
+{
+    Enabled = 1,
+    Disabled = 2,
+}
+
