@@ -153,6 +153,7 @@ app.MapEmployeeEndpoints();
 app.MapCatalogEndpoints();
 app.MapFacilityEndpoints();
 app.MapCustomerEndpoints();
+app.MapMemberTopupEndpoints();
 app.MapCashierEndpoints();
 app.MapPaymentEndpoints();
 app.MapAuditEndpoints();

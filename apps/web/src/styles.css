@@ -84,6 +84,9 @@ button, input { font: inherit; }
 .account-grid > div { padding: 10px; border-radius: 10px; background: #f8fafc; display: flex; flex-direction: column; gap: 4px; }
 .account-grid span { color: #64748b; font-size: 12px; }
 .account-grid strong { font-size: 16px; color: #0f172a; }
+.topup-history { margin-top: 10px; }
+.topup-history > div { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.topup-history > div:nth-child(2) { color: #64748b; font-size: 12px; flex-wrap: wrap; }
 .cashier-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .cashier-metrics .ant-card { box-shadow: 0 6px 24px rgba(31,55,75,.04); }
 .shift-strip > .ant-card-body > div { display: flex; align-items: center; gap: 34px; }

@@ -42,4 +42,41 @@ public sealed class CustomerMembershipTests
         Assert.All(accounts, account => Assert.Equal(0, account.BalanceUnits));
         Assert.Equal(3, accounts.Select(account => account.AccountType).Distinct().Count());
     }
+
+    [Fact]
+    public void TopupCreditsPrincipalAndBonusAsSeparateImmutableLedgerEntries()
+    {
+        var customerId = Guid.CreateVersion7();
+        var cardId = Guid.CreateVersion7();
+        var businessId = Guid.CreateVersion7();
+        var commandId = Guid.CreateVersion7();
+        var occurredAt = new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero);
+        var principal = new MemberAccount(TenantId, customerId, cardId, MemberAccountType.Principal);
+        var bonus = new MemberAccount(TenantId, customerId, cardId, MemberAccountType.Bonus);
+
+        var principalLedger = principal.Credit("MemberTopup", businessId, 10_000, commandId, occurredAt);
+        var bonusLedger = bonus.Credit("MemberTopup", businessId, 2_000, commandId, occurredAt);
+
+        Assert.Equal(10_000, principal.BalanceUnits);
+        Assert.Equal(2_000, bonus.BalanceUnits);
+        Assert.Equal((0, 10_000), (principalLedger.BalanceBefore, principalLedger.BalanceAfter));
+        Assert.Equal((0, 2_000), (bonusLedger.BalanceBefore, bonusLedger.BalanceAfter));
+        Assert.Equal(LedgerDirection.Credit, principalLedger.Direction);
+        Assert.Equal(commandId, principalLedger.CommandId);
+    }
+
+    [Fact]
+    public void TopupRequiresPositivePrincipalAndUsesPrincipalAsReceivable()
+    {
+        var now = new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero);
+        Assert.Throws<DomainRuleException>(() => new MemberTopupOrder(TenantId, StoreId,
+            Guid.CreateVersion7(), Guid.CreateVersion7(), "TU202608180001", 0, 100, null, now));
+
+        var order = new MemberTopupOrder(TenantId, StoreId, Guid.CreateVersion7(), Guid.CreateVersion7(),
+            "TU202608180002", 10_000, 2_000, "开卡储值", now);
+
+        Assert.Equal(10_000, order.ReceivableMinor);
+        Assert.Equal(2_000, order.BonusMinor);
+        Assert.Equal(MemberTopupStatus.Paid, order.Status);
+    }
 }

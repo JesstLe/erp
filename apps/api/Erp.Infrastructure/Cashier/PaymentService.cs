@@ -179,7 +179,8 @@ internal sealed class PaymentService(ErpDbContext db, TimeProvider clock, IHttpC
             if (order.Version != command.ExpectedVersion) return await FailureAndRollback<PaymentDto>(transaction, "VERSION_CONFLICT", "消费单已变化，请刷新后重试", cancellationToken);
             if (order.Status != ServiceOrderStatus.PendingPayment)
                 return await FailureAndRollback<PaymentDto>(transaction, "STATE_TRANSITION_NOT_ALLOWED", "只有待支付消费单可以结算", cancellationToken);
-            if (await db.Payments.AnyAsync(x => x.OrderId == order.Id && x.Status != PaymentStatus.Cancelled, cancellationToken))
+            if (await db.Payments.AnyAsync(x => x.BusinessType == PaymentBusinessType.ServiceOrder &&
+                    x.BusinessId == order.Id && x.Status != PaymentStatus.Cancelled, cancellationToken))
                 return await FailureAndRollback<PaymentDto>(transaction, "PAYMENT_ALREADY_EXISTS", "该消费单已经存在支付结果", cancellationToken);
             var methodIds = command.Allocations.Select(x => x.MethodId).Distinct().ToList();
             if (methodIds.Count != command.Allocations.Count)
@@ -275,7 +276,8 @@ internal sealed class PaymentService(ErpDbContext db, TimeProvider clock, IHttpC
             TraceId = httpContextAccessor.HttpContext?.TraceIdentifier ?? "background", OccurredAtUtc = now });
 
     private static PaymentDto ToDto(Payment payment) => new(payment.Id, payment.PaymentNo, payment.OrderId,
-        payment.Status.ToString(), payment.Currency, payment.ReceivableMinor, payment.PaidMinor, payment.PaidAtUtc,
+        payment.BusinessType.ToString(), payment.BusinessId, payment.Status.ToString(), payment.Currency,
+        payment.ReceivableMinor, payment.PaidMinor, payment.PaidAtUtc,
         payment.Allocations.OrderBy(x => x.CreatedAtUtc).Select(x => new PaymentAllocationDto(x.Id, x.MethodId,
             x.MethodCodeSnapshot, x.MethodNameSnapshot, x.Category.ToString(), x.AmountMinor, x.ExternalReference,
             x.ConfirmationStatus.ToString(), x.ReconciliationStatus.ToString(), x.ShiftId)).ToList());

@@ -48,6 +48,20 @@ public sealed class PaymentTests
             [new(Guid.CreateVersion7(), "CASH", "现金", PaymentMethodCategory.Cash, 10_000, null, null)]));
     }
 
+    [Fact]
+    public void MemberTopupPaymentCarriesBusinessSourceWithoutServiceOrderLink()
+    {
+        var businessId = Guid.CreateVersion7();
+        var payment = new Payment(Guid.CreateVersion7(), Guid.CreateVersion7(),
+            PaymentBusinessType.MemberTopup, businessId, "PAY202608180002", 10_000,
+            [new(Guid.CreateVersion7(), "CASH", "现金", PaymentMethodCategory.Cash, 10_000, null,
+                Guid.CreateVersion7())], new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero));
+
+        Assert.Equal(PaymentBusinessType.MemberTopup, payment.BusinessType);
+        Assert.Equal(businessId, payment.BusinessId);
+        Assert.Null(payment.OrderId);
+    }
+
     private static Payment CreatePayment(long receivable, IEnumerable<PaymentAllocationDraft> allocations) =>
         new(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "PAY202608180001", receivable,
             allocations, new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero));

@@ -6,6 +6,7 @@ public enum PaymentMethodCategory { Cash, ManualExternal, InternalAccount }
 public enum PaymentStatus { Processing, Paid, Cancelled, ReversalRequired }
 public enum PaymentConfirmationStatus { CashRecorded, ManualPendingReconciliation, InternalConfirmed, ChannelConfirmed, Failed, Cancelled }
 public enum ReconciliationStatus { NotRequired, Pending, Matched, Difference, Resolved }
+public enum PaymentBusinessType { ServiceOrder, MemberTopup }
 
 public sealed class PaymentMethod : Entity
 {
@@ -44,11 +45,21 @@ public sealed class Payment : Entity
     private Payment() { }
 
     public Payment(Guid tenantId, Guid storeId, Guid orderId, string paymentNo, long receivableMinor,
-        IEnumerable<PaymentAllocationDraft> allocations, DateTimeOffset now) : base(tenantId)
+        IEnumerable<PaymentAllocationDraft> allocations, DateTimeOffset now)
+        : this(tenantId, storeId, PaymentBusinessType.ServiceOrder, orderId, paymentNo, receivableMinor,
+            allocations, now)
+    {
+    }
+
+    public Payment(Guid tenantId, Guid storeId, PaymentBusinessType businessType, Guid businessId,
+        string paymentNo, long receivableMinor, IEnumerable<PaymentAllocationDraft> allocations,
+        DateTimeOffset now) : base(tenantId)
     {
         if (receivableMinor < 0) throw new DomainRuleException("VALIDATION_FAILED", "应收金额不能为负数");
         StoreId = storeId;
-        OrderId = orderId;
+        BusinessType = businessType;
+        BusinessId = businessId;
+        OrderId = businessType == PaymentBusinessType.ServiceOrder ? businessId : null;
         PaymentNo = Required(paymentNo, 40, "支付单号");
         ReceivableMinor = receivableMinor;
         Status = PaymentStatus.Processing;
@@ -64,7 +75,9 @@ public sealed class Payment : Entity
     }
 
     public Guid StoreId { get; private set; }
-    public Guid OrderId { get; private set; }
+    public Guid? OrderId { get; private set; }
+    public PaymentBusinessType BusinessType { get; private set; }
+    public Guid BusinessId { get; private set; }
     public string PaymentNo { get; private set; } = string.Empty;
     public PaymentStatus Status { get; private set; }
     public string Currency { get; private set; } = "CNY";

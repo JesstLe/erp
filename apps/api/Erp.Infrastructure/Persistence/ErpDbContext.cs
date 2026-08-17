@@ -51,6 +51,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<MemberCard> MemberCards => Set<MemberCard>();
     public DbSet<MemberAccount> MemberAccounts => Set<MemberAccount>();
     public DbSet<MemberAccountLedger> MemberAccountLedgers => Set<MemberAccountLedger>();
+    public DbSet<MemberTopupOrder> MemberTopupOrders => Set<MemberTopupOrder>();
     public DbSet<ServiceOrder> ServiceOrders => Set<ServiceOrder>();
     public DbSet<ServiceOrderLine> ServiceOrderLines => Set<ServiceOrderLine>();
     public DbSet<PaymentMethod> PaymentMethods => Set<PaymentMethod>();
@@ -453,6 +454,25 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.CommandId).HasColumnName("command_id");
             entity.Property(x => x.OccurredAtUtc).HasColumnName("occurred_at_utc");
             entity.HasIndex(x => new { x.AccountId, x.OccurredAtUtc });
+            entity.HasIndex(x => new { x.AccountId, x.CommandId }).IsUnique();
+        });
+        builder.Entity<MemberTopupOrder>(entity =>
+        {
+            entity.ToTable("member_topup_orders");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.CardId).HasColumnName("card_id");
+            entity.Property(x => x.TopupNo).HasColumnName("topup_no").HasMaxLength(40);
+            entity.Property(x => x.PrincipalMinor).HasColumnName("principal_minor");
+            entity.Property(x => x.BonusMinor).HasColumnName("bonus_minor");
+            entity.Property(x => x.ReceivableMinor).HasColumnName("receivable_minor");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(32);
+            entity.Property(x => x.Note).HasColumnName("note").HasMaxLength(500);
+            entity.Property(x => x.PaidAtUtc).HasColumnName("paid_at_utc");
+            entity.HasIndex(x => new { x.TenantId, x.TopupNo }).IsUnique();
+            entity.HasIndex(x => new { x.StoreId, x.PaidAtUtc });
+            entity.HasIndex(x => new { x.CustomerId, x.PaidAtUtc });
         });
     }
 
@@ -534,6 +554,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             ConfigureBase(entity);
             entity.Property(x => x.StoreId).HasColumnName("store_id");
             entity.Property(x => x.OrderId).HasColumnName("order_id");
+            entity.Property(x => x.BusinessType).HasColumnName("business_type").HasConversion<string>().HasMaxLength(32);
+            entity.Property(x => x.BusinessId).HasColumnName("business_id");
             entity.Property(x => x.PaymentNo).HasColumnName("payment_no").HasMaxLength(40);
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(32);
             entity.Property(x => x.Currency).HasColumnName("currency").HasMaxLength(3);
@@ -543,7 +565,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasMany(x => x.Allocations).WithOne().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
             entity.Navigation(x => x.Allocations).UsePropertyAccessMode(PropertyAccessMode.Field);
             entity.HasIndex(x => new { x.TenantId, x.PaymentNo }).IsUnique();
-            entity.HasIndex(x => x.OrderId).IsUnique();
+            entity.HasIndex(x => x.OrderId).IsUnique().HasFilter("order_id IS NOT NULL");
+            entity.HasIndex(x => new { x.TenantId, x.BusinessType, x.BusinessId }).IsUnique();
         });
         builder.Entity<PaymentAllocation>(entity =>
         {
