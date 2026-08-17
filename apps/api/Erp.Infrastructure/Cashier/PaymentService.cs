@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -6,6 +7,8 @@ using Erp.Application.Cashier;
 using Erp.Application.Common;
 using Erp.Domain.Cashier;
 using Erp.Domain.Common;
+using Erp.Domain.Customers;
+using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -14,12 +17,14 @@ using Npgsql;
 
 namespace Erp.Infrastructure.Cashier;
 
-internal sealed class PaymentService(ErpDbContext db, TimeProvider clock, IHttpContextAccessor httpContextAccessor) : IPaymentService
+internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService privacy, TimeProvider clock,
+    IHttpContextAccessor httpContextAccessor) : IPaymentService
 {
     public async Task<IReadOnlyList<PaymentMethodDto>> ListMethodsAsync(Guid tenantId, CancellationToken cancellationToken) =>
         await db.PaymentMethods.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsEnabled)
             .OrderBy(x => x.Code).Select(x => new PaymentMethodDto(x.Id, x.Code, x.Name, x.Category.ToString(),
-                x.RequiresOpenShift)).ToListAsync(cancellationToken);
+                x.RequiresOpenShift, x.InternalAccountType == null ? null : x.InternalAccountType.ToString()))
+            .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<PaymentDto>> ListPaymentsAsync(Guid tenantId, Guid storeId,
         CancellationToken cancellationToken)
@@ -166,7 +171,19 @@ internal sealed class PaymentService(ErpDbContext db, TimeProvider clock, IHttpC
     {
         if (command.CommandId == Guid.Empty) return ResultFactory.Failure<PaymentDto>("VALIDATION_FAILED", "缺少幂等请求号");
         if (command.Allocations.Count is 0 or > 20) return ResultFactory.Failure<PaymentDto>("PAYMENT_ALLOCATION_UNBALANCED", "支付分摊需要1到20行");
-        var hash = RequestHash(JsonSerializer.Serialize(command with { OperatorId = Guid.Empty }));
+        if (command.Allocations.Any(x => x.AmountMinor <= 0 || x.AmountMinor > 10_000_000_000))
+            return ResultFactory.Failure<PaymentDto>("VALIDATION_FAILED", "支付分摊金额必须大于0且不超过允许范围");
+        string? mobileIdentity = null;
+        if (!string.IsNullOrWhiteSpace(command.VerifiedMobile))
+        {
+            try { mobileIdentity = Convert.ToHexString(privacy.Hash(command.VerifiedMobile)); }
+            catch (ArgumentException exception)
+            {
+                return ResultFactory.Failure<PaymentDto>("VALIDATION_FAILED", exception.Message);
+            }
+        }
+        var hash = RequestHash(JsonSerializer.Serialize(command with
+        { OperatorId = Guid.Empty, VerifiedMobile = mobileIdentity }));
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var replay = await ReplayAsync(tenantId, command.CommandId, hash,
             async id => await GetPaymentAsync(tenantId, command.StoreId, id, cancellationToken), cancellationToken);
@@ -189,6 +206,61 @@ internal sealed class PaymentService(ErpDbContext db, TimeProvider clock, IHttpC
                 .ToDictionaryAsync(x => x.Id, cancellationToken);
             if (methods.Count != methodIds.Count)
                 return await FailureAndRollback<PaymentDto>(transaction, "PAYMENT_METHOD_NOT_FOUND", "支付方式不存在或已停用", cancellationToken);
+            var memberLines = command.Allocations.Where(x =>
+                methods[x.MethodId].Category == PaymentMethodCategory.InternalAccount).ToList();
+            Dictionary<Guid, MemberAccount> memberAccounts = [];
+            long memberAmountMinor = 0;
+            MemberVerificationChallenge? verificationChallenge = null;
+            if (memberLines.Count > 0)
+            {
+                if (order.CustomerId is null)
+                    return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_CUSTOMER_REQUIRED",
+                        "消费单必须关联有效会员后才能使用会员账户", cancellationToken);
+                if (mobileIdentity is null)
+                    return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_MOBILE_REQUIRED",
+                        "使用会员账户前必须核对完整手机号", cancellationToken);
+                var customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == order.CustomerId &&
+                    x.TenantId == tenantId && x.HomeStoreId == command.StoreId &&
+                    x.Status == CustomerStatus.Active, cancellationToken);
+                if (customer is null || !CryptographicOperations.FixedTimeEquals(customer.MobileLookupHash,
+                    Convert.FromHexString(mobileIdentity)))
+                    return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_MOBILE_MISMATCH",
+                        "完整手机号与消费单会员不一致", cancellationToken);
+                var accountIds = memberLines.Select(x => x.MemberAccountId).Where(x => x.HasValue)
+                    .Select(x => x!.Value).Distinct().ToList();
+                if (accountIds.Count != memberLines.Count)
+                    return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_ACCOUNT_REQUIRED",
+                        "每条会员支付分摊必须选择不同的会员账户", cancellationToken);
+                memberAccounts = await db.MemberAccounts.Where(x => x.TenantId == tenantId &&
+                    x.CustomerId == order.CustomerId && accountIds.Contains(x.Id) &&
+                    x.Status == MemberAccountStatus.Active).ToDictionaryAsync(x => x.Id, cancellationToken);
+                if (memberAccounts.Count != accountIds.Count)
+                    return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_ACCOUNT_NOT_FOUND",
+                        "会员账户不存在、已停用或不属于当前顾客", cancellationToken);
+                foreach (var line in memberLines)
+                {
+                    var method = methods[line.MethodId];
+                    var account = memberAccounts[line.MemberAccountId!.Value];
+                    if (method.InternalAccountType != account.AccountType)
+                        return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_ACCOUNT_TYPE_MISMATCH",
+                            "会员支付方式与所选账户类型不一致", cancellationToken);
+                }
+                memberAmountMinor = checked(memberLines.Sum(x => x.AmountMinor));
+                if (memberAmountMinor >= 50_000)
+                {
+                    if (command.VerificationChallengeId is null)
+                        return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_VERIFICATION_REQUIRED",
+                            "本次会员账户扣款达到500元，必须先完成一次性验证码核验", cancellationToken);
+                    verificationChallenge = await db.MemberVerificationChallenges.SingleOrDefaultAsync(x =>
+                        x.Id == command.VerificationChallengeId && x.TenantId == tenantId &&
+                        x.StoreId == command.StoreId, cancellationToken);
+                    if (verificationChallenge is null)
+                        return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_VERIFICATION_NOT_FOUND",
+                            "会员验证码挑战不存在", cancellationToken);
+                    verificationChallenge.Consume(order.Id, order.CustomerId.Value, memberAmountMinor,
+                        clock.GetUtcNow());
+                }
+            }
             CashierShift? shift = null;
             if (methods.Values.Any(x => x.RequiresOpenShift))
             {
@@ -203,11 +275,22 @@ internal sealed class PaymentService(ErpDbContext db, TimeProvider clock, IHttpC
             {
                 var method = methods[line.MethodId];
                 return new PaymentAllocationDraft(method.Id, method.Code, method.Name, method.Category, line.AmountMinor,
-                    line.ExternalReference, method.RequiresOpenShift ? shift?.Id : null);
+                    line.ExternalReference, method.RequiresOpenShift ? shift?.Id : null,
+                    method.Category == PaymentMethodCategory.InternalAccount ? line.MemberAccountId : null);
             }).ToList();
             order.BeginCheckout();
             var payment = new Payment(tenantId, command.StoreId, order.Id, CreatePaymentNo(localTime.Value),
                 order.ReceivableMinor, drafts, now);
+            foreach (var line in memberLines)
+            {
+                var account = memberAccounts[line.MemberAccountId!.Value];
+                db.MemberAccountLedgers.Add(account.Debit("ServiceOrder", order.Id, line.AmountMinor,
+                    command.CommandId, now));
+                AddAudit(tenantId, command.StoreId, command.OperatorId, "membership.account.debit",
+                    "MemberAccount", account.Id, null,
+                    account.BalanceUnits.ToString(CultureInfo.InvariantCulture), command.CommandId,
+                    $"消费单 {order.OrderNo}", now);
+            }
             order.Settle(now);
             var visit = await db.Visits.SingleAsync(x => x.Id == order.VisitId && x.TenantId == tenantId, cancellationToken);
             visit.Complete();
@@ -265,22 +348,42 @@ internal sealed class PaymentService(ErpDbContext db, TimeProvider clock, IHttpC
     }
 
     private void AddReceipt(Guid tenantId, Guid commandId, Guid operatorId, byte[] requestHash, Guid entityId, DateTimeOffset now) =>
-        db.IdempotencyCommands.Add(new IdempotencyCommandRecord { CommandId = commandId, TenantId = tenantId,
-            OperatorId = operatorId, RequestHash = requestHash, ResponseStatus = 200,
-            ResponseBody = JsonSerializer.Serialize(new CommandReceipt(entityId)), CreatedAtUtc = now, CompletedAtUtc = now });
+        db.IdempotencyCommands.Add(new IdempotencyCommandRecord
+        {
+            CommandId = commandId,
+            TenantId = tenantId,
+            OperatorId = operatorId,
+            RequestHash = requestHash,
+            ResponseStatus = 200,
+            ResponseBody = JsonSerializer.Serialize(new CommandReceipt(entityId)),
+            CreatedAtUtc = now,
+            CompletedAtUtc = now
+        });
 
     private void AddAudit(Guid tenantId, Guid storeId, Guid operatorId, string action, string entityType, Guid entityId,
         string? previous, string? current, Guid commandId, string? reason, DateTimeOffset now) => db.AuditEvents.Add(new AuditEventRecord
-        { TenantId = tenantId, StoreId = storeId, OperatorId = operatorId, Action = action, EntityType = entityType,
-            EntityId = entityId, PreviousState = previous, CurrentState = current, Reason = reason, RequestId = commandId,
-            TraceId = httpContextAccessor.HttpContext?.TraceIdentifier ?? "background", OccurredAtUtc = now });
+        {
+            TenantId = tenantId,
+            StoreId = storeId,
+            OperatorId = operatorId,
+            Action = action,
+            EntityType = entityType,
+            EntityId = entityId,
+            PreviousState = previous,
+            CurrentState = current,
+            Reason = reason,
+            RequestId = commandId,
+            TraceId = httpContextAccessor.HttpContext?.TraceIdentifier ?? "background",
+            OccurredAtUtc = now
+        });
 
     private static PaymentDto ToDto(Payment payment) => new(payment.Id, payment.PaymentNo, payment.OrderId,
         payment.BusinessType.ToString(), payment.BusinessId, payment.Status.ToString(), payment.Currency,
         payment.ReceivableMinor, payment.PaidMinor, payment.PaidAtUtc,
         payment.Allocations.OrderBy(x => x.CreatedAtUtc).Select(x => new PaymentAllocationDto(x.Id, x.MethodId,
             x.MethodCodeSnapshot, x.MethodNameSnapshot, x.Category.ToString(), x.AmountMinor, x.ExternalReference,
-            x.ConfirmationStatus.ToString(), x.ReconciliationStatus.ToString(), x.ShiftId)).ToList());
+            x.ConfirmationStatus.ToString(), x.ReconciliationStatus.ToString(), x.ShiftId,
+            x.MemberAccountId)).ToList());
 
     private static CashierShiftDto ToDto(CashierShift shift) => new(shift.Id, shift.ShiftNo, shift.OperatorId,
         shift.Status.ToString(), shift.OpeningCashMinor, shift.ExpectedCashMinor, shift.SubmittedCashMinor,

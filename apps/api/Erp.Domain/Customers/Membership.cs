@@ -100,6 +100,22 @@ public sealed class MemberAccount : Entity
         return new MemberAccountLedger(TenantId, Id, businessType, businessId, LedgerDirection.Credit,
             units, before, BalanceUnits, commandId, occurredAtUtc);
     }
+
+    public MemberAccountLedger Debit(string businessType, Guid businessId, long units, Guid commandId,
+        DateTimeOffset occurredAtUtc)
+    {
+        if (Status != MemberAccountStatus.Active)
+            throw new DomainRuleException("MEMBER_ACCOUNT_NOT_ACTIVE", "会员账户当前不可扣款");
+        if (units <= 0 || units > 10_000_000_000)
+            throw new DomainRuleException("VALIDATION_FAILED", "扣款金额必须大于0且不超过允许范围");
+        if (BalanceUnits < units)
+            throw new DomainRuleException("INSUFFICIENT_MEMBER_BALANCE", "会员账户余额不足");
+        var before = BalanceUnits;
+        BalanceUnits -= units;
+        Touch();
+        return new MemberAccountLedger(TenantId, Id, businessType, businessId, LedgerDirection.Debit,
+            units, before, BalanceUnits, commandId, occurredAtUtc);
+    }
 }
 
 public sealed class MemberAccountLedger : Entity

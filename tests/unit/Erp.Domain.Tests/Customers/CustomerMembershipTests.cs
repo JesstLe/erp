@@ -79,4 +79,43 @@ public sealed class CustomerMembershipTests
         Assert.Equal(2_000, order.BonusMinor);
         Assert.Equal(MemberTopupStatus.Paid, order.Status);
     }
+
+    [Fact]
+    public void MemberDebitRejectsInsufficientBalanceAndWritesAReverseDirectionLedger()
+    {
+        var account = new MemberAccount(TenantId, Guid.CreateVersion7(), Guid.CreateVersion7(),
+            MemberAccountType.Principal);
+        var topupId = Guid.CreateVersion7();
+        var orderId = Guid.CreateVersion7();
+        var now = new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero);
+        account.Credit("MemberTopup", topupId, 20_000, Guid.CreateVersion7(), now);
+
+        var ledger = account.Debit("ServiceOrder", orderId, 8_000, Guid.CreateVersion7(), now);
+
+        Assert.Equal(12_000, account.BalanceUnits);
+        Assert.Equal(LedgerDirection.Debit, ledger.Direction);
+        Assert.Equal(20_000, ledger.BalanceBefore);
+        Assert.Equal(12_000, ledger.BalanceAfter);
+        Assert.Throws<DomainRuleException>(() => account.Debit("ServiceOrder", orderId, 12_001,
+            Guid.CreateVersion7(), now));
+    }
+
+    [Fact]
+    public void VerificationChallengeLimitsAttemptsAndCanOnlyAuthorizeItsExactOrderAndAmountOnce()
+    {
+        var expectedHash = Enumerable.Repeat((byte)7, 32).ToArray();
+        var now = new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero);
+        var orderId = Guid.CreateVersion7();
+        var customerId = Guid.CreateVersion7();
+        var challenge = new MemberVerificationChallenge(TenantId, StoreId, customerId, orderId,
+            50_000, new byte[16], expectedHash, "5678", Guid.CreateVersion7(), now.AddMinutes(5));
+
+        Assert.False(challenge.Verify(new byte[32], now));
+        Assert.Equal(4, challenge.AttemptsRemaining);
+        Assert.True(challenge.Verify(expectedHash, now));
+        challenge.Consume(orderId, customerId, 50_000, now);
+
+        Assert.Equal(MemberVerificationStatus.Used, challenge.Status);
+        Assert.Throws<DomainRuleException>(() => challenge.Consume(orderId, customerId, 50_000, now));
+    }
 }

@@ -1,4 +1,5 @@
 using Erp.Domain.Common;
+using Erp.Domain.Customers;
 
 namespace Erp.Domain.Cashier;
 
@@ -12,12 +13,16 @@ public sealed class PaymentMethod : Entity
 {
     private PaymentMethod() { }
 
-    public PaymentMethod(Guid tenantId, string code, string name, PaymentMethodCategory category, bool requiresOpenShift)
+    public PaymentMethod(Guid tenantId, string code, string name, PaymentMethodCategory category,
+        bool requiresOpenShift, MemberAccountType? internalAccountType = null)
         : base(tenantId)
     {
         Code = Required(code, 40, "支付方式编号").ToUpperInvariant();
         Name = Required(name, 80, "支付方式名称");
         Category = category;
+        if ((category == PaymentMethodCategory.InternalAccount) != internalAccountType.HasValue)
+            throw new DomainRuleException("VALIDATION_FAILED", "内部会员支付方式必须指定且只能指定账户类型");
+        InternalAccountType = internalAccountType;
         RequiresOpenShift = requiresOpenShift;
         IsEnabled = true;
     }
@@ -25,6 +30,7 @@ public sealed class PaymentMethod : Entity
     public string Code { get; private set; } = string.Empty;
     public string Name { get; private set; } = string.Empty;
     public PaymentMethodCategory Category { get; private set; }
+    public MemberAccountType? InternalAccountType { get; private set; }
     public bool RequiresOpenShift { get; private set; }
     public bool IsEnabled { get; private set; }
 
@@ -37,7 +43,8 @@ public sealed class PaymentMethod : Entity
 }
 
 public sealed record PaymentAllocationDraft(Guid MethodId, string MethodCode, string MethodName,
-    PaymentMethodCategory Category, long AmountMinor, string? ExternalReference, Guid? ShiftId);
+    PaymentMethodCategory Category, long AmountMinor, string? ExternalReference, Guid? ShiftId,
+    Guid? MemberAccountId = null);
 
 public sealed class Payment : Entity
 {
@@ -65,7 +72,8 @@ public sealed class Payment : Entity
         Status = PaymentStatus.Processing;
         foreach (var draft in allocations)
             _allocations.Add(new PaymentAllocation(tenantId, Id, draft.MethodId, draft.MethodCode, draft.MethodName,
-                draft.Category, draft.AmountMinor, draft.ExternalReference, draft.ShiftId, now));
+                draft.Category, draft.AmountMinor, draft.ExternalReference, draft.ShiftId, now,
+                draft.MemberAccountId));
         if (_allocations.Count is 0 or > 20) throw new DomainRuleException("PAYMENT_ALLOCATION_UNBALANCED", "支付分摊需要1到20行");
         PaidMinor = checked(_allocations.Sum(x => x.AmountMinor));
         if (PaidMinor != ReceivableMinor)
@@ -99,7 +107,8 @@ public sealed class PaymentAllocation : Entity
     private PaymentAllocation() { }
 
     internal PaymentAllocation(Guid tenantId, Guid paymentId, Guid methodId, string methodCode, string methodName,
-        PaymentMethodCategory category, long amountMinor, string? externalReference, Guid? shiftId, DateTimeOffset now)
+        PaymentMethodCategory category, long amountMinor, string? externalReference, Guid? shiftId, DateTimeOffset now,
+        Guid? memberAccountId = null)
         : base(tenantId)
     {
         if (amountMinor <= 0 || amountMinor > 10_000_000_000)
@@ -110,6 +119,8 @@ public sealed class PaymentAllocation : Entity
         if (reference?.Length > 100) throw new DomainRuleException("VALIDATION_FAILED", "交易参考号最多100字");
         if (category is PaymentMethodCategory.Cash or PaymentMethodCategory.ManualExternal && shiftId is null)
             throw new DomainRuleException("SHIFT_NOT_OPEN", "现金或人工外部收款必须归入当前班次");
+        if ((category == PaymentMethodCategory.InternalAccount) != memberAccountId.HasValue)
+            throw new DomainRuleException("VALIDATION_FAILED", "会员账户支付必须且只能关联一个会员账户");
         PaymentId = paymentId;
         MethodId = methodId;
         MethodCodeSnapshot = methodCode.Trim();
@@ -118,6 +129,7 @@ public sealed class PaymentAllocation : Entity
         AmountMinor = amountMinor;
         ExternalReference = reference;
         ShiftId = shiftId;
+        MemberAccountId = memberAccountId;
         ConfirmationStatus = category switch
         {
             PaymentMethodCategory.Cash => PaymentConfirmationStatus.CashRecorded,
@@ -137,6 +149,7 @@ public sealed class PaymentAllocation : Entity
     public long AmountMinor { get; private set; }
     public string? ExternalReference { get; private set; }
     public Guid? ShiftId { get; private set; }
+    public Guid? MemberAccountId { get; private set; }
     public PaymentConfirmationStatus ConfirmationStatus { get; private set; }
     public ReconciliationStatus ReconciliationStatus { get; private set; }
     public DateTimeOffset ConfirmedAtUtc { get; private set; }

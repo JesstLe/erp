@@ -163,7 +163,8 @@ internal sealed class MemberTopupService(ErpDbContext db, TimeProvider clock,
         payment.Id, payment.PaymentNo, payment.Allocations.OrderBy(x => x.CreatedAtUtc)
             .Select(x => new PaymentAllocationDto(x.Id, x.MethodId, x.MethodCodeSnapshot,
                 x.MethodNameSnapshot, x.Category.ToString(), x.AmountMinor, x.ExternalReference,
-                x.ConfirmationStatus.ToString(), x.ReconciliationStatus.ToString(), x.ShiftId)).ToList());
+                x.ConfirmationStatus.ToString(), x.ReconciliationStatus.ToString(), x.ShiftId,
+                x.MemberAccountId)).ToList());
 
     private async Task<Result<MemberTopupDto>?> ReplayAsync(Guid tenantId, Guid commandId, byte[] hash,
         Func<Guid, Task<Result<MemberTopupDto>>> load, CancellationToken cancellationToken)

@@ -87,6 +87,7 @@ button, input { font: inherit; }
 .topup-history { margin-top: 10px; }
 .topup-history > div { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .topup-history > div:nth-child(2) { color: #64748b; font-size: 12px; flex-wrap: wrap; }
+.member-verification-card { margin-top: 16px; background: #f8fafc; }
 .cashier-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .cashier-metrics .ant-card { box-shadow: 0 6px 24px rgba(31,55,75,.04); }
 .shift-strip > .ant-card-body > div { display: flex; align-items: center; gap: 34px; }

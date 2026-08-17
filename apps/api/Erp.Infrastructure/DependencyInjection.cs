@@ -30,9 +30,14 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("ErpDatabase")
             ?? throw new InvalidOperationException("缺少 ConnectionStrings:ErpDatabase 配置");
         var customerLookupPepper = configuration["CustomerPrivacy:LookupPepper"];
+        var memberVerificationPepper = configuration["MemberVerification:CodePepper"];
         if (!environment.IsDevelopment() && (string.IsNullOrWhiteSpace(customerLookupPepper) || customerLookupPepper.Length < 32 ||
             customerLookupPepper.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("生产环境必须配置至少32字符的 CustomerPrivacy:LookupPepper，且不能使用模板占位值");
+        if (!environment.IsDevelopment() && (string.IsNullOrWhiteSpace(memberVerificationPepper) ||
+            memberVerificationPepper.Length < 32 ||
+            memberVerificationPepper.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("生产环境必须配置至少32字符的 MemberVerification:CodePepper，且不能使用模板占位值");
 
         services.AddDbContext<ErpDbContext>(options => options.UseNpgsql(connectionString));
         services.AddDataProtection().SetApplicationName("Erp");
@@ -81,6 +86,8 @@ public static class DependencyInjection
         services.AddScoped<CustomerPrivacyService>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IMemberTopupService, MemberTopupService>();
+        services.AddScoped<MemberVerificationCodeService>();
+        services.AddScoped<IMemberVerificationService, MemberVerificationService>();
         services.AddScoped<ICashierService, CashierService>();
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<IAuditQueryService, AuditQueryService>();

@@ -16,9 +16,10 @@
 6. [服务录单与金额确认](05-service-order-and-price-confirmation.md)
 7. [现金、人工外部收款与收银交班](06-payments-and-cashier-shifts.md)
 8. [会员储值与资金分账](11-member-topups.md)
-9. 会员余额扣款、真实渠道与退款（继续开发）
-10. [审计记录](07-audit-events.md)
-11. [经营工作台与经营报表](08-dashboard-and-operations-reports.md)
-12. [员工、登录账号与门店权限](09-employees-accounts-and-permissions.md)
+9. [会员余额消费与手机号验证](12-member-balance-payments.md)
+10. 真实渠道与退款（继续开发）
+11. [审计记录](07-audit-events.md)
+12. [经营工作台与经营报表](08-dashboard-and-operations-reports.md)
+13. [员工、登录账号与门店权限](09-employees-accounts-and-permissions.md)
 
 截图统一保存在 `docs/user-manual/assets/`，示例数据必须是本地虚构数据，不得包含参考系统里的真实顾客、员工、手机号或资金信息。

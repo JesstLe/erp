@@ -41,6 +41,15 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0,
             AutoReplenishment = true,
         }));
+    options.AddPolicy("member-verification", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.Identity?.Name ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 20,
+            Window = TimeSpan.FromMinutes(15),
+            QueueLimit = 0,
+            AutoReplenishment = true,
+        }));
 });
 builder.Services.AddAuthorization();
 builder.Services.AddErpInfrastructure(builder.Configuration, builder.Environment);
@@ -154,6 +163,7 @@ app.MapCatalogEndpoints();
 app.MapFacilityEndpoints();
 app.MapCustomerEndpoints();
 app.MapMemberTopupEndpoints();
+app.MapMemberVerificationEndpoints();
 app.MapCashierEndpoints();
 app.MapPaymentEndpoints();
 app.MapAuditEndpoints();
