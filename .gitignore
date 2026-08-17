@@ -1,0 +1,37 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+TestResults/
+coverage/
+
+# Node / frontend
+**/node_modules/
+apps/web/dist/
+apps/web/.vite/
+npm-debug.log*
+
+# Browser tests and generated diagnostics
+playwright-report/
+test-results/
+artifacts/runtime/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Local database volumes
+.data/
+
