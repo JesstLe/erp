@@ -12,8 +12,9 @@
 4. [设施接待与独立计时](03-facility-reception-and-timing.md)
 5. [顾客档案与会员账户](04-customers-and-membership.md)
 6. [服务录单与金额确认](05-service-order-and-price-confirmation.md)
-7. 支付、结算与退款（待完成）
-8. 收银交班与审计（待完成）
-9. 经营工作台与报表（待完成）
+7. [现金、人工外部收款与收银交班](06-payments-and-cashier-shifts.md)
+8. 会员储值扣款、真实渠道与退款（待完成）
+9. 审计记录（待完成）
+10. 经营工作台与报表（待完成）
 
 截图统一保存在 `docs/user-manual/assets/`，示例数据必须是本地虚构数据，不得包含参考系统里的真实顾客、员工、手机号或资金信息。

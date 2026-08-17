@@ -76,6 +76,7 @@ public static class DependencyInjection
         services.AddScoped<CustomerPrivacyService>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<ICashierService, CashierService>();
+        services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<Seed.DevelopmentSeeder>();
         return services;
     }

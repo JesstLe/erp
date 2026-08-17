@@ -50,6 +50,20 @@ public sealed class ServiceOrderTests
         Assert.Throws<DomainRuleException>(() => order.Confirm(now.AddMinutes(1)));
     }
 
+    [Fact]
+    public void CheckoutMustPassThroughProcessingBeforeSettlement()
+    {
+        var order = CreateOrder([new(Guid.CreateVersion7(), "S01", "标准服务", 1, null, 10_000, 10_000, null)]);
+        var now = new DateTimeOffset(2026, 8, 18, 6, 0, 0, TimeSpan.Zero);
+        order.Confirm(now);
+
+        Assert.Throws<DomainRuleException>(() => order.Settle(now));
+        order.BeginCheckout();
+        Assert.Equal(ServiceOrderStatus.PaymentProcessing, order.Status);
+        order.Settle(now);
+        Assert.Equal(ServiceOrderStatus.Settled, order.Status);
+    }
+
     private static ServiceOrder CreateOrder(IEnumerable<ServiceOrderLineDraft> lines) => new(Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), null, "SO202608180001", Guid.CreateVersion7(), null, lines);
 }

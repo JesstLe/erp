@@ -2,6 +2,7 @@ using Erp.Application.Security;
 using Erp.Domain.Authorization;
 using Erp.Domain.Facilities;
 using Erp.Domain.Customers;
+using Erp.Domain.Cashier;
 using Erp.Domain.Organization;
 using Erp.Infrastructure.Identity;
 using Erp.Infrastructure.Persistence;
@@ -101,6 +102,14 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
         if (!await dbContext.MemberCardTypes.AnyAsync(x => x.TenantId == tenant.Id, cancellationToken))
         {
             dbContext.MemberCardTypes.Add(new MemberCardType(tenant.Id, "STANDARD", "标准会员", null));
+        }
+
+        if (!await dbContext.PaymentMethods.AnyAsync(x => x.TenantId == tenant.Id, cancellationToken))
+        {
+            dbContext.PaymentMethods.AddRange(
+                new PaymentMethod(tenant.Id, "CASH", "现金", PaymentMethodCategory.Cash, true),
+                new PaymentMethod(tenant.Id, "WECHAT_MANUAL", "微信人工登记", PaymentMethodCategory.ManualExternal, true),
+                new PaymentMethod(tenant.Id, "ALIPAY_MANUAL", "支付宝人工登记", PaymentMethodCategory.ManualExternal, true));
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
