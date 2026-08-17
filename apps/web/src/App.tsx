@@ -10,6 +10,7 @@ import { ComingSoonPage } from './pages/ComingSoonPage'
 import { FacilitiesPage } from './pages/FacilitiesPage'
 import { CustomersPage } from './pages/CustomersPage'
 import { CashierPage } from './pages/CashierPage'
+import { AuditPage } from './pages/AuditPage'
 import './styles.css'
 
 function ProtectedRoute() {
@@ -20,5 +21,5 @@ function ProtectedRoute() {
 }
 
 export default function App() {
-  return <Routes><Route path="/login" element={<LoginPage />} /><Route element={<ProtectedRoute />}><Route element={<AppLayout />}><Route index element={<DashboardPage />} /><Route path="catalog/items" element={<ServiceItemsPage />} /><Route path="catalog/prices" element={<PriceBooksPage />} /><Route path="facilities" element={<FacilitiesPage />} /><Route path="customers" element={<CustomersPage />} /><Route path="cashier" element={<CashierPage />} /><Route path="reports" element={<ComingSoonPage title="经营报表" />} /><Route path="audit" element={<ComingSoonPage title="审计记录" />} /></Route></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes>
+  return <Routes><Route path="/login" element={<LoginPage />} /><Route element={<ProtectedRoute />}><Route element={<AppLayout />}><Route index element={<DashboardPage />} /><Route path="catalog/items" element={<ServiceItemsPage />} /><Route path="catalog/prices" element={<PriceBooksPage />} /><Route path="facilities" element={<FacilitiesPage />} /><Route path="customers" element={<CustomersPage />} /><Route path="cashier" element={<CashierPage />} /><Route path="reports" element={<ComingSoonPage title="经营报表" />} /><Route path="audit" element={<AuditPage />} /></Route></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes>
 }
