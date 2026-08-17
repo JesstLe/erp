@@ -60,4 +60,16 @@ button, input { font: inherit; }
 .price-entry-list span { display: flex; flex-direction: column; gap: 3px; }
 .price-entry-list small { color: #8794a6; }
 .price-entry-list .ant-form-item { margin: 0; }
+.facility-group > h4.ant-typography { margin: 4px 0 14px; }
+.facility-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); gap: 16px; }
+.facility-card { min-height: 250px; border: 1px solid transparent; box-shadow: 0 8px 26px rgba(31,55,75,.05); }
+.facility-card.status-available { border-color: #d8eee9; }
+.facility-card.status-in_use { border-color: #b9ddd9; background: linear-gradient(145deg,#fff,#f3fffc); }
+.facility-card.status-paused { border-color: #f2d7a7; background: #fffaf1; }
+.facility-card.status-cleaning_required { border-color: #d8caef; background: #fbf8ff; }
+.facility-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+.facility-card-head h4.ant-typography { margin: 5px 0 0; }
+.facility-card .ant-statistic { margin-bottom: 18px; }
+.facility-card .ant-statistic-content { color: #156f69; font-variant-numeric: tabular-nums; }
+.facility-session-copy { min-height: 48px; display: flex; flex-direction: column; gap: 3px; margin-bottom: 16px; color: #78869a; font-size: 12px; }
 @media (max-width: 1280px) { .app-content { padding: 22px; } .login-brand-panel { padding-inline: 6vw; } }

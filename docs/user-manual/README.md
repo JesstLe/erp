@@ -9,7 +9,7 @@
 1. [本地启动、登录与权限](01-local-login-and-permissions.md)
 2. [服务项目与价格版本](02-service-items-and-pricing.md)
 3. 产品与库存（待完成）
-4. 设施接待与计时（待完成）
+4. [设施接待与独立计时](03-facility-reception-and-timing.md)
 5. 顾客与会员（待完成）
 6. 服务录单与收银支付（待完成）
 7. 收银交班与审计（待完成）
