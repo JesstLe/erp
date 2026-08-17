@@ -4,8 +4,10 @@ export interface EmployeeStore { id: string; code: string; name: string; isPrima
 export interface Employee { id: string; employeeNo: string; displayName: string; positionCode: string; status: string; userId?: string; account?: string; accountEnabled?: boolean; mustChangePassword?: boolean; roles: string[]; stores: EmployeeStore[]; createdAtUtc: string }
 export interface EmployeeRole { id: string; code: string; name: string }
 export interface ServiceItem { id: string; code: string; name: string; standardDurationMinutes: number; status: string; version: number }
+export interface ProductItem { id: string; code: string; name: string; unitName: string; trackInventory: boolean; status: string; version: number }
 export interface PriceBookLine { serviceItemId: string; serviceItemName: string; unitPriceMinor: number }
-export interface PriceBook { id: string; name: string; status: string; effectiveFrom: string; publishedAtUtc?: string; lines: PriceBookLine[] }
+export interface ProductPriceBookLine { productItemId: string; productItemName: string; unitName: string; unitPriceMinor: number }
+export interface PriceBook { id: string; name: string; status: string; effectiveFrom: string; publishedAtUtc?: string; lines: PriceBookLine[]; productLines: ProductPriceBookLine[] }
 
 export interface FacilityGroup { id: string; displayName: string; sortOrder: number }
 export interface FacilityType { id: string; displayName: string }

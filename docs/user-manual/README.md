@@ -8,7 +8,7 @@
 
 1. [本地启动、登录与权限](01-local-login-and-permissions.md)
 2. [服务项目与价格版本](02-service-items-and-pricing.md)
-3. 产品目录（待完成）
+3. [产品目录与版本化标准价](10-product-catalog-and-pricing.md)
 4. [设施接待与独立计时](03-facility-reception-and-timing.md)
 5. [顾客档案与会员账户](04-customers-and-membership.md)
 6. [服务录单与金额确认](05-service-order-and-price-confirmation.md)

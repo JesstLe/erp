@@ -12,6 +12,7 @@ const baseMenuItems: NonNullable<MenuProps['items']> = [
   { key: '/cashier', icon: <PayCircleOutlined />, label: '服务录单与收银' },
   { type: 'divider' },
   { key: '/catalog/items', icon: <DatabaseOutlined />, label: '服务项目' },
+  { key: '/catalog/products', icon: <DatabaseOutlined />, label: '产品目录' },
   { key: '/catalog/prices', icon: <DatabaseOutlined />, label: '价格版本' },
   { key: '/reports', icon: <BarChartOutlined />, label: '经营报表' },
   { key: '/audit', icon: <AuditOutlined />, label: '审计记录' },

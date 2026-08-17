@@ -29,9 +29,13 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
 
     public DbSet<ServiceItem> ServiceItems => Set<ServiceItem>();
 
+    public DbSet<ProductItem> ProductItems => Set<ProductItem>();
+
     public DbSet<PriceBook> PriceBooks => Set<PriceBook>();
 
     public DbSet<PriceBookLine> PriceBookLines => Set<PriceBookLine>();
+
+    public DbSet<ProductPriceBookLine> ProductPriceBookLines => Set<ProductPriceBookLine>();
 
     public DbSet<FacilityGroup> FacilityGroups => Set<FacilityGroup>();
     public DbSet<FacilityType> FacilityTypes => Set<FacilityType>();
@@ -244,6 +248,18 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         });
 
+        builder.Entity<ProductItem>(entity =>
+        {
+            entity.ToTable("catalog_product_items");
+            ConfigureBase(entity);
+            entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(40);
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(120);
+            entity.Property(x => x.UnitName).HasColumnName("unit_name").HasMaxLength(20);
+            entity.Property(x => x.TrackInventory).HasColumnName("track_inventory");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        });
+
         builder.Entity<PriceBook>(entity =>
         {
             entity.ToTable("catalog_price_books");
@@ -255,6 +271,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.PublishedAtUtc).HasColumnName("published_at_utc");
             entity.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.PriceBookId).OnDelete(DeleteBehavior.Cascade);
             entity.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasMany(x => x.ProductLines).WithOne().HasForeignKey(x => x.PriceBookId).OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(x => x.ProductLines).UsePropertyAccessMode(PropertyAccessMode.Field);
         });
 
         builder.Entity<PriceBookLine>(entity =>
@@ -265,6 +283,16 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.ServiceItemId).HasColumnName("service_item_id");
             entity.Property(x => x.UnitPriceMinor).HasColumnName("unit_price_minor");
             entity.HasIndex(x => new { x.PriceBookId, x.ServiceItemId }).IsUnique();
+        });
+
+        builder.Entity<ProductPriceBookLine>(entity =>
+        {
+            entity.ToTable("catalog_price_book_product_lines");
+            ConfigureBase(entity);
+            entity.Property(x => x.PriceBookId).HasColumnName("price_book_id");
+            entity.Property(x => x.ProductItemId).HasColumnName("product_item_id");
+            entity.Property(x => x.UnitPriceMinor).HasColumnName("unit_price_minor");
+            entity.HasIndex(x => new { x.PriceBookId, x.ProductItemId }).IsUnique();
         });
     }
 

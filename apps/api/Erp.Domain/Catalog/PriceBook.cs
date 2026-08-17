@@ -5,6 +5,7 @@ namespace Erp.Domain.Catalog;
 public sealed class PriceBook : Entity
 {
     private readonly List<PriceBookLine> _lines = [];
+    private readonly List<ProductPriceBookLine> _productLines = [];
 
     private PriceBook()
     {
@@ -34,6 +35,8 @@ public sealed class PriceBook : Entity
     public DateTimeOffset? PublishedAtUtc { get; private set; }
 
     public IReadOnlyCollection<PriceBookLine> Lines => _lines;
+
+    public IReadOnlyCollection<ProductPriceBookLine> ProductLines => _productLines;
 
     public void SetPrice(Guid serviceItemId, long unitPriceMinor)
     {
@@ -69,12 +72,52 @@ public sealed class PriceBook : Entity
         Touch();
     }
 
+    public void SetProductPrice(Guid productItemId, long unitPriceMinor)
+    {
+        EnsureDraft();
+        if (unitPriceMinor < 0)
+            throw new DomainRuleException("VALIDATION_FAILED", "价格不能小于0");
+        var existing = _productLines.SingleOrDefault(x => x.ProductItemId == productItemId);
+        if (existing is null)
+            _productLines.Add(new ProductPriceBookLine(TenantId, Id, productItemId, unitPriceMinor));
+        else
+            existing.ChangePrice(unitPriceMinor);
+        Touch();
+    }
+
     private void EnsureDraft()
     {
         if (Status != PriceBookStatus.Draft)
         {
             throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "只有草稿价格版本可以修改");
         }
+    }
+}
+
+public sealed class ProductPriceBookLine : Entity
+{
+    private ProductPriceBookLine()
+    {
+    }
+
+    internal ProductPriceBookLine(Guid tenantId, Guid priceBookId, Guid productItemId, long unitPriceMinor)
+        : base(tenantId)
+    {
+        PriceBookId = priceBookId;
+        ProductItemId = productItemId;
+        UnitPriceMinor = unitPriceMinor;
+    }
+
+    public Guid PriceBookId { get; private set; }
+
+    public Guid ProductItemId { get; private set; }
+
+    public long UnitPriceMinor { get; private set; }
+
+    internal void ChangePrice(long unitPriceMinor)
+    {
+        UnitPriceMinor = unitPriceMinor;
+        Touch();
     }
 }
 
@@ -111,4 +154,3 @@ public enum PriceBookStatus
     Published = 2,
     Retired = 3,
 }
-

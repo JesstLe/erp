@@ -60,6 +60,7 @@ button, input { font: inherit; }
 .price-entry-list span { display: flex; flex-direction: column; gap: 3px; }
 .price-entry-list small { color: #8794a6; }
 .price-entry-list .ant-form-item { margin: 0; }
+.price-section-title { margin-top: 22px !important; }
 .facility-group > h4.ant-typography { margin: 4px 0 14px; }
 .facility-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(280px,1fr)); gap: 16px; }
 .facility-card { min-height: 250px; border: 1px solid transparent; box-shadow: 0 8px 26px rgba(31,55,75,.05); }
