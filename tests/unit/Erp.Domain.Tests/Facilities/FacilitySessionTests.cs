@@ -62,5 +62,20 @@ public sealed class FacilitySessionTests
         Assert.Equal(FacilityId, session.FacilityId);
     }
 
+    [Fact]
+    public void ReportRangeClipsSessionAndPauseIntervals()
+    {
+        var session = CreateSession();
+        session.Pause(Start.AddMinutes(20), OperatorId, Guid.CreateVersion7());
+        session.Resume(Start.AddMinutes(40));
+        session.End(Start.AddHours(2), FacilitySessionEndReason.Completed);
+
+        var seconds = session.GetActiveSecondsInRange(Start.AddMinutes(10), Start.AddMinutes(70), Start.AddHours(3));
+
+        Assert.Equal(40 * 60, seconds);
+        Assert.Equal(0, session.GetActiveSecondsInRange(Start.AddHours(3), Start.AddHours(4), Start.AddHours(4)));
+        Assert.Throws<DomainRuleException>(() => session.GetActiveSecondsInRange(Start, Start, Start));
+    }
+
     private static FacilitySession CreateSession() => new(TenantId, StoreId, FacilityId, VisitId, Start, OperatorId, Guid.CreateVersion7());
 }

@@ -104,4 +104,27 @@ button, input { font: inherit; }
 .audit-entity-select { min-width: 170px; }
 .audit-action { display: flex; flex-direction: column; gap: 2px; }
 .audit-action .ant-typography { font-size: 11px; }
+.report-metric { min-height: 132px; border: 0; box-shadow: 0 6px 24px rgba(31,55,75,.04); }
+.report-metric > .ant-card-body > span { display: block; margin-top: 10px; color: #8390a3; font-size: 12px; }
+.report-metric.warning { background: #fffaf0; }
+.daily-chart { height: 235px; display: flex; align-items: flex-end; justify-content: space-around; gap: 8px; padding: 20px 6px 0; border-bottom: 1px solid #dfe5eb; }
+.daily-column { min-width: 62px; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 5px; }
+.daily-value { color: #64748b; font-size: 11px; white-space: nowrap; }
+.daily-bars { height: 150px; display: flex; align-items: flex-end; gap: 3px; }
+.daily-bars span { width: 18px; border-radius: 5px 5px 0 0; }
+.bar-recorded { background: #23a497; }
+.bar-pending { background: #f5b84b; }
+.daily-column small { color: #94a3b8; white-space: nowrap; }
+.chart-legend { display: flex; gap: 18px; justify-content: flex-end; margin-top: 14px; color: #64748b; font-size: 12px; }
+.chart-legend span { display: flex; align-items: center; gap: 6px; }
+.chart-legend i { width: 9px; height: 9px; border-radius: 3px; }
+.recorded-dot { background: #23a497; }
+.pending-dot { background: #f5b84b; }
+.mix-list, .facility-usage-list { display: flex; flex-direction: column; gap: 18px; min-height: 260px; }
+.mix-list > div > div:first-child, .facility-usage-list > div > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.mix-list span, .facility-usage-list span, .facility-usage-list small { color: #64748b; font-size: 12px; }
+.mix-track { height: 8px; margin: 7px 0; background: #edf2f5; border-radius: 6px; overflow: hidden; }
+.mix-track > span { display: block; height: 100%; min-width: 3px; background: linear-gradient(90deg,#1e9e92,#64c4b9); border-radius: inherit; }
+.mix-track.facility > span { background: linear-gradient(90deg,#3b82f6,#8ab6fa); }
+.report-inline-alert { margin-bottom: 18px; }
 @media (max-width: 1280px) { .app-content { padding: 22px; } .login-brand-panel { padding-inline: 6vw; } }

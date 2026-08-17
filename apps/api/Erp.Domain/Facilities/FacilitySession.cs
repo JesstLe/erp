@@ -73,6 +73,24 @@ public sealed class FacilitySession : Entity
         var elapsed = Math.Max(0, (long)(end - StartedAtUtc).TotalSeconds);
         return Math.Max(0, elapsed - GetPausedSeconds(now));
     }
+
+    public long GetActiveSecondsInRange(DateTimeOffset rangeStart, DateTimeOffset rangeEnd, DateTimeOffset now)
+    {
+        if (rangeEnd <= rangeStart) throw new DomainRuleException("VALIDATION_FAILED", "统计结束时间必须晚于开始时间");
+        var start = StartedAtUtc > rangeStart ? StartedAtUtc : rangeStart;
+        var rawEnd = EndedAtUtc ?? now;
+        var end = rawEnd < rangeEnd ? rawEnd : rangeEnd;
+        if (end <= start) return 0;
+        var seconds = (long)(end - start).TotalSeconds;
+        foreach (var pause in _pauses)
+        {
+            var pauseStart = pause.StartedAtUtc > start ? pause.StartedAtUtc : start;
+            var pauseRawEnd = pause.EndedAtUtc ?? now;
+            var pauseEnd = pauseRawEnd < end ? pauseRawEnd : end;
+            if (pauseEnd > pauseStart) seconds -= (long)(pauseEnd - pauseStart).TotalSeconds;
+        }
+        return Math.Max(0, seconds);
+    }
 }
 
 public sealed class FacilitySessionPause : Entity
