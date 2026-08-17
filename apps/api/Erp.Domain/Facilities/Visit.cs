@@ -37,4 +37,19 @@ public sealed class Visit : Entity
         ServiceEndedAtUtc = now;
         Touch();
     }
+
+    public void LinkCustomer(Guid customerId)
+    {
+        if (Status is VisitStatus.Completed or VisitStatus.Cancelled)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前接待不能关联顾客");
+        CustomerId = customerId;
+        Touch();
+    }
+
+    public void Complete()
+    {
+        if (Status != VisitStatus.ServiceEnded) throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "服务尚未结束，不能完成接待");
+        Status = VisitStatus.Completed;
+        Touch();
+    }
 }

@@ -1,5 +1,6 @@
 using Erp.Domain.Authorization;
 using Erp.Domain.Catalog;
+using Erp.Domain.Cashier;
 using Erp.Domain.Common;
 using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
@@ -42,6 +43,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<MemberCard> MemberCards => Set<MemberCard>();
     public DbSet<MemberAccount> MemberAccounts => Set<MemberAccount>();
     public DbSet<MemberAccountLedger> MemberAccountLedgers => Set<MemberAccountLedger>();
+    public DbSet<ServiceOrder> ServiceOrders => Set<ServiceOrder>();
+    public DbSet<ServiceOrderLine> ServiceOrderLines => Set<ServiceOrderLine>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -65,6 +68,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
         ConfigureCatalog(builder);
         ConfigureFacilities(builder);
         ConfigureCustomers(builder);
+        ConfigureCashier(builder);
         ConfigureSystemRecords(builder);
     }
 
@@ -386,6 +390,47 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.CommandId).HasColumnName("command_id");
             entity.Property(x => x.OccurredAtUtc).HasColumnName("occurred_at_utc");
             entity.HasIndex(x => new { x.AccountId, x.OccurredAtUtc });
+        });
+    }
+
+    private static void ConfigureCashier(ModelBuilder builder)
+    {
+        builder.Entity<ServiceOrder>(entity =>
+        {
+            entity.ToTable("service_orders");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.VisitId).HasColumnName("visit_id");
+            entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.OrderNo).HasColumnName("order_no").HasMaxLength(40);
+            entity.Property(x => x.PriceBookId).HasColumnName("price_book_id");
+            entity.Property(x => x.Note).HasColumnName("note").HasMaxLength(1000);
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(32);
+            entity.Property(x => x.ReferenceAmountMinor).HasColumnName("reference_amount_minor");
+            entity.Property(x => x.ReceivableMinor).HasColumnName("receivable_minor");
+            entity.Property(x => x.ConfirmedAtUtc).HasColumnName("confirmed_at_utc");
+            entity.Property(x => x.SettledAtUtc).HasColumnName("settled_at_utc");
+            entity.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
+            entity.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasIndex(x => new { x.TenantId, x.OrderNo }).IsUnique();
+            entity.HasIndex(x => new { x.StoreId, x.Status, x.CreatedAtUtc });
+        });
+        builder.Entity<ServiceOrderLine>(entity =>
+        {
+            entity.ToTable("service_order_lines");
+            ConfigureBase(entity);
+            entity.Property(x => x.OrderId).HasColumnName("order_id");
+            entity.Property(x => x.ServiceItemId).HasColumnName("service_item_id");
+            entity.Property(x => x.ItemCodeSnapshot).HasColumnName("item_code_snapshot").HasMaxLength(40);
+            entity.Property(x => x.ItemNameSnapshot).HasColumnName("item_name_snapshot").HasMaxLength(120);
+            entity.Property(x => x.Quantity).HasColumnName("quantity");
+            entity.Property(x => x.ActualSeconds).HasColumnName("actual_seconds");
+            entity.Property(x => x.ReferencePriceMinor).HasColumnName("reference_price_minor");
+            entity.Property(x => x.EnteredPriceMinor).HasColumnName("entered_price_minor");
+            entity.Property(x => x.ReferenceAmountMinor).HasColumnName("reference_amount_minor");
+            entity.Property(x => x.LineAmountMinor).HasColumnName("line_amount_minor");
+            entity.Property(x => x.PriceOverrideReason).HasColumnName("price_override_reason").HasMaxLength(500);
+            entity.HasIndex(x => new { x.OrderId, x.ServiceItemId }).IsUnique();
         });
     }
 

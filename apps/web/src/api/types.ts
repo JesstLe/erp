@@ -19,3 +19,6 @@ export interface MemberCardType { id: string; code: string; name: string; validi
 export interface MemberAccount { id: string; accountType: string; balanceUnits: number; status: string }
 export interface MemberCard { id: string; cardTypeName: string; maskedCardNo: string; status: string; validFrom: string; validTo?: string; accounts: MemberAccount[] }
 export interface CustomerDetail { id: string; displayName: string; maskedMobile: string; gender: string; sourceCode?: string; serviceNotificationConsent: boolean; marketingConsent: boolean; status: string; homeStoreId: string; version: number; cards: MemberCard[] }
+export interface CashierVisit { id: string; visitNo: string; status: string; customerId?: string; arrivedAtUtc: string; serviceEndedAtUtc?: string; facilitySeconds: number; note?: string }
+export interface ServiceOrderLine { id: string; serviceItemId: string; itemCode: string; itemName: string; quantity: number; actualSeconds?: number; referencePriceMinor: number; enteredPriceMinor: number; lineAmountMinor: number; priceOverrideReason?: string }
+export interface ServiceOrder { id: string; orderNo: string; visitId: string; customerId?: string; status: string; priceBookId: string; referenceAmountMinor: number; receivableMinor: number; note?: string; version: number; createdAtUtc: string; lines: ServiceOrderLine[] }
