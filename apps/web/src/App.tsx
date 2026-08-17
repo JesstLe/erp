@@ -13,6 +13,7 @@ import { AuditPage } from './pages/AuditPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { EmployeesPage } from './pages/EmployeesPage'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
+import { ProductsPage } from './pages/ProductsPage'
 import './styles.css'
 
 function ProtectedRoute() {
@@ -24,5 +25,5 @@ function ProtectedRoute() {
 }
 
 export default function App() {
-  return <Routes><Route path="/login" element={<LoginPage />} /><Route element={<ProtectedRoute />}><Route path="change-password" element={<ChangePasswordPage />} /><Route element={<AppLayout />}><Route index element={<DashboardPage />} /><Route path="catalog/items" element={<ServiceItemsPage />} /><Route path="catalog/prices" element={<PriceBooksPage />} /><Route path="facilities" element={<FacilitiesPage />} /><Route path="customers" element={<CustomersPage />} /><Route path="cashier" element={<CashierPage />} /><Route path="reports" element={<ReportsPage />} /><Route path="audit" element={<AuditPage />} /><Route path="settings/employees" element={<EmployeesPage />} /></Route></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes>
+  return <Routes><Route path="/login" element={<LoginPage />} /><Route element={<ProtectedRoute />}><Route path="change-password" element={<ChangePasswordPage />} /><Route element={<AppLayout />}><Route index element={<DashboardPage />} /><Route path="catalog/items" element={<ServiceItemsPage />} /><Route path="catalog/products" element={<ProductsPage />} /><Route path="catalog/prices" element={<PriceBooksPage />} /><Route path="facilities" element={<FacilitiesPage />} /><Route path="customers" element={<CustomersPage />} /><Route path="cashier" element={<CashierPage />} /><Route path="reports" element={<ReportsPage />} /><Route path="audit" element={<AuditPage />} /><Route path="settings/employees" element={<EmployeesPage />} /></Route></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes>
 }
