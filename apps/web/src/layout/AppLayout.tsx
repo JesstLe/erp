@@ -1,11 +1,11 @@
-import { AppstoreOutlined, AuditOutlined, BarChartOutlined, ClockCircleOutlined, DatabaseOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
+import { AppstoreOutlined, AuditOutlined, BarChartOutlined, ClockCircleOutlined, DatabaseOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, SafetyCertificateOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
 import { Avatar, Button, Layout, Menu, Select, Space, Typography, type MenuProps } from 'antd'
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
 
 const { Header, Sider, Content } = Layout
-const menuItems: MenuProps['items'] = [
+const baseMenuItems: NonNullable<MenuProps['items']> = [
   { key: '/', icon: <AppstoreOutlined />, label: '经营工作台' },
   { key: '/facilities', icon: <ClockCircleOutlined />, label: '设施接待' },
   { key: '/customers', icon: <TeamOutlined />, label: '顾客与会员' },
@@ -20,6 +20,9 @@ const menuItems: MenuProps['items'] = [
 export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
   const auth = useAuth(); const navigate = useNavigate(); const location = useLocation()
+  const menuItems: MenuProps['items'] = auth.user?.roles.includes('OWNER')
+    ? [...baseMenuItems, { key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }]
+    : baseMenuItems
   const logout = async () => {
     await auth.logout()
     navigate('/login')

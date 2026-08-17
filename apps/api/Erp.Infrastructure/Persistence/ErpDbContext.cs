@@ -21,6 +21,10 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
 
     public DbSet<Erp.Domain.Organization.UserStore> UserStores => Set<Erp.Domain.Organization.UserStore>();
 
+    public DbSet<Employee> Employees => Set<Employee>();
+
+    public DbSet<EmployeeStore> EmployeeStores => Set<EmployeeStore>();
+
     public DbSet<RoleActionGrant> RoleActionGrants => Set<RoleActionGrant>();
 
     public DbSet<ServiceItem> ServiceItems => Set<ServiceItem>();
@@ -85,6 +89,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.TenantId).HasColumnName("tenant_id");
             entity.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(100);
             entity.Property(x => x.IsEnabled).HasColumnName("is_enabled");
+            entity.Property(x => x.MustChangePassword).HasColumnName("must_change_password");
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
             entity.Property(x => x.UserName).HasColumnName("user_name").HasMaxLength(100);
             entity.Property(x => x.NormalizedUserName).HasColumnName("normalized_user_name").HasMaxLength(100);
@@ -185,6 +190,32 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.StoreId).HasColumnName("store_id");
             entity.Property(x => x.IsDefault).HasColumnName("is_default");
             entity.HasIndex(x => new { x.UserId, x.StoreId }).IsUnique();
+        });
+
+        builder.Entity<Employee>(entity =>
+        {
+            entity.ToTable("organization_employees");
+            ConfigureBase(entity);
+            entity.Property(x => x.EmployeeNo).HasColumnName("employee_no").HasMaxLength(32);
+            entity.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(100);
+            entity.Property(x => x.PositionCode).HasColumnName("position_code").HasMaxLength(40);
+            entity.Property(x => x.UserId).HasColumnName("user_id");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.HasIndex(x => new { x.TenantId, x.EmployeeNo }).IsUnique();
+            entity.HasIndex(x => x.UserId).IsUnique();
+            entity.HasOne<ApplicationUser>().WithOne().HasForeignKey<Employee>(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<EmployeeStore>(entity =>
+        {
+            entity.ToTable("organization_employee_stores");
+            ConfigureBase(entity);
+            entity.Property(x => x.EmployeeId).HasColumnName("employee_id");
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.IsPrimary).HasColumnName("is_primary");
+            entity.HasIndex(x => new { x.EmployeeId, x.StoreId }).IsUnique();
+            entity.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Store>().WithMany().HasForeignKey(x => x.StoreId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 

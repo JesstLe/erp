@@ -74,6 +74,7 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IIdentityService, IdentityService>();
+        services.AddScoped<IEmployeeService, EmployeeService>();
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IFacilityService, FacilityService>();

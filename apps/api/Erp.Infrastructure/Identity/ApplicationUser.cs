@@ -10,6 +10,8 @@ public sealed class ApplicationUser : IdentityUser<Guid>
 
     public bool IsEnabled { get; set; } = true;
 
+    public bool MustChangePassword { get; set; }
+
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
 
@@ -17,4 +19,3 @@ public sealed class ApplicationRole : IdentityRole<Guid>
 {
     public Guid TenantId { get; set; }
 }
-

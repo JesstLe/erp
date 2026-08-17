@@ -11,15 +11,18 @@ import { CustomersPage } from './pages/CustomersPage'
 import { CashierPage } from './pages/CashierPage'
 import { AuditPage } from './pages/AuditPage'
 import { ReportsPage } from './pages/ReportsPage'
+import { EmployeesPage } from './pages/EmployeesPage'
+import { ChangePasswordPage } from './pages/ChangePasswordPage'
 import './styles.css'
 
 function ProtectedRoute() {
   const auth = useAuth(); const location = useLocation()
   if (auth.loading) return <div className="screen-loader"><Spin size="large" /></div>
   if (!auth.user) return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  if (auth.user.mustChangePassword && location.pathname !== '/change-password') return <Navigate to="/change-password" replace />
   return <Outlet />
 }
 
 export default function App() {
-  return <Routes><Route path="/login" element={<LoginPage />} /><Route element={<ProtectedRoute />}><Route element={<AppLayout />}><Route index element={<DashboardPage />} /><Route path="catalog/items" element={<ServiceItemsPage />} /><Route path="catalog/prices" element={<PriceBooksPage />} /><Route path="facilities" element={<FacilitiesPage />} /><Route path="customers" element={<CustomersPage />} /><Route path="cashier" element={<CashierPage />} /><Route path="reports" element={<ReportsPage />} /><Route path="audit" element={<AuditPage />} /></Route></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes>
+  return <Routes><Route path="/login" element={<LoginPage />} /><Route element={<ProtectedRoute />}><Route path="change-password" element={<ChangePasswordPage />} /><Route element={<AppLayout />}><Route index element={<DashboardPage />} /><Route path="catalog/items" element={<ServiceItemsPage />} /><Route path="catalog/prices" element={<PriceBooksPage />} /><Route path="facilities" element={<FacilitiesPage />} /><Route path="customers" element={<CustomersPage />} /><Route path="cashier" element={<CashierPage />} /><Route path="reports" element={<ReportsPage />} /><Route path="audit" element={<AuditPage />} /><Route path="settings/employees" element={<EmployeesPage />} /></Route></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes>
 }

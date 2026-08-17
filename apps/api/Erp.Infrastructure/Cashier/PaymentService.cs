@@ -39,6 +39,17 @@ internal sealed class PaymentService(ErpDbContext db, TimeProvider clock, IHttpC
         return shift is null ? null : ToDto(shift);
     }
 
+    public async Task<IReadOnlyList<CashierShiftReviewDto>> ListShiftsAsync(Guid tenantId, Guid storeId,
+        CancellationToken cancellationToken)
+    {
+        var shifts = await db.CashierShifts.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId)
+            .OrderByDescending(x => x.OpenedAtUtc).Take(100).ToListAsync(cancellationToken);
+        var operatorIds = shifts.Select(x => x.OperatorId).Distinct().ToList();
+        var names = await db.Users.AsNoTracking().Where(x => x.TenantId == tenantId && operatorIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
+        return shifts.Select(x => new CashierShiftReviewDto(ToDto(x), names.GetValueOrDefault(x.OperatorId, "未知员工"))).ToList();
+    }
+
     public async Task<Result<CashierShiftDto>> OpenShiftAsync(Guid tenantId, OpenShiftCommand command,
         CancellationToken cancellationToken)
     {

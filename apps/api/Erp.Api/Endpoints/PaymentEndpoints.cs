@@ -51,6 +51,15 @@ public static class PaymentEndpoints
             return Results.Ok(shift);
         });
 
+        group.MapGet("/shifts", async (Guid storeId, IIdentityService identity, IPaymentService payments,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, storeId)) return Results.Forbid();
+            return Results.Ok(await payments.ListShiftsAsync(current.TenantId, storeId, cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(ReviewerRoles));
+
         group.MapPost("/shifts/open", async (OpenShiftRequest request, IIdentityService identity,
             IPaymentService payments, CancellationToken cancellationToken) =>
         {
