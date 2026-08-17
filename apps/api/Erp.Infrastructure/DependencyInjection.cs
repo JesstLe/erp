@@ -2,8 +2,10 @@ using Erp.Application.Catalog;
 using Erp.Application.Identity;
 using Erp.Application.Facilities;
 using Erp.Application.Customers;
+using Erp.Application.Cashier;
 using Erp.Infrastructure.Catalog;
 using Erp.Infrastructure.Customers;
+using Erp.Infrastructure.Cashier;
 using Erp.Infrastructure.Facilities;
 using Erp.Infrastructure.Identity;
 using Erp.Infrastructure.Persistence;
@@ -73,6 +75,7 @@ public static class DependencyInjection
         services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<CustomerPrivacyService>();
         services.AddScoped<ICustomerService, CustomerService>();
+        services.AddScoped<ICashierService, CashierService>();
         services.AddScoped<Seed.DevelopmentSeeder>();
         return services;
     }

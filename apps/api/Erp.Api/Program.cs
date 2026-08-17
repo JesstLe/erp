@@ -124,6 +124,7 @@ app.MapIdentityEndpoints();
 app.MapCatalogEndpoints();
 app.MapFacilityEndpoints();
 app.MapCustomerEndpoints();
+app.MapCashierEndpoints();
 
 app.Run();
 
