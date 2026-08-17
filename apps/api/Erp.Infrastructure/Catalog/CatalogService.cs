@@ -68,7 +68,7 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
 
     public async Task<IReadOnlyList<PriceBookDto>> ListPriceBooksAsync(Guid tenantId, CancellationToken cancellationToken)
     {
-        var books = await dbContext.PriceBooks.AsNoTracking().Include(x => x.Lines).Include(x => x.ProductLines)
+        var books = await dbContext.PriceBooks.AsNoTracking().AsSplitQuery().Include(x => x.Lines).Include(x => x.ProductLines)
             .Where(x => x.TenantId == tenantId)
             .OrderByDescending(x => x.EffectiveFrom)
             .ToListAsync(cancellationToken);
@@ -122,7 +122,7 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
     public async Task<Result<PriceBookDto>> PublishPriceBookAsync(Guid tenantId, Guid priceBookId, Guid operatorId,
         Guid? storeId, CancellationToken cancellationToken)
     {
-        var book = await dbContext.PriceBooks.Include(x => x.Lines).Include(x => x.ProductLines)
+        var book = await dbContext.PriceBooks.AsSplitQuery().Include(x => x.Lines).Include(x => x.ProductLines)
             .SingleOrDefaultAsync(x => x.Id == priceBookId && x.TenantId == tenantId, cancellationToken);
         if (book is null)
         {
