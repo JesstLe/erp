@@ -28,3 +28,9 @@ export interface Payment { id: string; paymentNo: string; orderId: string; statu
 export interface CashierShift { id: string; shiftNo: string; operatorId: string; status: string; openingCashMinor: number; expectedCashMinor?: number; submittedCashMinor?: number; cashDifferenceMinor?: number; pendingReconciliationMinor?: number; handoverNote?: string; openedAtUtc: string; submittedAtUtc?: string; reviewedBy?: string; reviewReason?: string; closedAtUtc?: string; version: number }
 export interface AuditEvent { id: string; action: string; entityType: string; entityId?: string; previousState?: string; currentState?: string; reason?: string; operatorId?: string; operatorDisplayName: string; requestId?: string; traceId: string; occurredAtUtc: string }
 export interface AuditEventPage { items: AuditEvent[]; total: number; page: number; pageSize: number }
+export interface OperationsSummary { settledRevenueMinor: number; recordedFundsMinor: number; pendingReconciliationMinor: number; settledOrderCount: number; visitCount: number; averageTicketMinor: number; facilityActiveSeconds: number }
+export interface DailyOperations { date: string; settledRevenueMinor: number; recordedFundsMinor: number; pendingReconciliationMinor: number; orderCount: number; visitCount: number; facilityActiveSeconds: number }
+export interface PaymentMix { methodCode: string; methodName: string; amountMinor: number; pendingReconciliationMinor: number; allocationCount: number }
+export interface ServicePerformance { serviceItemId: string; itemCode: string; itemName: string; quantity: number; revenueMinor: number; orderCount: number }
+export interface FacilityUsage { facilityId: string; facilityName: string; activeSeconds: number; usageShare: number }
+export interface OperationsReport { fromDate: string; toDate: string; timeZoneId: string; summary: OperationsSummary; daily: DailyOperations[]; paymentMix: PaymentMix[]; services: ServicePerformance[]; facilities: FacilityUsage[] }
