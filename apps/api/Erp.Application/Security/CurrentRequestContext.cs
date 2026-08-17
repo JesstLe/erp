@@ -22,7 +22,9 @@ public static class SystemActions
     public const string CatalogWrite = "catalog.write";
     public const string PricePublish = "price.publish";
     public const string FacilityOperate = "facility.operate";
+    public const string CustomerRead = "customer.read";
+    public const string CustomerWrite = "customer.write";
+    public const string MembershipOpen = "membership.open";
     public const string CashierCheckout = "cashier.checkout";
     public const string AuditRead = "audit.read";
 }
-

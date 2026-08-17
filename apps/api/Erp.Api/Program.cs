@@ -31,6 +31,15 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0,
             AutoReplenishment = true,
         }));
+    options.AddPolicy("customer-search", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 120,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true,
+        }));
 });
 builder.Services.AddAuthorization();
 builder.Services.AddErpInfrastructure(builder.Configuration, builder.Environment);
@@ -114,6 +123,7 @@ app.MapSecurityEndpoints();
 app.MapIdentityEndpoints();
 app.MapCatalogEndpoints();
 app.MapFacilityEndpoints();
+app.MapCustomerEndpoints();
 
 app.Run();
 

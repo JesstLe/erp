@@ -1,10 +1,13 @@
 using Erp.Application.Catalog;
 using Erp.Application.Identity;
 using Erp.Application.Facilities;
+using Erp.Application.Customers;
 using Erp.Infrastructure.Catalog;
+using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Facilities;
 using Erp.Infrastructure.Identity;
 using Erp.Infrastructure.Persistence;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -20,8 +23,13 @@ public static class DependencyInjection
     {
         var connectionString = configuration.GetConnectionString("ErpDatabase")
             ?? throw new InvalidOperationException("缺少 ConnectionStrings:ErpDatabase 配置");
+        var customerLookupPepper = configuration["CustomerPrivacy:LookupPepper"];
+        if (!environment.IsDevelopment() && (string.IsNullOrWhiteSpace(customerLookupPepper) || customerLookupPepper.Length < 32 ||
+            customerLookupPepper.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("生产环境必须配置至少32字符的 CustomerPrivacy:LookupPepper，且不能使用模板占位值");
 
         services.AddDbContext<ErpDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddDataProtection().SetApplicationName("Erp");
         services.AddHttpContextAccessor();
         services.AddScoped<IPasswordHasher<ApplicationUser>, Argon2IdPasswordHasher>();
         services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
@@ -63,6 +71,8 @@ public static class DependencyInjection
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IFacilityService, FacilityService>();
+        services.AddScoped<CustomerPrivacyService>();
+        services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<Seed.DevelopmentSeeder>();
         return services;
     }

@@ -1,6 +1,7 @@
 using Erp.Domain.Authorization;
 using Erp.Domain.Catalog;
 using Erp.Domain.Common;
+using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
 using Erp.Domain.Organization;
 using Erp.Infrastructure.Identity;
@@ -36,6 +37,11 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<FacilityCleaningTask> FacilityCleaningTasks => Set<FacilityCleaningTask>();
     public DbSet<AuditEventRecord> AuditEvents => Set<AuditEventRecord>();
     public DbSet<IdempotencyCommandRecord> IdempotencyCommands => Set<IdempotencyCommandRecord>();
+    public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<MemberCardType> MemberCardTypes => Set<MemberCardType>();
+    public DbSet<MemberCard> MemberCards => Set<MemberCard>();
+    public DbSet<MemberAccount> MemberAccounts => Set<MemberAccount>();
+    public DbSet<MemberAccountLedger> MemberAccountLedgers => Set<MemberAccountLedger>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -58,6 +64,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
         ConfigureAuthorization(builder);
         ConfigureCatalog(builder);
         ConfigureFacilities(builder);
+        ConfigureCustomers(builder);
         ConfigureSystemRecords(builder);
     }
 
@@ -305,6 +312,80 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.DueAtUtc).HasColumnName("due_at_utc");
             entity.Property(x => x.CompletedAtUtc).HasColumnName("completed_at_utc");
             entity.Property(x => x.CompletedByUserId).HasColumnName("completed_by_user_id");
+        });
+    }
+
+    private static void ConfigureCustomers(ModelBuilder builder)
+    {
+        builder.Entity<Customer>(entity =>
+        {
+            entity.ToTable("customers");
+            ConfigureBase(entity);
+            entity.Property(x => x.HomeStoreId).HasColumnName("home_store_id");
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(100);
+            entity.Property(x => x.MobileCiphertext).HasColumnName("mobile_ciphertext").HasMaxLength(2048);
+            entity.Property(x => x.MobileLookupHash).HasColumnName("mobile_lookup_hash");
+            entity.Property(x => x.MobileLastFour).HasColumnName("mobile_last_four").HasMaxLength(4);
+            entity.Property(x => x.Gender).HasColumnName("gender").HasConversion<string>().HasMaxLength(16);
+            entity.Property(x => x.BirthDate).HasColumnName("birth_date");
+            entity.Property(x => x.SourceCode).HasColumnName("source_code").HasMaxLength(40);
+            entity.Property(x => x.ServiceNotificationConsent).HasColumnName("service_notification_consent");
+            entity.Property(x => x.MarketingConsent).HasColumnName("marketing_consent");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.HasIndex(x => new { x.TenantId, x.MobileLookupHash });
+            entity.HasIndex(x => new { x.HomeStoreId, x.CreatedAtUtc });
+        });
+        builder.Entity<MemberCardType>(entity =>
+        {
+            entity.ToTable("membership_card_types");
+            ConfigureBase(entity);
+            entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(40);
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(80);
+            entity.Property(x => x.ValidityDays).HasColumnName("validity_days");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        });
+        builder.Entity<MemberCard>(entity =>
+        {
+            entity.ToTable("membership_cards");
+            ConfigureBase(entity);
+            entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.CardTypeId).HasColumnName("card_type_id");
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.CardNo).HasColumnName("card_no").HasMaxLength(40);
+            entity.Property(x => x.ValidFrom).HasColumnName("valid_from");
+            entity.Property(x => x.ValidTo).HasColumnName("valid_to");
+            entity.Property(x => x.Note).HasColumnName("note").HasMaxLength(500);
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.HasIndex(x => new { x.TenantId, x.CardNo }).IsUnique();
+            entity.HasIndex(x => x.CustomerId);
+        });
+        builder.Entity<MemberAccount>(entity =>
+        {
+            entity.ToTable("member_accounts");
+            ConfigureBase(entity);
+            entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.CardId).HasColumnName("card_id");
+            entity.Property(x => x.AccountType).HasColumnName("account_type").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.BalanceUnits).HasColumnName("balance_units");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.HasIndex(x => new { x.CardId, x.AccountType }).IsUnique();
+            entity.HasIndex(x => x.CustomerId);
+        });
+        builder.Entity<MemberAccountLedger>(entity =>
+        {
+            entity.ToTable("member_account_ledgers");
+            ConfigureBase(entity);
+            entity.Property(x => x.AccountId).HasColumnName("account_id");
+            entity.Property(x => x.BusinessType).HasColumnName("business_type").HasMaxLength(40);
+            entity.Property(x => x.BusinessId).HasColumnName("business_id");
+            entity.Property(x => x.Direction).HasColumnName("direction").HasConversion<string>().HasMaxLength(12);
+            entity.Property(x => x.Units).HasColumnName("units");
+            entity.Property(x => x.BalanceBefore).HasColumnName("balance_before");
+            entity.Property(x => x.BalanceAfter).HasColumnName("balance_after");
+            entity.Property(x => x.CommandId).HasColumnName("command_id");
+            entity.Property(x => x.OccurredAtUtc).HasColumnName("occurred_at_utc");
+            entity.HasIndex(x => new { x.AccountId, x.OccurredAtUtc });
         });
     }
 

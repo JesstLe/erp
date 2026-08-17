@@ -72,4 +72,15 @@ button, input { font: inherit; }
 .facility-card .ant-statistic { margin-bottom: 18px; }
 .facility-card .ant-statistic-content { color: #156f69; font-variant-numeric: tabular-nums; }
 .facility-session-copy { min-height: 48px; display: flex; flex-direction: column; gap: 3px; margin-bottom: 16px; color: #78869a; font-size: 12px; }
+.customer-search { width: min(680px, 100%); }
+.customer-avatar { width: 32px; height: 32px; border-radius: 10px; display: inline-grid; place-items: center; color: #2563eb; background: #eff6ff; }
+.clickable-row { cursor: pointer; }
+.clickable-row:hover td { background: #f8fbff !important; }
+.member-card { margin-top: 12px; border-color: #dbeafe; }
+.member-card-title { display: flex; justify-content: space-between; align-items: flex-start; }
+.member-card-title .ant-typography { margin: 2px 0 0 !important; }
+.account-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+.account-grid > div { padding: 10px; border-radius: 10px; background: #f8fafc; display: flex; flex-direction: column; gap: 4px; }
+.account-grid span { color: #64748b; font-size: 12px; }
+.account-grid strong { font-size: 16px; color: #0f172a; }
 @media (max-width: 1280px) { .app-content { padding: 22px; } .login-brand-panel { padding-inline: 6vw; } }
