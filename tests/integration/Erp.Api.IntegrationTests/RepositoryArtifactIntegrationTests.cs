@@ -39,6 +39,33 @@ public sealed partial class RepositoryArtifactIntegrationTests
                 $"用户手册截图不存在：{relativePath}"));
     }
 
+    [Fact]
+    public void MemberTopupMigrationBackfillsExistingPaymentsAndKeepsServiceRevenueSeparated()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180008__member_topups_and_generalized_payments.sql"));
+        var report = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Reports", "ReportService.cs"));
+
+        Assert.Contains("business_type = 'ServiceOrder'", migration, StringComparison.Ordinal);
+        Assert.Contains("receivable_minor = principal_minor", migration, StringComparison.Ordinal);
+        Assert.Contains("PaymentBusinessType.ServiceOrder", report, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void EveryModuleManualReferencesExistingScreenshots()
+    {
+        var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");
+        foreach (var manualPath in Directory.GetFiles(manualDirectory, "*.md"))
+        {
+            var imagePaths = MarkdownImagePattern().Matches(File.ReadAllText(manualPath))
+                .Select(match => match.Groups[1].Value).ToList();
+            Assert.All(imagePaths, relativePath =>
+                Assert.True(File.Exists(Path.Combine(manualDirectory, relativePath)),
+                    $"用户手册截图不存在：{Path.GetFileName(manualPath)} -> {relativePath}"));
+        }
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

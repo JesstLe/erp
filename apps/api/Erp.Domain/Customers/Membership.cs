@@ -7,6 +7,7 @@ public enum MemberCardStatus { Active, Expired, Disabled }
 public enum MemberAccountType { Principal, Bonus, Points }
 public enum MemberAccountStatus { Active, Frozen, Closed }
 public enum LedgerDirection { Credit, Debit }
+public enum MemberTopupStatus { Paid, Cancelled, PartiallyRefunded, Refunded }
 
 public sealed class MemberCardType : Entity
 {
@@ -85,11 +86,40 @@ public sealed class MemberAccount : Entity
     public MemberAccountType AccountType { get; private set; }
     public long BalanceUnits { get; private set; }
     public MemberAccountStatus Status { get; private set; }
+
+    public MemberAccountLedger Credit(string businessType, Guid businessId, long units, Guid commandId,
+        DateTimeOffset occurredAtUtc)
+    {
+        if (Status != MemberAccountStatus.Active)
+            throw new DomainRuleException("MEMBER_ACCOUNT_NOT_ACTIVE", "会员账户当前不可入账");
+        if (units <= 0 || units > 10_000_000_000)
+            throw new DomainRuleException("VALIDATION_FAILED", "入账金额必须大于0且不超过允许范围");
+        var before = BalanceUnits;
+        BalanceUnits = checked(BalanceUnits + units);
+        Touch();
+        return new MemberAccountLedger(TenantId, Id, businessType, businessId, LedgerDirection.Credit,
+            units, before, BalanceUnits, commandId, occurredAtUtc);
+    }
 }
 
 public sealed class MemberAccountLedger : Entity
 {
     private MemberAccountLedger() { }
+
+    internal MemberAccountLedger(Guid tenantId, Guid accountId, string businessType, Guid businessId,
+        LedgerDirection direction, long units, long balanceBefore, long balanceAfter, Guid commandId,
+        DateTimeOffset occurredAtUtc) : base(tenantId)
+    {
+        AccountId = accountId;
+        BusinessType = Required(businessType, 40, "流水业务类型");
+        BusinessId = businessId;
+        Direction = direction;
+        Units = units;
+        BalanceBefore = balanceBefore;
+        BalanceAfter = balanceAfter;
+        CommandId = commandId;
+        OccurredAtUtc = occurredAtUtc;
+    }
 
     public Guid AccountId { get; private set; }
     public string BusinessType { get; private set; } = string.Empty;
@@ -100,4 +130,57 @@ public sealed class MemberAccountLedger : Entity
     public long BalanceAfter { get; private set; }
     public Guid CommandId { get; private set; }
     public DateTimeOffset OccurredAtUtc { get; private set; }
+
+    private static string Required(string value, int max, string field)
+    {
+        var normalized = value.Trim();
+        if (normalized.Length is 0 || normalized.Length > max)
+            throw new DomainRuleException("VALIDATION_FAILED", $"{field}长度不正确");
+        return normalized;
+    }
+}
+
+public sealed class MemberTopupOrder : Entity
+{
+    private MemberTopupOrder() { }
+
+    public MemberTopupOrder(Guid tenantId, Guid storeId, Guid customerId, Guid cardId, string topupNo,
+        long principalMinor, long bonusMinor, string? note, DateTimeOffset paidAtUtc) : base(tenantId)
+    {
+        if (principalMinor <= 0 || principalMinor > 10_000_000_000)
+            throw new DomainRuleException("VALIDATION_FAILED", "储值本金必须大于0且不超过允许范围");
+        if (bonusMinor < 0 || bonusMinor > 10_000_000_000)
+            throw new DomainRuleException("VALIDATION_FAILED", "奖励金不能为负且不能超过允许范围");
+        _ = checked(principalMinor + bonusMinor);
+        StoreId = storeId;
+        CustomerId = customerId;
+        CardId = cardId;
+        TopupNo = Required(topupNo, 40, "储值单号");
+        PrincipalMinor = principalMinor;
+        BonusMinor = bonusMinor;
+        ReceivableMinor = principalMinor;
+        Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        if (Note?.Length > 500) throw new DomainRuleException("VALIDATION_FAILED", "备注不能超过500字");
+        Status = MemberTopupStatus.Paid;
+        PaidAtUtc = paidAtUtc;
+    }
+
+    public Guid StoreId { get; private set; }
+    public Guid CustomerId { get; private set; }
+    public Guid CardId { get; private set; }
+    public string TopupNo { get; private set; } = string.Empty;
+    public long PrincipalMinor { get; private set; }
+    public long BonusMinor { get; private set; }
+    public long ReceivableMinor { get; private set; }
+    public MemberTopupStatus Status { get; private set; }
+    public string? Note { get; private set; }
+    public DateTimeOffset PaidAtUtc { get; private set; }
+
+    private static string Required(string value, int max, string field)
+    {
+        var normalized = value.Trim();
+        if (normalized.Length is 0 || normalized.Length > max)
+            throw new DomainRuleException("VALIDATION_FAILED", $"{field}长度不正确");
+        return normalized;
+    }
 }

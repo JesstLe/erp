@@ -26,8 +26,9 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
 
         var payments = await db.Payments.AsNoTracking().Include(x => x.Allocations).Where(x =>
             x.TenantId == tenantId && x.StoreId == storeId && x.Status == PaymentStatus.Paid &&
+            x.BusinessType == PaymentBusinessType.ServiceOrder &&
             x.PaidAtUtc >= fromUtc && x.PaidAtUtc < toUtc).ToListAsync(cancellationToken);
-        var orderIds = payments.Select(x => x.OrderId).ToList();
+        var orderIds = payments.Where(x => x.OrderId.HasValue).Select(x => x.OrderId!.Value).ToList();
         var orders = await db.ServiceOrders.AsNoTracking().Include(x => x.Lines)
             .Where(x => orderIds.Contains(x.Id)).ToListAsync(cancellationToken);
         var visits = await db.Visits.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId &&

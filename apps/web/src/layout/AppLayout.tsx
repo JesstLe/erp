@@ -32,7 +32,7 @@ export function AppLayout() {
     <Sider width={232} collapsedWidth={76} collapsed={collapsed} className="app-sider">
       <div className="app-logo"><span><ShopOutlined /></span>{!collapsed && <strong>门店 ERP</strong>}</div>
       <Menu theme="dark" mode="inline" items={menuItems} selectedKeys={[location.pathname]} onClick={({ key }) => navigate(key)} />
-      <div className="sider-version">{collapsed ? 'V1' : 'V1 · 本地开发'}</div>
+      <div className="sider-version">{collapsed ? 'V2' : 'V2 · 开发中'}</div>
     </Sider>
     <Layout>
       <Header className="app-header">
