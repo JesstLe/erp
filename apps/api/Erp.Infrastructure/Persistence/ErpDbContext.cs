@@ -45,6 +45,10 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<MemberAccountLedger> MemberAccountLedgers => Set<MemberAccountLedger>();
     public DbSet<ServiceOrder> ServiceOrders => Set<ServiceOrder>();
     public DbSet<ServiceOrderLine> ServiceOrderLines => Set<ServiceOrderLine>();
+    public DbSet<PaymentMethod> PaymentMethods => Set<PaymentMethod>();
+    public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
+    public DbSet<CashierShift> CashierShifts => Set<CashierShift>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -431,6 +435,74 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.LineAmountMinor).HasColumnName("line_amount_minor");
             entity.Property(x => x.PriceOverrideReason).HasColumnName("price_override_reason").HasMaxLength(500);
             entity.HasIndex(x => new { x.OrderId, x.ServiceItemId }).IsUnique();
+        });
+        builder.Entity<PaymentMethod>(entity =>
+        {
+            entity.ToTable("payment_methods");
+            ConfigureBase(entity);
+            entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(40);
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(80);
+            entity.Property(x => x.Category).HasColumnName("category").HasConversion<string>().HasMaxLength(32);
+            entity.Property(x => x.RequiresOpenShift).HasColumnName("requires_open_shift");
+            entity.Property(x => x.IsEnabled).HasColumnName("is_enabled");
+            entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        });
+        builder.Entity<CashierShift>(entity =>
+        {
+            entity.ToTable("cashier_shifts");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.OperatorId).HasColumnName("operator_id");
+            entity.Property(x => x.ShiftNo).HasColumnName("shift_no").HasMaxLength(40);
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(32);
+            entity.Property(x => x.OpeningCashMinor).HasColumnName("opening_cash_minor");
+            entity.Property(x => x.ExpectedCashMinor).HasColumnName("expected_cash_minor");
+            entity.Property(x => x.SubmittedCashMinor).HasColumnName("submitted_cash_minor");
+            entity.Property(x => x.CashDifferenceMinor).HasColumnName("cash_difference_minor");
+            entity.Property(x => x.PendingReconciliationMinor).HasColumnName("pending_reconciliation_minor");
+            entity.Property(x => x.HandoverNote).HasColumnName("handover_note").HasMaxLength(500);
+            entity.Property(x => x.OpenedAtUtc).HasColumnName("opened_at_utc");
+            entity.Property(x => x.SubmittedAtUtc).HasColumnName("submitted_at_utc");
+            entity.Property(x => x.ReviewedBy).HasColumnName("reviewed_by");
+            entity.Property(x => x.ReviewReason).HasColumnName("review_reason").HasMaxLength(500);
+            entity.Property(x => x.ClosedAtUtc).HasColumnName("closed_at_utc");
+            entity.HasIndex(x => new { x.TenantId, x.ShiftNo }).IsUnique();
+            entity.HasIndex(x => new { x.StoreId, x.OperatorId, x.Status });
+        });
+        builder.Entity<Payment>(entity =>
+        {
+            entity.ToTable("payments");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.OrderId).HasColumnName("order_id");
+            entity.Property(x => x.PaymentNo).HasColumnName("payment_no").HasMaxLength(40);
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(32);
+            entity.Property(x => x.Currency).HasColumnName("currency").HasMaxLength(3);
+            entity.Property(x => x.ReceivableMinor).HasColumnName("receivable_minor");
+            entity.Property(x => x.PaidMinor).HasColumnName("paid_minor");
+            entity.Property(x => x.PaidAtUtc).HasColumnName("paid_at_utc");
+            entity.HasMany(x => x.Allocations).WithOne().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
+            entity.Navigation(x => x.Allocations).UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasIndex(x => new { x.TenantId, x.PaymentNo }).IsUnique();
+            entity.HasIndex(x => x.OrderId).IsUnique();
+        });
+        builder.Entity<PaymentAllocation>(entity =>
+        {
+            entity.ToTable("payment_allocations");
+            ConfigureBase(entity);
+            entity.Property(x => x.PaymentId).HasColumnName("payment_id");
+            entity.Property(x => x.MethodId).HasColumnName("method_id");
+            entity.Property(x => x.MethodCodeSnapshot).HasColumnName("method_code_snapshot").HasMaxLength(40);
+            entity.Property(x => x.MethodNameSnapshot).HasColumnName("method_name_snapshot").HasMaxLength(80);
+            entity.Property(x => x.Category).HasColumnName("category").HasConversion<string>().HasMaxLength(32);
+            entity.Property(x => x.AmountMinor).HasColumnName("amount_minor");
+            entity.Property(x => x.ExternalReference).HasColumnName("external_reference").HasMaxLength(100);
+            entity.Property(x => x.ShiftId).HasColumnName("shift_id");
+            entity.Property(x => x.ConfirmationStatus).HasColumnName("confirmation_status").HasConversion<string>().HasMaxLength(48);
+            entity.Property(x => x.ReconciliationStatus).HasColumnName("reconciliation_status").HasConversion<string>().HasMaxLength(32);
+            entity.Property(x => x.ConfirmedAtUtc).HasColumnName("confirmed_at_utc");
+            entity.HasIndex(x => x.PaymentId);
+            entity.HasIndex(x => x.ShiftId);
         });
     }
 

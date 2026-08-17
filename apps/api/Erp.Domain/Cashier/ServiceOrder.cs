@@ -2,7 +2,7 @@ using Erp.Domain.Common;
 
 namespace Erp.Domain.Cashier;
 
-public enum ServiceOrderStatus { Draft, PendingPayment, Settled, Voided }
+public enum ServiceOrderStatus { Draft, PendingPayment, PaymentProcessing, Settled, Voided }
 
 public sealed class ServiceOrder : Entity
 {
@@ -52,9 +52,16 @@ public sealed class ServiceOrder : Entity
         Touch();
     }
 
+    public void BeginCheckout()
+    {
+        if (Status != ServiceOrderStatus.PendingPayment) throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "消费单当前不能开始结算");
+        Status = ServiceOrderStatus.PaymentProcessing;
+        Touch();
+    }
+
     public void Settle(DateTimeOffset now)
     {
-        if (Status != ServiceOrderStatus.PendingPayment) throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "消费单当前不能结算");
+        if (Status != ServiceOrderStatus.PaymentProcessing) throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "消费单当前不能完成结算");
         Status = ServiceOrderStatus.Settled;
         SettledAtUtc = now;
         Touch();

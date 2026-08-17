@@ -125,6 +125,7 @@ app.MapCatalogEndpoints();
 app.MapFacilityEndpoints();
 app.MapCustomerEndpoints();
 app.MapCashierEndpoints();
+app.MapPaymentEndpoints();
 
 app.Run();
 
