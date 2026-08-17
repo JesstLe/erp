@@ -8,7 +8,7 @@
 set -a; source .env; set +a
 docker compose up -d postgres
 PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -p "${ERP_DB_PORT:-54318}" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f db/migrations/V202608180001__baseline_system_catalog.sql
+PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -p "${ERP_DB_PORT:-54318}" -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f db/migrations/V202608180002__facilities_visits_and_timing.sql
 ```
 
 当前开发阶段可用上述命令快速验证迁移；CI 和发布环境接入 Flyway 后，仍使用同一批版本化 SQL。
-

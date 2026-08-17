@@ -113,6 +113,7 @@ app.MapGet("/health/live", () => Results.Ok(new { status = "ok", version = typeo
 app.MapSecurityEndpoints();
 app.MapIdentityEndpoints();
 app.MapCatalogEndpoints();
+app.MapFacilityEndpoints();
 
 app.Run();
 

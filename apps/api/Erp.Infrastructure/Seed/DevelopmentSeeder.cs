@@ -1,5 +1,6 @@
 using Erp.Application.Security;
 using Erp.Domain.Authorization;
+using Erp.Domain.Facilities;
 using Erp.Domain.Organization;
 using Erp.Infrastructure.Identity;
 using Erp.Infrastructure.Persistence;
@@ -70,6 +71,28 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
             {
                 dbContext.RoleActionGrants.Add(new RoleActionGrant(tenant.Id, ownerRole.Id, action));
             }
+        }
+
+        var facilityGroup = await dbContext.FacilityGroups.SingleOrDefaultAsync(x => x.StoreId == store.Id && x.DisplayName == "服务区 A", cancellationToken);
+        if (facilityGroup is null)
+        {
+            facilityGroup = new FacilityGroup(tenant.Id, store.Id, "服务区 A", 10);
+            dbContext.FacilityGroups.Add(facilityGroup);
+        }
+
+        var facilityType = await dbContext.FacilityTypes.SingleOrDefaultAsync(x => x.TenantId == tenant.Id && x.DisplayName == "通用服务位", cancellationToken);
+        if (facilityType is null)
+        {
+            facilityType = new FacilityType(tenant.Id, "通用服务位");
+            dbContext.FacilityTypes.Add(facilityType);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (!await dbContext.Facilities.AnyAsync(x => x.StoreId == store.Id, cancellationToken))
+        {
+            dbContext.Facilities.AddRange(
+                new Facility(tenant.Id, store.Id, facilityGroup.Id, facilityType.Id, "F01", "服务位 01", 10, 0, false),
+                new Facility(tenant.Id, store.Id, facilityGroup.Id, facilityType.Id, "F02", "服务位 02", 20, 5, false));
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);

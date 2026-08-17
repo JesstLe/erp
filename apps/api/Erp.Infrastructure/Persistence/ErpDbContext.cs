@@ -1,6 +1,7 @@
 using Erp.Domain.Authorization;
 using Erp.Domain.Catalog;
 using Erp.Domain.Common;
+using Erp.Domain.Facilities;
 using Erp.Domain.Organization;
 using Erp.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -26,6 +27,16 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
 
     public DbSet<PriceBookLine> PriceBookLines => Set<PriceBookLine>();
 
+    public DbSet<FacilityGroup> FacilityGroups => Set<FacilityGroup>();
+    public DbSet<FacilityType> FacilityTypes => Set<FacilityType>();
+    public DbSet<Facility> Facilities => Set<Facility>();
+    public DbSet<Visit> Visits => Set<Visit>();
+    public DbSet<FacilitySession> FacilitySessions => Set<FacilitySession>();
+    public DbSet<FacilitySessionPause> FacilitySessionPauses => Set<FacilitySessionPause>();
+    public DbSet<FacilityCleaningTask> FacilityCleaningTasks => Set<FacilityCleaningTask>();
+    public DbSet<AuditEventRecord> AuditEvents => Set<AuditEventRecord>();
+    public DbSet<IdempotencyCommandRecord> IdempotencyCommands => Set<IdempotencyCommandRecord>();
+
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         foreach (var entry in ChangeTracker.Entries<Entity>())
@@ -46,6 +57,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
         ConfigureOrganization(builder);
         ConfigureAuthorization(builder);
         ConfigureCatalog(builder);
+        ConfigureFacilities(builder);
+        ConfigureSystemRecords(builder);
     }
 
     private static void ConfigureIdentity(ModelBuilder builder)
@@ -206,6 +219,128 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.ServiceItemId).HasColumnName("service_item_id");
             entity.Property(x => x.UnitPriceMinor).HasColumnName("unit_price_minor");
             entity.HasIndex(x => new { x.PriceBookId, x.ServiceItemId }).IsUnique();
+        });
+    }
+
+    private static void ConfigureFacilities(ModelBuilder builder)
+    {
+        builder.Entity<FacilityGroup>(entity =>
+        {
+            entity.ToTable("facility_groups");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(50);
+            entity.Property(x => x.SortOrder).HasColumnName("sort_order");
+        });
+        builder.Entity<FacilityType>(entity =>
+        {
+            entity.ToTable("facility_types");
+            ConfigureBase(entity);
+            entity.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(50);
+        });
+        builder.Entity<Facility>(entity =>
+        {
+            entity.ToTable("facilities");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.GroupId).HasColumnName("group_id");
+            entity.Property(x => x.FacilityTypeId).HasColumnName("facility_type_id");
+            entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(40);
+            entity.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(50);
+            entity.Property(x => x.SortOrder).HasColumnName("sort_order");
+            entity.Property(x => x.DefaultCleaningMinutes).HasColumnName("default_cleaning_minutes");
+            entity.Property(x => x.AllowReservation).HasColumnName("allow_reservation");
+            entity.Property(x => x.LifecycleStatus).HasColumnName("lifecycle_status").HasConversion<string>().HasMaxLength(24);
+            entity.HasIndex(x => new { x.StoreId, x.Code }).IsUnique();
+        });
+        builder.Entity<Visit>(entity =>
+        {
+            entity.ToTable("visits");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.VisitNo).HasColumnName("visit_no").HasMaxLength(40);
+            entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.ExpectedDurationMinutes).HasColumnName("expected_duration_minutes");
+            entity.Property(x => x.Note).HasColumnName("note").HasMaxLength(500);
+            entity.Property(x => x.ArrivedAtUtc).HasColumnName("arrived_at_utc");
+            entity.Property(x => x.ServiceEndedAtUtc).HasColumnName("service_ended_at_utc");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(32);
+            entity.HasIndex(x => new { x.TenantId, x.VisitNo }).IsUnique();
+        });
+        builder.Entity<FacilitySession>(entity =>
+        {
+            entity.ToTable("facility_sessions");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.FacilityId).HasColumnName("facility_id");
+            entity.Property(x => x.VisitId).HasColumnName("visit_id");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.StartedAtUtc).HasColumnName("started_at_utc");
+            entity.Property(x => x.EndedAtUtc).HasColumnName("ended_at_utc");
+            entity.Property(x => x.StartedByUserId).HasColumnName("started_by_user_id");
+            entity.Property(x => x.StartCommandId).HasColumnName("start_command_id");
+            entity.Property(x => x.EndReason).HasColumnName("end_reason").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.SwitchGroupId).HasColumnName("switch_group_id");
+            entity.HasMany(x => x.Pauses).WithOne().HasForeignKey(x => x.SessionId).OnDelete(DeleteBehavior.Cascade);
+            entity.Navigation(x => x.Pauses).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+        builder.Entity<FacilitySessionPause>(entity =>
+        {
+            entity.ToTable("facility_session_pauses");
+            ConfigureBase(entity);
+            entity.Property(x => x.SessionId).HasColumnName("session_id");
+            entity.Property(x => x.StartedAtUtc).HasColumnName("started_at_utc");
+            entity.Property(x => x.EndedAtUtc).HasColumnName("ended_at_utc");
+            entity.Property(x => x.StartedByUserId).HasColumnName("started_by_user_id");
+            entity.Property(x => x.CommandId).HasColumnName("command_id");
+        });
+        builder.Entity<FacilityCleaningTask>(entity =>
+        {
+            entity.ToTable("facility_cleaning_tasks");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.FacilityId).HasColumnName("facility_id");
+            entity.Property(x => x.SessionId).HasColumnName("session_id");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.DueAtUtc).HasColumnName("due_at_utc");
+            entity.Property(x => x.CompletedAtUtc).HasColumnName("completed_at_utc");
+            entity.Property(x => x.CompletedByUserId).HasColumnName("completed_by_user_id");
+        });
+    }
+
+    private static void ConfigureSystemRecords(ModelBuilder builder)
+    {
+        builder.Entity<AuditEventRecord>(entity =>
+        {
+            entity.ToTable("audit_events");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(x => x.TenantId).HasColumnName("tenant_id");
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.OperatorId).HasColumnName("operator_id");
+            entity.Property(x => x.Action).HasColumnName("action").HasMaxLength(128);
+            entity.Property(x => x.EntityType).HasColumnName("entity_type").HasMaxLength(80);
+            entity.Property(x => x.EntityId).HasColumnName("entity_id");
+            entity.Property(x => x.PreviousState).HasColumnName("previous_state").HasMaxLength(40);
+            entity.Property(x => x.CurrentState).HasColumnName("current_state").HasMaxLength(40);
+            entity.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500);
+            entity.Property(x => x.TraceId).HasColumnName("trace_id").HasMaxLength(64);
+            entity.Property(x => x.RequestId).HasColumnName("request_id");
+            entity.Property(x => x.Metadata).HasColumnName("metadata").HasColumnType("jsonb");
+            entity.Property(x => x.OccurredAtUtc).HasColumnName("occurred_at_utc");
+        });
+        builder.Entity<IdempotencyCommandRecord>(entity =>
+        {
+            entity.ToTable("idempotency_commands");
+            entity.HasKey(x => x.CommandId);
+            entity.Property(x => x.CommandId).HasColumnName("command_id").ValueGeneratedNever();
+            entity.Property(x => x.TenantId).HasColumnName("tenant_id");
+            entity.Property(x => x.OperatorId).HasColumnName("operator_id");
+            entity.Property(x => x.RequestHash).HasColumnName("request_hash");
+            entity.Property(x => x.ResponseStatus).HasColumnName("response_status");
+            entity.Property(x => x.ResponseBody).HasColumnName("response_body").HasColumnType("jsonb");
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
+            entity.Property(x => x.CompletedAtUtc).HasColumnName("completed_at_utc");
         });
     }
 

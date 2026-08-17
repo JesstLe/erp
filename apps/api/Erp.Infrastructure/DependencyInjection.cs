@@ -1,6 +1,8 @@
 using Erp.Application.Catalog;
 using Erp.Application.Identity;
+using Erp.Application.Facilities;
 using Erp.Infrastructure.Catalog;
+using Erp.Infrastructure.Facilities;
 using Erp.Infrastructure.Identity;
 using Erp.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
@@ -59,6 +61,8 @@ public static class DependencyInjection
 
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<ICatalogService, CatalogService>();
+        services.AddSingleton(TimeProvider.System);
+        services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<Seed.DevelopmentSeeder>();
         return services;
     }
