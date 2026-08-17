@@ -12,6 +12,7 @@ public sealed record CashierShiftDto(Guid Id, string ShiftNo, Guid OperatorId, s
     long? ExpectedCashMinor, long? SubmittedCashMinor, long? CashDifferenceMinor, long? PendingReconciliationMinor,
     string? HandoverNote, DateTimeOffset OpenedAtUtc, DateTimeOffset? SubmittedAtUtc, Guid? ReviewedBy,
     string? ReviewReason, DateTimeOffset? ClosedAtUtc, uint Version);
+public sealed record CashierShiftReviewDto(CashierShiftDto Shift, string OperatorDisplayName);
 public sealed record SettleAllocationCommand(Guid MethodId, long AmountMinor, string? ExternalReference);
 public sealed record SettleOrderCommand(Guid StoreId, Guid OrderId, uint ExpectedVersion,
     IReadOnlyList<SettleAllocationCommand> Allocations, Guid CommandId, Guid OperatorId);
@@ -27,6 +28,7 @@ public interface IPaymentService
     Task<IReadOnlyList<PaymentDto>> ListPaymentsAsync(Guid tenantId, Guid storeId, CancellationToken cancellationToken);
     Task<Result<PaymentDto>> SettleOrderAsync(Guid tenantId, SettleOrderCommand command, CancellationToken cancellationToken);
     Task<CashierShiftDto?> GetCurrentShiftAsync(Guid tenantId, Guid storeId, Guid operatorId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<CashierShiftReviewDto>> ListShiftsAsync(Guid tenantId, Guid storeId, CancellationToken cancellationToken);
     Task<Result<CashierShiftDto>> OpenShiftAsync(Guid tenantId, OpenShiftCommand command, CancellationToken cancellationToken);
     Task<Result<CashierShiftDto>> SubmitShiftAsync(Guid tenantId, SubmitShiftCommand command, CancellationToken cancellationToken);
     Task<Result<CashierShiftDto>> ReviewShiftAsync(Guid tenantId, ReviewShiftCommand command, CancellationToken cancellationToken);

@@ -8,13 +8,14 @@
 
 1. [本地启动、登录与权限](01-local-login-and-permissions.md)
 2. [服务项目与价格版本](02-service-items-and-pricing.md)
-3. 产品与库存（待完成）
+3. 产品目录（待完成）
 4. [设施接待与独立计时](03-facility-reception-and-timing.md)
 5. [顾客档案与会员账户](04-customers-and-membership.md)
 6. [服务录单与金额确认](05-service-order-and-price-confirmation.md)
 7. [现金、人工外部收款与收银交班](06-payments-and-cashier-shifts.md)
-8. 会员储值扣款、真实渠道与退款（待完成）
+8. 会员储值扣款、真实渠道与退款（后续版本）
 9. [审计记录](07-audit-events.md)
 10. [经营工作台与经营报表](08-dashboard-and-operations-reports.md)
+11. [员工、登录账号与门店权限](09-employees-accounts-and-permissions.md)
 
 截图统一保存在 `docs/user-manual/assets/`，示例数据必须是本地虚构数据，不得包含参考系统里的真实顾客、员工、手机号或资金信息。

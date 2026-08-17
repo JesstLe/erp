@@ -3,6 +3,7 @@ using Erp.Api;
 using Erp.Api.Endpoints;
 using Erp.Infrastructure;
 using Erp.Infrastructure.Seed;
+using Erp.Application.Identity;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -82,6 +83,33 @@ app.UseAuthorization();
 
 app.Use(async (context, next) =>
 {
+    var isApiRequest = context.Request.Path.StartsWithSegments("/api/v1");
+    var isPasswordBootstrapEndpoint = context.Request.Path.StartsWithSegments("/api/v1/auth/login")
+        || context.Request.Path.StartsWithSegments("/api/v1/auth/logout")
+        || context.Request.Path.StartsWithSegments("/api/v1/auth/me")
+        || context.Request.Path.StartsWithSegments("/api/v1/auth/change-password")
+        || context.Request.Path.StartsWithSegments("/api/v1/security/csrf");
+    if (isApiRequest && !isPasswordBootstrapEndpoint && context.User.Identity?.IsAuthenticated == true)
+    {
+        var current = await context.RequestServices.GetRequiredService<IIdentityService>()
+            .GetCurrentAsync(context.RequestAborted);
+        if (current?.MustChangePassword == true)
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = new { code = "PASSWORD_CHANGE_REQUIRED", message = "首次登录必须先修改初始密码" },
+                traceId = context.TraceIdentifier,
+            });
+            return;
+        }
+    }
+
+    await next();
+});
+
+app.Use(async (context, next) =>
+{
     var unsafeMethod = HttpMethods.IsPost(context.Request.Method)
         || HttpMethods.IsPut(context.Request.Method)
         || HttpMethods.IsPatch(context.Request.Method)
@@ -121,6 +149,7 @@ app.MapGet("/health/live", () => Results.Ok(new { status = "ok", version = typeo
     .AllowAnonymous();
 app.MapSecurityEndpoints();
 app.MapIdentityEndpoints();
+app.MapEmployeeEndpoints();
 app.MapCatalogEndpoints();
 app.MapFacilityEndpoints();
 app.MapCustomerEndpoints();

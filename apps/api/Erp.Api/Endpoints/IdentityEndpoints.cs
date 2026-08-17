@@ -27,9 +27,14 @@ public static class IdentityEndpoints
             return current is null ? Results.Unauthorized() : Results.Ok(current);
         }).RequireAuthorization();
 
+        group.MapPost("/change-password", async (ChangePasswordRequest request, IIdentityService identity,
+            CancellationToken cancellationToken) => EndpointResults.From(await identity.ChangePasswordAsync(
+                new ChangePasswordCommand(request.CurrentPassword ?? string.Empty, request.NewPassword ?? string.Empty),
+                cancellationToken))).RequireAuthorization();
+
         return endpoints;
     }
 
     private sealed record LoginRequest(string? Account, string? Password, bool RememberMe);
+    private sealed record ChangePasswordRequest(string? CurrentPassword, string? NewPassword);
 }
-

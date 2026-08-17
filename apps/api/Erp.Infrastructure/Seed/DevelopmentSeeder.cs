@@ -55,7 +55,7 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
         var owner = await userManager.FindByNameAsync("owner01");
         if (owner is null)
         {
-            owner = new ApplicationUser { Id = Guid.CreateVersion7(), TenantId = tenant.Id, UserName = "owner01", DisplayName = "系统负责人", IsEnabled = true };
+            owner = new ApplicationUser { Id = Guid.CreateVersion7(), TenantId = tenant.Id, UserName = "owner01", DisplayName = "系统负责人", IsEnabled = true, MustChangePassword = false };
             EnsureSucceeded(await userManager.CreateAsync(owner, password), "创建开发种子账号");
             EnsureSucceeded(await userManager.AddToRoleAsync(owner, SystemRoles.Owner), "分配开发种子角色");
         }
@@ -63,6 +63,14 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
         if (!await dbContext.UserStores.AnyAsync(x => x.UserId == owner.Id && x.StoreId == store.Id, cancellationToken))
         {
             dbContext.UserStores.Add(new UserStore(tenant.Id, owner.Id, store.Id, true));
+        }
+
+        var ownerEmployee = await dbContext.Employees.SingleOrDefaultAsync(x => x.TenantId == tenant.Id && x.UserId == owner.Id, cancellationToken);
+        if (ownerEmployee is null)
+        {
+            ownerEmployee = new Employee(tenant.Id, "E0001", owner.DisplayName, "OWNER", owner.Id);
+            dbContext.Employees.Add(ownerEmployee);
+            dbContext.EmployeeStores.Add(new EmployeeStore(tenant.Id, ownerEmployee.Id, store.Id, true));
         }
 
         var ownerRole = await roleManager.FindByNameAsync(SystemRoles.Owner) ?? throw new InvalidOperationException("OWNER角色不存在");

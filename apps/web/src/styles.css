@@ -127,4 +127,14 @@ button, input { font: inherit; }
 .mix-track > span { display: block; height: 100%; min-width: 3px; background: linear-gradient(90deg,#1e9e92,#64c4b9); border-radius: inherit; }
 .mix-track.facility > span { background: linear-gradient(90deg,#3b82f6,#8ab6fa); }
 .report-inline-alert { margin-bottom: 18px; }
+.employee-cell { display: flex; align-items: center; gap: 10px; }
+.employee-cell > span { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #1677ff; background: #eff6ff; }
+.employee-cell > div, .account-state { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.employee-cell .ant-typography { font-size: 11px; }
+.employee-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.login-account-fields { margin-bottom: 18px; border-color: #d8e9f7; background: #f8fbff; }
+.password-shell { min-height: 100vh; display: grid; place-items: center; padding: 48px; background: radial-gradient(circle at 18% 10%,rgba(35,164,151,.12),transparent 28%),#f4f6f9; }
+.password-card { width: 520px; padding: 16px 22px; box-shadow: 0 18px 55px rgba(19,48,70,.12); }
+.password-card h2.ant-typography { margin: 18px 0 8px; }
+.password-icon { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; font-size: 25px; color: #fff; background: linear-gradient(145deg,#16998e,#0e746d); }
 @media (max-width: 1280px) { .app-content { padding: 22px; } .login-brand-panel { padding-inline: 6vw; } }

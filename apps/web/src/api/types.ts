@@ -1,5 +1,8 @@
 export interface AuthorizedStore { id: string; code: string; name: string; isDefault: boolean }
-export interface CurrentUser { id: string; tenantId: string; displayName: string; account: string; roles: string[]; stores: AuthorizedStore[] }
+export interface CurrentUser { id: string; tenantId: string; displayName: string; account: string; mustChangePassword: boolean; roles: string[]; stores: AuthorizedStore[] }
+export interface EmployeeStore { id: string; code: string; name: string; isPrimary: boolean }
+export interface Employee { id: string; employeeNo: string; displayName: string; positionCode: string; status: string; userId?: string; account?: string; accountEnabled?: boolean; mustChangePassword?: boolean; roles: string[]; stores: EmployeeStore[]; createdAtUtc: string }
+export interface EmployeeRole { id: string; code: string; name: string }
 export interface ServiceItem { id: string; code: string; name: string; standardDurationMinutes: number; status: string; version: number }
 export interface PriceBookLine { serviceItemId: string; serviceItemName: string; unitPriceMinor: number }
 export interface PriceBook { id: string; name: string; status: string; effectiveFrom: string; publishedAtUtc?: string; lines: PriceBookLine[] }
@@ -26,6 +29,7 @@ export interface PaymentMethod { id: string; code: string; name: string; categor
 export interface PaymentAllocation { id: string; methodId: string; methodCode: string; methodName: string; category: string; amountMinor: number; externalReference?: string; confirmationStatus: string; reconciliationStatus: string; shiftId?: string }
 export interface Payment { id: string; paymentNo: string; orderId: string; status: string; currency: string; receivableMinor: number; paidMinor: number; paidAtUtc?: string; allocations: PaymentAllocation[] }
 export interface CashierShift { id: string; shiftNo: string; operatorId: string; status: string; openingCashMinor: number; expectedCashMinor?: number; submittedCashMinor?: number; cashDifferenceMinor?: number; pendingReconciliationMinor?: number; handoverNote?: string; openedAtUtc: string; submittedAtUtc?: string; reviewedBy?: string; reviewReason?: string; closedAtUtc?: string; version: number }
+export interface CashierShiftReview { shift: CashierShift; operatorDisplayName: string }
 export interface AuditEvent { id: string; action: string; entityType: string; entityId?: string; previousState?: string; currentState?: string; reason?: string; operatorId?: string; operatorDisplayName: string; requestId?: string; traceId: string; occurredAtUtc: string }
 export interface AuditEventPage { items: AuditEvent[]; total: number; page: number; pageSize: number }
 export interface OperationsSummary { settledRevenueMinor: number; recordedFundsMinor: number; pendingReconciliationMinor: number; settledOrderCount: number; visitCount: number; averageTicketMinor: number; facilityActiveSeconds: number }
