@@ -1,6 +1,7 @@
 using Erp.Application.Security;
 using Erp.Domain.Authorization;
 using Erp.Domain.Facilities;
+using Erp.Domain.Customers;
 using Erp.Domain.Organization;
 using Erp.Infrastructure.Identity;
 using Erp.Infrastructure.Persistence;
@@ -64,7 +65,9 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
         }
 
         var ownerRole = await roleManager.FindByNameAsync(SystemRoles.Owner) ?? throw new InvalidOperationException("OWNER角色不存在");
-        var ownerActions = new[] { SystemActions.CatalogRead, SystemActions.CatalogWrite, SystemActions.PricePublish, SystemActions.FacilityOperate, SystemActions.CashierCheckout, SystemActions.AuditRead };
+        var ownerActions = new[] { SystemActions.CatalogRead, SystemActions.CatalogWrite, SystemActions.PricePublish,
+            SystemActions.FacilityOperate, SystemActions.CustomerRead, SystemActions.CustomerWrite,
+            SystemActions.MembershipOpen, SystemActions.CashierCheckout, SystemActions.AuditRead };
         foreach (var action in ownerActions)
         {
             if (!await dbContext.RoleActionGrants.AnyAsync(x => x.RoleId == ownerRole.Id && x.Action == action, cancellationToken))
@@ -93,6 +96,11 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
             dbContext.Facilities.AddRange(
                 new Facility(tenant.Id, store.Id, facilityGroup.Id, facilityType.Id, "F01", "服务位 01", 10, 0, false),
                 new Facility(tenant.Id, store.Id, facilityGroup.Id, facilityType.Id, "F02", "服务位 02", 20, 5, false));
+        }
+
+        if (!await dbContext.MemberCardTypes.AnyAsync(x => x.TenantId == tenant.Id, cancellationToken))
+        {
+            dbContext.MemberCardTypes.Add(new MemberCardType(tenant.Id, "STANDARD", "标准会员", null));
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);

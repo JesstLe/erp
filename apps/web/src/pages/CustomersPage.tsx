@@ -1,0 +1,56 @@
+import { CreditCardOutlined, PlusOutlined, SearchOutlined, SettingOutlined, TeamOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Checkbox, Descriptions, Drawer, Empty, Form, Input, InputNumber, Modal, Select, Space, Table, Tag, Typography, message } from 'antd'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { apiRequest, ApiError } from '../api/client'
+import type { CustomerDetail, CustomerSummary, MemberCardType } from '../api/types'
+import { useAuth } from '../auth/useAuth'
+
+function commandId() { return crypto.randomUUID() }
+function formatAccount(type: string, units: number) { return type === 'Points' ? `${units} 积分` : `¥${(units / 100).toFixed(2)}` }
+const accountLabels: Record<string, string> = { Principal: '储值本金', Bonus: '奖励金', Points: '积分' }
+const genderLabels: Record<string, string> = { Unknown: '未填写', Female: '女', Male: '男', Other: '其他' }
+
+export function CustomersPage() {
+  const auth = useAuth(); const storeId = auth.store?.id; const queryClient = useQueryClient()
+  const [query, setQuery] = useState(''); const [submittedQuery, setSubmittedQuery] = useState(''); const [selectedId, setSelectedId] = useState<string>()
+  const [createOpen, setCreateOpen] = useState(false); const [membershipOpen, setMembershipOpen] = useState(false); const [cardTypeOpen, setCardTypeOpen] = useState(false)
+  const [createForm] = Form.useForm(); const [membershipForm] = Form.useForm(); const [cardTypeForm] = Form.useForm()
+  const customers = useQuery({ queryKey: ['customers', storeId, submittedQuery], enabled: Boolean(storeId), queryFn: () => apiRequest<CustomerSummary[]>(`/api/v1/customers?storeId=${storeId}&query=${encodeURIComponent(submittedQuery)}`) })
+  const detail = useQuery({ queryKey: ['customer', storeId, selectedId], enabled: Boolean(storeId && selectedId), queryFn: () => apiRequest<CustomerDetail>(`/api/v1/customers/${selectedId}?storeId=${storeId}`) })
+  const cardTypes = useQuery({ queryKey: ['member-card-types'], queryFn: () => apiRequest<MemberCardType[]>('/api/v1/customers/membership/card-types') })
+  const onError = (error: unknown) => message.error(error instanceof ApiError ? error.message : '操作失败')
+  const createCustomer = useMutation({ mutationFn: (values: Record<string, unknown>) => apiRequest<CustomerDetail>('/api/v1/customers', { method: 'POST', body: JSON.stringify({ ...values, storeId, commandId: commandId() }) }), onSuccess: async (result) => { message.success('顾客档案已创建'); setCreateOpen(false); createForm.resetFields(); setSelectedId(result.id); await queryClient.invalidateQueries({ queryKey: ['customers', storeId] }) }, onError })
+  const openMembership = useMutation({ mutationFn: (values: Record<string, unknown>) => apiRequest<CustomerDetail>(`/api/v1/customers/${selectedId}/membership`, { method: 'POST', body: JSON.stringify({ ...values, storeId, commandId: commandId() }) }), onSuccess: async () => { message.success('会员已开通，账户初始余额为 0'); setMembershipOpen(false); membershipForm.resetFields(); await Promise.all([queryClient.invalidateQueries({ queryKey: ['customer', storeId, selectedId] }), queryClient.invalidateQueries({ queryKey: ['customers', storeId] })]) }, onError })
+  const createCardType = useMutation({ mutationFn: (values: Record<string, unknown>) => apiRequest<MemberCardType>('/api/v1/customers/membership/card-types', { method: 'POST', body: JSON.stringify({ ...values, commandId: commandId() }) }), onSuccess: async () => { message.success('卡类已发布'); setCardTypeOpen(false); cardTypeForm.resetFields(); await queryClient.invalidateQueries({ queryKey: ['member-card-types'] }) }, onError })
+  const canOpenMembership = auth.user?.roles.some((role) => role === 'OWNER' || role === 'STORE_MANAGER')
+
+  const columns = [
+    { title: '顾客', dataIndex: 'displayName', render: (value: string) => <Space><span className="customer-avatar"><TeamOutlined /></span><strong>{value}</strong></Space> },
+    { title: '手机号', dataIndex: 'maskedMobile' },
+    { title: '有效会员卡', dataIndex: 'activeCardCount', render: (value: number) => value ? <Tag color="blue">{value} 张</Tag> : <Tag>普通顾客</Tag> },
+    { title: '状态', dataIndex: 'status', render: (value: string) => <Tag color={value === 'Active' ? 'green' : 'default'}>{value === 'Active' ? '正常' : value}</Tag> },
+    { title: '建档时间', dataIndex: 'createdAtUtc', render: (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false }) },
+  ]
+
+  return <div className="page-stack">
+    <div className="page-heading"><div><Typography.Title level={2}>顾客与会员</Typography.Title><Typography.Paragraph>顾客身份、会员卡和权益账户分开管理；列表默认隐藏姓名和手机号。</Typography.Paragraph></div><Space>{auth.user?.roles.includes('OWNER') && <Button icon={<SettingOutlined />} onClick={() => setCardTypeOpen(true)}>卡类配置</Button>}<Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新建顾客</Button></Space></div>
+    <Alert type="info" showIcon title="会员开通只初始化本金、奖励金和积分账户，不会自动储值，也不能直接修改余额。" />
+    <Card variant="borderless"><Space.Compact className="customer-search"><Input value={query} onChange={(event) => setQuery(event.target.value)} onPressEnter={() => setSubmittedQuery(query.trim())} allowClear placeholder="输入姓名、完整手机号、手机尾号或会员卡号" /><Button icon={<SearchOutlined />} onClick={() => setSubmittedQuery(query.trim())}>查询</Button></Space.Compact></Card>
+    <Card variant="borderless" className="table-card"><Table<CustomerSummary> rowKey="id" columns={columns} dataSource={customers.data} loading={customers.isLoading} pagination={{ pageSize: 10 }} locale={{ emptyText: <Empty description="没有匹配的顾客档案" /> }} onRow={(record) => ({ onClick: () => setSelectedId(record.id), className: 'clickable-row' })} /></Card>
+
+    <Drawer title="顾客与会员详情" width={560} open={Boolean(selectedId)} onClose={() => setSelectedId(undefined)} extra={canOpenMembership && <Button type="primary" icon={<CreditCardOutlined />} onClick={() => setMembershipOpen(true)}>开通会员</Button>}>
+      {detail.error && <Alert type="error" showIcon title={detail.error instanceof Error ? detail.error.message : '详情加载失败'} />}
+      {detail.data && <Space orientation="vertical" size={20} className="full-width"><Descriptions column={2} bordered size="small" items={[
+        { key: 'name', label: '顾客', children: detail.data.displayName }, { key: 'mobile', label: '手机号', children: detail.data.maskedMobile },
+        { key: 'gender', label: '性别', children: genderLabels[detail.data.gender] ?? detail.data.gender }, { key: 'source', label: '来源', children: detail.data.sourceCode ?? '未填写' },
+        { key: 'service', label: '服务通知', children: detail.data.serviceNotificationConsent ? '已授权' : '未授权' }, { key: 'marketing', label: '营销通知', children: detail.data.marketingConsent ? '已授权' : '未授权' },
+      ]} />
+      <div><Typography.Title level={4}>会员卡与账户</Typography.Title>{!detail.data.cards.length ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未开通会员" /> : detail.data.cards.map((card) => <Card key={card.id} size="small" className="member-card"><div className="member-card-title"><div><Typography.Text type="secondary">{card.cardTypeName}</Typography.Text><Typography.Title level={5}>{card.maskedCardNo}</Typography.Title></div><Tag color="green">有效</Tag></div><Typography.Text type="secondary">有效期：{card.validFrom} 至 {card.validTo ?? '长期'}</Typography.Text><div className="account-grid">{card.accounts.map((account) => <div key={account.id}><span>{accountLabels[account.accountType] ?? account.accountType}</span><strong>{formatAccount(account.accountType, account.balanceUnits)}</strong></div>)}</div></Card>)}</div></Space>}
+    </Drawer>
+
+    <Modal title="新建顾客档案" open={createOpen} onCancel={() => setCreateOpen(false)} onOk={() => createForm.submit()} confirmLoading={createCustomer.isPending} okText="确认建档" destroyOnHidden><Alert type="warning" showIcon title="完整手机号会加密保存，页面和列表默认只展示尾号。" className="modal-alert" /><Form form={createForm} layout="vertical" initialValues={{ gender: 'Unknown', serviceNotificationConsent: false, marketingConsent: false }} onFinish={(values) => createCustomer.mutate(values)}><Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }, { max: 100 }]}><Input maxLength={100} /></Form.Item><Form.Item name="mobile" label="手机号" rules={[{ required: true, message: '请输入手机号' }, { pattern: /^1[3-9]\d{9}$/, message: '请输入有效的中国大陆手机号' }]}><Input maxLength={11} inputMode="numeric" /></Form.Item><Space align="start" className="full-width"><Form.Item name="gender" label="性别" className="grow"><Select options={[{ value: 'Unknown', label: '未填写' }, { value: 'Female', label: '女' }, { value: 'Male', label: '男' }, { value: 'Other', label: '其他' }]} /></Form.Item><Form.Item name="birthDate" label="生日（可选）" className="grow"><Input type="date" max={new Date().toISOString().slice(0, 10)} /></Form.Item></Space><Form.Item name="sourceCode" label="来源渠道（可选）" rules={[{ max: 40 }]}><Input placeholder="例如 WALK_IN" maxLength={40} /></Form.Item><Form.Item name="serviceNotificationConsent" valuePropName="checked"><Checkbox>顾客已授权接收服务通知</Checkbox></Form.Item><Form.Item name="marketingConsent" valuePropName="checked"><Checkbox>顾客已单独授权接收营销信息</Checkbox></Form.Item></Form></Modal>
+    <Modal title="开通会员" open={membershipOpen} onCancel={() => setMembershipOpen(false)} onOk={() => membershipForm.submit()} confirmLoading={openMembership.isPending} okText="确认开通" destroyOnHidden><Alert type="info" showIcon title="开卡和储值是两个独立动作。本次只创建会员卡和三个零余额账户。" className="modal-alert" /><Form form={membershipForm} layout="vertical" onFinish={(values) => openMembership.mutate(values)}><Form.Item name="cardTypeId" label="卡类" rules={[{ required: true, message: '请选择卡类' }]}><Select options={cardTypes.data?.map((item) => ({ value: item.id, label: `${item.name} · ${item.validityDays ? `${item.validityDays}天` : '长期'}` }))} /></Form.Item><Form.Item name="cardNo" label="会员卡号（可选）" rules={[{ min: 5 }, { max: 40 }]}><Input placeholder="留空由系统生成" maxLength={40} /></Form.Item><Form.Item name="note" label="备注（可选）" rules={[{ max: 500 }]}><Input.TextArea rows={3} maxLength={500} showCount /></Form.Item></Form></Modal>
+    <Modal title="新建并发布卡类" open={cardTypeOpen} onCancel={() => setCardTypeOpen(false)} onOk={() => cardTypeForm.submit()} confirmLoading={createCardType.isPending} okText="发布卡类" destroyOnHidden><Form form={cardTypeForm} layout="vertical" onFinish={(values) => createCardType.mutate(values)}><Form.Item name="code" label="卡类编号" rules={[{ required: true }, { max: 40 }]}><Input placeholder="例如 VIP" maxLength={40} /></Form.Item><Form.Item name="name" label="卡类名称" rules={[{ required: true }, { max: 80 }]}><Input placeholder="例如 长期会员" maxLength={80} /></Form.Item><Form.Item name="validityDays" label="有效期天数（可选）" rules={[{ type: 'number', min: 1, max: 3650 }]}><InputNumber min={1} max={3650} precision={0} className="full-width" placeholder="留空表示长期有效" /></Form.Item></Form></Modal>
+  </div>
+}

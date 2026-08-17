@@ -13,3 +13,9 @@ export interface FacilityBoardItem {
 }
 export interface FacilityBoardGroup { id: string; displayName: string; facilities: FacilityBoardItem[] }
 export interface FacilityBoard { serverNowUtc: string; groups: FacilityBoardGroup[] }
+
+export interface CustomerSummary { id: string; displayName: string; maskedMobile: string; status: string; homeStoreId: string; activeCardCount: number; createdAtUtc: string }
+export interface MemberCardType { id: string; code: string; name: string; validityDays?: number; status: string }
+export interface MemberAccount { id: string; accountType: string; balanceUnits: number; status: string }
+export interface MemberCard { id: string; cardTypeName: string; maskedCardNo: string; status: string; validFrom: string; validTo?: string; accounts: MemberAccount[] }
+export interface CustomerDetail { id: string; displayName: string; maskedMobile: string; gender: string; sourceCode?: string; serviceNotificationConsent: boolean; marketingConsent: boolean; status: string; homeStoreId: string; version: number; cards: MemberCard[] }

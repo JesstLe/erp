@@ -10,7 +10,7 @@
 2. [服务项目与价格版本](02-service-items-and-pricing.md)
 3. 产品与库存（待完成）
 4. [设施接待与独立计时](03-facility-reception-and-timing.md)
-5. 顾客与会员（待完成）
+5. [顾客档案与会员账户](04-customers-and-membership.md)
 6. 服务录单与收银支付（待完成）
 7. 收银交班与审计（待完成）
 8. 经营工作台与报表（待完成）
