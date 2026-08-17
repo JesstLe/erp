@@ -62,6 +62,23 @@ public sealed class PaymentTests
         Assert.Null(payment.OrderId);
     }
 
+    [Fact]
+    public void InternalAccountPaymentRequiresMemberAccountReference()
+    {
+        Assert.Throws<DomainRuleException>(() => CreatePayment(8_000,
+            [new(Guid.CreateVersion7(), "MEMBER_PRINCIPAL", "会员储值本金",
+                PaymentMethodCategory.InternalAccount, 8_000, null, null)]));
+
+        var accountId = Guid.CreateVersion7();
+        var payment = CreatePayment(8_000,
+            [new(Guid.CreateVersion7(), "MEMBER_PRINCIPAL", "会员储值本金",
+                PaymentMethodCategory.InternalAccount, 8_000, null, null, accountId)]);
+
+        var allocation = payment.Allocations.Single();
+        Assert.Equal(accountId, allocation.MemberAccountId);
+        Assert.Equal(PaymentConfirmationStatus.InternalConfirmed, allocation.ConfirmationStatus);
+    }
+
     private static Payment CreatePayment(long receivable, IEnumerable<PaymentAllocationDraft> allocations) =>
         new(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "PAY202608180001", receivable,
             allocations, new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero));

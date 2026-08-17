@@ -53,6 +53,24 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void MemberPaymentMigrationRequiresTypedAccountAndBoundOneTimeChallenge()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180009__member_account_payments_and_verification.sql"));
+        var paymentService = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api",
+            "Erp.Infrastructure", "Cashier", "PaymentService.cs"));
+
+        Assert.Contains("internal_account_type", migration, StringComparison.Ordinal);
+        Assert.Contains("member_account_id uuid REFERENCES member_accounts(id) ON DELETE RESTRICT", migration,
+            StringComparison.Ordinal);
+        Assert.Contains("authorized_amount_minor BETWEEN 50000", migration, StringComparison.Ordinal);
+        Assert.Contains("octet_length(code_hash) = 32", migration, StringComparison.Ordinal);
+        Assert.Contains("verificationChallenge.Consume(order.Id, order.CustomerId.Value, memberAmountMinor",
+            paymentService, StringComparison.Ordinal);
+        Assert.Contains("account.Debit(\"ServiceOrder\"", paymentService, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");

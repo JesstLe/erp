@@ -120,6 +120,19 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
                 new PaymentMethod(tenant.Id, "ALIPAY_MANUAL", "支付宝人工登记", PaymentMethodCategory.ManualExternal, true));
         }
 
+        if (!await dbContext.PaymentMethods.AnyAsync(x => x.TenantId == tenant.Id &&
+            x.Code == "MEMBER_PRINCIPAL", cancellationToken))
+        {
+            dbContext.PaymentMethods.Add(new PaymentMethod(tenant.Id, "MEMBER_PRINCIPAL", "会员储值本金",
+                PaymentMethodCategory.InternalAccount, false, MemberAccountType.Principal));
+        }
+        if (!await dbContext.PaymentMethods.AnyAsync(x => x.TenantId == tenant.Id &&
+            x.Code == "MEMBER_BONUS", cancellationToken))
+        {
+            dbContext.PaymentMethods.Add(new PaymentMethod(tenant.Id, "MEMBER_BONUS", "会员奖励金",
+                PaymentMethodCategory.InternalAccount, false, MemberAccountType.Bonus));
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 

@@ -38,7 +38,8 @@ public static class PaymentEndpoints
             return EndpointResults.From(await payments.SettleOrderAsync(current.TenantId,
                 new SettleOrderCommand(request.StoreId, orderId, request.ExpectedVersion,
                     (request.Allocations ?? []).Select(x => new SettleAllocationCommand(x.MethodId, x.AmountMinor,
-                        x.ExternalReference)).ToList(), request.CommandId, current.Id), cancellationToken));
+                        x.ExternalReference, x.MemberAccountId)).ToList(), request.VerifiedMobile,
+                    request.VerificationChallengeId, request.CommandId, current.Id), cancellationToken));
         });
 
         group.MapGet("/shifts/current", async (Guid storeId, IIdentityService identity, IPaymentService payments,
@@ -96,9 +97,10 @@ public static class PaymentEndpoints
     }
 
     private static bool HasStore(CurrentUserDto user, Guid storeId) => user.Stores.Any(x => x.Id == storeId);
-    private sealed record AllocationRequest(Guid MethodId, long AmountMinor, string? ExternalReference);
+    private sealed record AllocationRequest(Guid MethodId, long AmountMinor, string? ExternalReference,
+        Guid? MemberAccountId);
     private sealed record SettleRequest(Guid StoreId, uint ExpectedVersion, IReadOnlyList<AllocationRequest>? Allocations,
-        Guid CommandId);
+        string? VerifiedMobile, Guid? VerificationChallengeId, Guid CommandId);
     private sealed record OpenShiftRequest(Guid StoreId, long OpeningCashMinor, Guid CommandId);
     private sealed record SubmitShiftRequest(Guid StoreId, uint ExpectedVersion, long SubmittedCashMinor, string? Note,
         Guid CommandId);

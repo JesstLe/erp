@@ -52,6 +52,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<MemberAccount> MemberAccounts => Set<MemberAccount>();
     public DbSet<MemberAccountLedger> MemberAccountLedgers => Set<MemberAccountLedger>();
     public DbSet<MemberTopupOrder> MemberTopupOrders => Set<MemberTopupOrder>();
+    public DbSet<MemberVerificationChallenge> MemberVerificationChallenges => Set<MemberVerificationChallenge>();
     public DbSet<ServiceOrder> ServiceOrders => Set<ServiceOrder>();
     public DbSet<ServiceOrderLine> ServiceOrderLines => Set<ServiceOrderLine>();
     public DbSet<PaymentMethod> PaymentMethods => Set<PaymentMethod>();
@@ -474,6 +475,26 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasIndex(x => new { x.StoreId, x.PaidAtUtc });
             entity.HasIndex(x => new { x.CustomerId, x.PaidAtUtc });
         });
+        builder.Entity<MemberVerificationChallenge>(entity =>
+        {
+            entity.ToTable("member_verification_challenges");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.OrderId).HasColumnName("order_id");
+            entity.Property(x => x.AuthorizedAmountMinor).HasColumnName("authorized_amount_minor");
+            entity.Property(x => x.CodeSalt).HasColumnName("code_salt");
+            entity.Property(x => x.CodeHash).HasColumnName("code_hash");
+            entity.Property(x => x.MobileLastFour).HasColumnName("mobile_last_four").HasMaxLength(4);
+            entity.Property(x => x.RequestedBy).HasColumnName("requested_by");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.AttemptsRemaining).HasColumnName("attempts_remaining");
+            entity.Property(x => x.ExpiresAtUtc).HasColumnName("expires_at_utc");
+            entity.Property(x => x.VerifiedAtUtc).HasColumnName("verified_at_utc");
+            entity.Property(x => x.UsedAtUtc).HasColumnName("used_at_utc");
+            entity.HasIndex(x => new { x.OrderId, x.Status });
+            entity.HasIndex(x => new { x.CustomerId, x.CreatedAtUtc });
+        });
     }
 
     private static void ConfigureCashier(ModelBuilder builder)
@@ -522,6 +543,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(40);
             entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(80);
             entity.Property(x => x.Category).HasColumnName("category").HasConversion<string>().HasMaxLength(32);
+            entity.Property(x => x.InternalAccountType).HasColumnName("internal_account_type")
+                .HasConversion<string>().HasMaxLength(24);
             entity.Property(x => x.RequiresOpenShift).HasColumnName("requires_open_shift");
             entity.Property(x => x.IsEnabled).HasColumnName("is_enabled");
             entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
@@ -580,11 +603,15 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.AmountMinor).HasColumnName("amount_minor");
             entity.Property(x => x.ExternalReference).HasColumnName("external_reference").HasMaxLength(100);
             entity.Property(x => x.ShiftId).HasColumnName("shift_id");
+            entity.Property(x => x.MemberAccountId).HasColumnName("member_account_id");
             entity.Property(x => x.ConfirmationStatus).HasColumnName("confirmation_status").HasConversion<string>().HasMaxLength(48);
             entity.Property(x => x.ReconciliationStatus).HasColumnName("reconciliation_status").HasConversion<string>().HasMaxLength(32);
             entity.Property(x => x.ConfirmedAtUtc).HasColumnName("confirmed_at_utc");
             entity.HasIndex(x => x.PaymentId);
             entity.HasIndex(x => x.ShiftId);
+            entity.HasIndex(x => x.MemberAccountId);
+            entity.HasOne<MemberAccount>().WithMany().HasForeignKey(x => x.MemberAccountId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

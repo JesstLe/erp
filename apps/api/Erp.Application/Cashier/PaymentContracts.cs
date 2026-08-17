@@ -2,10 +2,11 @@ using Erp.Application.Common;
 
 namespace Erp.Application.Cashier;
 
-public sealed record PaymentMethodDto(Guid Id, string Code, string Name, string Category, bool RequiresOpenShift);
+public sealed record PaymentMethodDto(Guid Id, string Code, string Name, string Category, bool RequiresOpenShift,
+    string? InternalAccountType);
 public sealed record PaymentAllocationDto(Guid Id, Guid MethodId, string MethodCode, string MethodName,
     string Category, long AmountMinor, string? ExternalReference, string ConfirmationStatus,
-    string ReconciliationStatus, Guid? ShiftId);
+    string ReconciliationStatus, Guid? ShiftId, Guid? MemberAccountId);
 public sealed record PaymentDto(Guid Id, string PaymentNo, Guid? OrderId, string BusinessType, Guid BusinessId,
     string Status, string Currency,
     long ReceivableMinor, long PaidMinor, DateTimeOffset? PaidAtUtc, IReadOnlyList<PaymentAllocationDto> Allocations);
@@ -14,9 +15,11 @@ public sealed record CashierShiftDto(Guid Id, string ShiftNo, Guid OperatorId, s
     string? HandoverNote, DateTimeOffset OpenedAtUtc, DateTimeOffset? SubmittedAtUtc, Guid? ReviewedBy,
     string? ReviewReason, DateTimeOffset? ClosedAtUtc, uint Version);
 public sealed record CashierShiftReviewDto(CashierShiftDto Shift, string OperatorDisplayName);
-public sealed record SettleAllocationCommand(Guid MethodId, long AmountMinor, string? ExternalReference);
+public sealed record SettleAllocationCommand(Guid MethodId, long AmountMinor, string? ExternalReference,
+    Guid? MemberAccountId = null);
 public sealed record SettleOrderCommand(Guid StoreId, Guid OrderId, uint ExpectedVersion,
-    IReadOnlyList<SettleAllocationCommand> Allocations, Guid CommandId, Guid OperatorId);
+    IReadOnlyList<SettleAllocationCommand> Allocations, string? VerifiedMobile,
+    Guid? VerificationChallengeId, Guid CommandId, Guid OperatorId);
 public sealed record OpenShiftCommand(Guid StoreId, long OpeningCashMinor, Guid CommandId, Guid OperatorId);
 public sealed record SubmitShiftCommand(Guid StoreId, Guid ShiftId, uint ExpectedVersion, long SubmittedCashMinor,
     string? Note, Guid CommandId, Guid OperatorId);
