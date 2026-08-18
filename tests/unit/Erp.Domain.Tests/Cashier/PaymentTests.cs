@@ -96,6 +96,56 @@ public sealed class PaymentTests
         Assert.Throws<DomainRuleException>(() => payment.ApplyRefund(1));
     }
 
+    [Fact]
+    public void ChannelConfigurationStoresOnlyCredentialProfileName()
+    {
+        var configuration = new PaymentChannelConfiguration(Guid.CreateVersion7(), Guid.CreateVersion7(),
+            PaymentChannelProvider.WeChatPay, PaymentChannelEnvironment.Production, "微信支付",
+            "PRIMARY_WECHAT", false);
+
+        Assert.Equal("PRIMARY_WECHAT", configuration.CredentialProfile);
+        Assert.False(configuration.IsEnabled);
+        Assert.Throws<DomainRuleException>(() => new PaymentChannelConfiguration(Guid.CreateVersion7(),
+            Guid.CreateVersion7(), PaymentChannelProvider.Alipay, PaymentChannelEnvironment.Sandbox,
+            "支付宝", "../../secrets/private-key", false));
+    }
+
+    [Fact]
+    public void ChannelOrderTransitionsToPaidAndRejectsConflictingReplay()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var order = new PaymentChannelOrder(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
+            PaymentChannelProvider.Alipay, "PAY202608180001-A1", 1, 12_300, "服务消费",
+            now.AddMinutes(15));
+
+        order.MarkQrReady("https://qr.example.test/payment/one-time-token", now);
+        order.MarkPaid("2026081822001000000001", now.AddMinutes(1));
+        order.MarkPaid("2026081822001000000001", now.AddMinutes(1));
+
+        Assert.Equal(PaymentChannelOrderStatus.Paid, order.Status);
+        Assert.Equal("2026081822001000000001", order.ProviderTradeNo);
+        Assert.Throws<DomainRuleException>(() =>
+            order.MarkPaid("2026081822001000000002", now.AddMinutes(2)));
+        Assert.Throws<DomainRuleException>(() => order.Close(now.AddMinutes(2)));
+    }
+
+    [Fact]
+    public void VerifiedChannelEventStoresDigestInsteadOfRawPayload()
+    {
+        var digest = Enumerable.Repeat((byte)0x5A, 32).ToArray();
+        var now = DateTimeOffset.UtcNow;
+        var notification = new PaymentChannelEvent(Guid.CreateVersion7(), Guid.CreateVersion7(), null,
+            PaymentChannelProvider.WeChatPay, "EVT-20260818-0001", "TRANSACTION.SUCCESS", digest, now);
+
+        notification.Complete(PaymentChannelEventStatus.Processed, now.AddSeconds(1));
+
+        Assert.Equal(PaymentChannelEventStatus.Processed, notification.Status);
+        Assert.Equal(digest, notification.PayloadSha256);
+        Assert.Throws<DomainRuleException>(() => new PaymentChannelEvent(Guid.CreateVersion7(),
+            Guid.CreateVersion7(), null, PaymentChannelProvider.Alipay, "event", "trade_status_sync",
+            new byte[31], now));
+    }
+
     private static Payment CreatePayment(long receivable, IEnumerable<PaymentAllocationDraft> allocations) =>
         new(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "PAY202608180001", receivable,
             allocations, new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero));

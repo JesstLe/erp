@@ -61,6 +61,9 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<Refund> Refunds => Set<Refund>();
     public DbSet<RefundLine> RefundLines => Set<RefundLine>();
     public DbSet<CashierShift> CashierShifts => Set<CashierShift>();
+    public DbSet<PaymentChannelConfiguration> PaymentChannelConfigurations => Set<PaymentChannelConfiguration>();
+    public DbSet<PaymentChannelOrder> PaymentChannelOrders => Set<PaymentChannelOrder>();
+    public DbSet<PaymentChannelEvent> PaymentChannelEvents => Set<PaymentChannelEvent>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -653,6 +656,69 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasIndex(x => new { x.RefundId, x.OriginalAllocationId }).IsUnique();
             entity.HasIndex(x => x.OriginalAllocationId);
             entity.HasIndex(x => x.CashShiftId);
+        });
+        builder.Entity<PaymentChannelConfiguration>(entity =>
+        {
+            entity.ToTable("payment_channel_configurations");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.Provider).HasColumnName("provider").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.Environment).HasColumnName("environment").HasConversion<string>().HasMaxLength(16);
+            entity.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(80);
+            entity.Property(x => x.CredentialProfile).HasColumnName("credential_profile").HasMaxLength(40);
+            entity.Property(x => x.IsEnabled).HasColumnName("is_enabled");
+            entity.HasIndex(x => new { x.TenantId, x.StoreId, x.Provider }).IsUnique();
+            entity.HasIndex(x => new { x.StoreId, x.IsEnabled, x.Provider });
+        });
+        builder.Entity<PaymentChannelOrder>(entity =>
+        {
+            entity.ToTable("payment_channel_orders");
+            ConfigureBase(entity);
+            entity.Property(x => x.ConfigurationId).HasColumnName("configuration_id");
+            entity.Property(x => x.PaymentAllocationId).HasColumnName("payment_allocation_id");
+            entity.Property(x => x.Provider).HasColumnName("provider").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.OutTradeNo).HasColumnName("out_trade_no").HasMaxLength(64);
+            entity.Property(x => x.AttemptNo).HasColumnName("attempt_no");
+            entity.Property(x => x.AmountMinor).HasColumnName("amount_minor");
+            entity.Property(x => x.Currency).HasColumnName("currency").HasMaxLength(3);
+            entity.Property(x => x.Subject).HasColumnName("subject").HasMaxLength(120);
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.QrPayload).HasColumnName("qr_payload").HasMaxLength(2048);
+            entity.Property(x => x.ProviderTradeNo).HasColumnName("provider_trade_no").HasMaxLength(128);
+            entity.Property(x => x.FailureCode).HasColumnName("failure_code").HasMaxLength(80);
+            entity.Property(x => x.ExpiresAtUtc).HasColumnName("expires_at_utc");
+            entity.Property(x => x.PaidAtUtc).HasColumnName("paid_at_utc");
+            entity.Property(x => x.ClosedAtUtc).HasColumnName("closed_at_utc");
+            entity.Property(x => x.LastQueriedAtUtc).HasColumnName("last_queried_at_utc");
+            entity.HasIndex(x => new { x.TenantId, x.Provider, x.OutTradeNo }).IsUnique();
+            entity.HasIndex(x => new { x.PaymentAllocationId, x.AttemptNo }).IsUnique();
+            entity.HasIndex(x => new { x.ConfigurationId, x.Status, x.CreatedAtUtc });
+            entity.HasIndex(x => new { x.Provider, x.ProviderTradeNo });
+            entity.HasOne<PaymentChannelConfiguration>().WithMany().HasForeignKey(x => x.ConfigurationId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PaymentAllocation>().WithMany().HasForeignKey(x => x.PaymentAllocationId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<PaymentChannelEvent>(entity =>
+        {
+            entity.ToTable("payment_channel_events");
+            ConfigureBase(entity);
+            entity.Property(x => x.ConfigurationId).HasColumnName("configuration_id");
+            entity.Property(x => x.ChannelOrderId).HasColumnName("channel_order_id");
+            entity.Property(x => x.Provider).HasColumnName("provider").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.ProviderEventId).HasColumnName("provider_event_id").HasMaxLength(128);
+            entity.Property(x => x.EventType).HasColumnName("event_type").HasMaxLength(80);
+            entity.Property(x => x.PayloadSha256).HasColumnName("payload_sha256");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.ReceivedAtUtc).HasColumnName("received_at_utc");
+            entity.Property(x => x.ProcessedAtUtc).HasColumnName("processed_at_utc");
+            entity.Property(x => x.ErrorCode).HasColumnName("error_code").HasMaxLength(80);
+            entity.HasIndex(x => new { x.ConfigurationId, x.ProviderEventId }).IsUnique();
+            entity.HasIndex(x => new { x.ChannelOrderId, x.ReceivedAtUtc });
+            entity.HasOne<PaymentChannelConfiguration>().WithMany().HasForeignKey(x => x.ConfigurationId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PaymentChannelOrder>().WithMany().HasForeignKey(x => x.ChannelOrderId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

@@ -87,6 +87,24 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void PaymentChannelFoundationStoresReferencesAndDigestsButNoSecretMaterial()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180011__payment_channel_foundation.sql"));
+        var service = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Cashier", "PaymentChannelConfigurationService.cs"));
+
+        Assert.Contains("credential_profile varchar(40) NOT NULL", migration, StringComparison.Ordinal);
+        Assert.Contains("payload_sha256 bytea NOT NULL", migration, StringComparison.Ordinal);
+        Assert.Contains("octet_length(payload_sha256) = 32", migration, StringComparison.Ordinal);
+        Assert.Contains("uq_payment_channel_order_active_allocation", migration, StringComparison.Ordinal);
+        Assert.DoesNotContain("private_key varchar", migration, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("api_v3_key", migration, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PaymentChannels:Profiles:{profile}", service, StringComparison.Ordinal);
+        Assert.Contains("File.Exists(path)", service, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");

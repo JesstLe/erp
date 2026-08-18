@@ -166,6 +166,7 @@ app.MapMemberTopupEndpoints();
 app.MapMemberVerificationEndpoints();
 app.MapCashierEndpoints();
 app.MapPaymentEndpoints();
+app.MapPaymentChannelEndpoints();
 app.MapRefundEndpoints();
 app.MapAuditEndpoints();
 app.MapReportEndpoints();
