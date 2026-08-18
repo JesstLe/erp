@@ -11,10 +11,15 @@ export interface PriceBook { id: string; name: string; status: string; effective
 
 export interface FacilityGroup { id: string; displayName: string; sortOrder: number }
 export interface FacilityType { id: string; displayName: string }
+export interface FacilityConfigurationStore { id: string; code: string; name: string; status: string; managerNames: string[]; groupCount: number; facilityCount: number; enabledFacilityCount: number }
+export interface FacilityConfigurationItem { id: string; groupId: string; facilityTypeId: string; typeName: string; code: string; displayName: string; serviceName?: string | null; equipmentName?: string | null; referencePriceMinor?: number | null; sortOrder: number; defaultCleaningMinutes: number; allowReservation: boolean; lifecycleStatus: string; version: number; hasOpenSession: boolean }
+export interface FacilityConfigurationGroup { id: string; displayName: string; sortOrder: number; version: number; facilities: FacilityConfigurationItem[] }
+export interface FacilityConfiguration { storeId: string; storeCode: string; storeName: string; managerNames: string[]; groups: FacilityConfigurationGroup[] }
 export interface FacilityBoardItem {
   id: string; code: string; displayName: string; typeName: string; status: string; version: number
   sessionId?: string; visitId?: string; visitNo?: string; sessionStatus?: string; startedAtUtc?: string
   activeSeconds: number; pausedSeconds: number; expectedDurationMinutes?: number; note?: string
+  serviceName?: string | null; equipmentName?: string | null; referencePriceMinor?: number | null
 }
 export interface FacilityBoardGroup { id: string; displayName: string; facilities: FacilityBoardItem[] }
 export interface FacilityBoard { serverNowUtc: string; groups: FacilityBoardGroup[] }

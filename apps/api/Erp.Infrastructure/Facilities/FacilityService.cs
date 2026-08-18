@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Erp.Application.Common;
 using Erp.Application.Facilities;
+using Erp.Application.Security;
 using Erp.Domain.Common;
 using Erp.Domain.Facilities;
 using Erp.Infrastructure.Persistence;
@@ -51,6 +52,53 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
         return ResultFactory.Success(new FacilityBoardDto(now, projected));
     }
 
+    public async Task<IReadOnlyList<FacilityConfigurationStoreDto>> ListConfigurationStoresAsync(Guid tenantId,
+        CancellationToken cancellationToken)
+    {
+        var stores = await db.Stores.AsNoTracking().Where(x => x.TenantId == tenantId)
+            .OrderBy(x => x.Code).ToListAsync(cancellationToken);
+        var groupCounts = await db.FacilityGroups.AsNoTracking().Where(x => x.TenantId == tenantId)
+            .GroupBy(x => x.StoreId).Select(x => new { StoreId = x.Key, Count = x.Count() })
+            .ToDictionaryAsync(x => x.StoreId, x => x.Count, cancellationToken);
+        var facilityCounts = await db.Facilities.AsNoTracking().Where(x => x.TenantId == tenantId)
+            .GroupBy(x => x.StoreId).Select(x => new
+            {
+                StoreId = x.Key,
+                Count = x.Count(),
+                Enabled = x.Count(item => item.LifecycleStatus == FacilityLifecycleStatus.Enabled),
+            }).ToDictionaryAsync(x => x.StoreId, cancellationToken);
+        var managers = await ManagerNamesByStoreAsync(tenantId, cancellationToken);
+
+        return stores.Select(store => new FacilityConfigurationStoreDto(store.Id, store.Code, store.Name,
+            store.Status.ToString(), managers.GetValueOrDefault(store.Id, []), groupCounts.GetValueOrDefault(store.Id),
+            facilityCounts.TryGetValue(store.Id, out var count) ? count.Count : 0,
+            facilityCounts.TryGetValue(store.Id, out count) ? count.Enabled : 0)).ToList();
+    }
+
+    public async Task<Result<FacilityConfigurationDto>> GetConfigurationAsync(Guid tenantId, Guid storeId,
+        CancellationToken cancellationToken)
+    {
+        var store = await db.Stores.AsNoTracking().SingleOrDefaultAsync(x => x.Id == storeId && x.TenantId == tenantId,
+            cancellationToken);
+        if (store is null) return ResultFactory.Failure<FacilityConfigurationDto>("STORE_NOT_FOUND", "门店不存在");
+        var groups = await db.FacilityGroups.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId)
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.DisplayName).ToListAsync(cancellationToken);
+        var facilities = await db.Facilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId)
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.DisplayName).ToListAsync(cancellationToken);
+        var types = await db.FacilityTypes.AsNoTracking().Where(x => x.TenantId == tenantId)
+            .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
+        var openFacilityIds = await db.FacilitySessions.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                x.StoreId == storeId && OpenSessionStatuses.Contains(x.Status))
+            .Select(x => x.FacilityId).ToHashSetAsync(cancellationToken);
+        var managers = await ManagerNamesByStoreAsync(tenantId, cancellationToken);
+        var projected = groups.Select(group => new FacilityConfigurationGroupDto(group.Id, group.DisplayName,
+            group.SortOrder, group.Version, facilities.Where(x => x.GroupId == group.Id)
+                .Select(x => ToConfigurationItem(x, types.GetValueOrDefault(x.FacilityTypeId, "通用服务位"),
+                    openFacilityIds.Contains(x.Id))).ToList())).ToList();
+        return ResultFactory.Success(new FacilityConfigurationDto(store.Id, store.Code, store.Name,
+            managers.GetValueOrDefault(store.Id, []), projected));
+    }
+
     public async Task<IReadOnlyList<FacilityGroupDto>> ListGroupsAsync(Guid tenantId, Guid storeId, CancellationToken cancellationToken) =>
         await db.FacilityGroups.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId)
             .OrderBy(x => x.SortOrder).Select(x => new FacilityGroupDto(x.Id, x.DisplayName, x.SortOrder)).ToListAsync(cancellationToken);
@@ -65,11 +113,37 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
         {
             var group = new FacilityGroup(tenantId, command.StoreId, command.DisplayName, command.SortOrder);
             db.FacilityGroups.Add(group);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "facility.group.create", "FacilityGroup", group.Id,
+                null, "Created", Guid.CreateVersion7(), null, clock.GetUtcNow(),
+                JsonSerializer.Serialize(new { group.DisplayName, group.SortOrder }));
             await db.SaveChangesAsync(cancellationToken);
             return ResultFactory.Success(new FacilityGroupDto(group.Id, group.DisplayName, group.SortOrder));
         }
         catch (DomainRuleException exception) { return ResultFactory.Failure<FacilityGroupDto>("VALIDATION_FAILED", exception.Message); }
         catch (DbUpdateException exception) when (IsUniqueViolation(exception)) { return ResultFactory.Failure<FacilityGroupDto>("DUPLICATE_FACILITY_GROUP", "同一门店已存在该设施分组"); }
+    }
+
+    public async Task<Result<FacilityGroupDto>> UpdateGroupAsync(Guid tenantId, UpdateFacilityGroupCommand command,
+        CancellationToken cancellationToken)
+    {
+        var group = await db.FacilityGroups.SingleOrDefaultAsync(x => x.Id == command.GroupId && x.TenantId == tenantId &&
+            x.StoreId == command.StoreId, cancellationToken);
+        if (group is null) return ResultFactory.Failure<FacilityGroupDto>("FACILITY_GROUP_NOT_FOUND", "服务区不存在");
+        if (group.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<FacilityGroupDto>("VERSION_CONFLICT", "服务区已被其他人修改，请刷新后重试");
+        var previous = JsonSerializer.Serialize(new { group.DisplayName, group.SortOrder });
+        try
+        {
+            group.Update(command.DisplayName, command.SortOrder);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "facility.group.update", "FacilityGroup", group.Id,
+                $"Version:{command.ExpectedVersion}", "Updated", Guid.CreateVersion7(), null, clock.GetUtcNow(),
+                JsonSerializer.Serialize(new { previous, current = new { group.DisplayName, group.SortOrder } }));
+            await db.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(new FacilityGroupDto(group.Id, group.DisplayName, group.SortOrder));
+        }
+        catch (DomainRuleException exception) { return ResultFactory.Failure<FacilityGroupDto>("VALIDATION_FAILED", exception.Message); }
+        catch (DbUpdateConcurrencyException) { return ResultFactory.Failure<FacilityGroupDto>("VERSION_CONFLICT", "服务区已被其他人修改，请刷新后重试"); }
+        catch (DbUpdateException exception) when (IsUniqueViolation(exception)) { return ResultFactory.Failure<FacilityGroupDto>("DUPLICATE_FACILITY_GROUP", "同一门店已存在该服务区"); }
     }
 
     public async Task<Result<FacilityTypeDto>> CreateTypeAsync(Guid tenantId, CreateFacilityTypeCommand command, CancellationToken cancellationToken)
@@ -78,6 +152,9 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
         {
             var type = new FacilityType(tenantId, command.DisplayName);
             db.FacilityTypes.Add(type);
+            AddAudit(tenantId, null, command.OperatorId, "facility.type.create", "FacilityType", type.Id, null,
+                "Created", Guid.CreateVersion7(), null, clock.GetUtcNow(),
+                JsonSerializer.Serialize(new { type.DisplayName }));
             await db.SaveChangesAsync(cancellationToken);
             return ResultFactory.Success(new FacilityTypeDto(type.Id, type.DisplayName));
         }
@@ -88,18 +165,60 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
     public async Task<Result<FacilityBoardItemDto>> CreateFacilityAsync(Guid tenantId, CreateFacilityCommand command, CancellationToken cancellationToken)
     {
         var validGroup = await db.FacilityGroups.AnyAsync(x => x.Id == command.GroupId && x.TenantId == tenantId && x.StoreId == command.StoreId, cancellationToken);
-        var validType = await db.FacilityTypes.AnyAsync(x => x.Id == command.FacilityTypeId && x.TenantId == tenantId, cancellationToken);
-        if (!validGroup || !validType) return ResultFactory.Failure<FacilityBoardItemDto>("VALIDATION_FAILED", "设施分组或类型无效");
+        if (!validGroup) return ResultFactory.Failure<FacilityBoardItemDto>("VALIDATION_FAILED", "所属服务区无效");
         try
         {
-            var facility = new Facility(tenantId, command.StoreId, command.GroupId, command.FacilityTypeId, command.Code,
-                command.DisplayName, command.SortOrder, command.DefaultCleaningMinutes, command.AllowReservation);
+            var typeId = await ResolveTypeIdAsync(tenantId, command.FacilityTypeId, cancellationToken);
+            if (!typeId.HasValue) return ResultFactory.Failure<FacilityBoardItemDto>("VALIDATION_FAILED", "设施类型无效");
+            var code = string.IsNullOrWhiteSpace(command.Code) ? $"F-{Guid.CreateVersion7():N}"[..10] : command.Code;
+            var facility = new Facility(tenantId, command.StoreId, command.GroupId, typeId.Value, code,
+                command.DisplayName, command.SortOrder, command.DefaultCleaningMinutes, command.AllowReservation,
+                command.ServiceName, command.EquipmentName, command.ReferencePriceMinor);
             db.Facilities.Add(facility);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "facility.create", "Facility", facility.Id, null,
+                "Created", Guid.CreateVersion7(), null, clock.GetUtcNow(), ConfigurationState(facility));
             await db.SaveChangesAsync(cancellationToken);
             return await GetItemAsync(tenantId, command.StoreId, facility.Id, cancellationToken);
         }
         catch (DomainRuleException exception) { return ResultFactory.Failure<FacilityBoardItemDto>("VALIDATION_FAILED", exception.Message); }
         catch (DbUpdateException exception) when (IsUniqueViolation(exception)) { return ResultFactory.Failure<FacilityBoardItemDto>("DUPLICATE_FACILITY_CODE", "同一门店的设施编号不能重复"); }
+    }
+
+    public async Task<Result<FacilityConfigurationItemDto>> UpdateFacilityAsync(Guid tenantId,
+        UpdateFacilityCommand command, CancellationToken cancellationToken)
+    {
+        var facility = await db.Facilities.SingleOrDefaultAsync(x => x.Id == command.FacilityId && x.TenantId == tenantId &&
+            x.StoreId == command.StoreId, cancellationToken);
+        if (facility is null) return ResultFactory.Failure<FacilityConfigurationItemDto>("FACILITY_NOT_FOUND", "服务位不存在");
+        if (facility.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<FacilityConfigurationItemDto>("VERSION_CONFLICT", "服务位已被其他人修改，请刷新后重试");
+        var groupValid = await db.FacilityGroups.AnyAsync(x => x.Id == command.GroupId && x.TenantId == tenantId &&
+            x.StoreId == command.StoreId, cancellationToken);
+        var typeId = await ResolveTypeIdAsync(tenantId, command.FacilityTypeId, cancellationToken);
+        if (!groupValid || !typeId.HasValue)
+            return ResultFactory.Failure<FacilityConfigurationItemDto>("VALIDATION_FAILED", "所属服务区或设施类型无效");
+        var hasOpenSession = await db.FacilitySessions.AnyAsync(x => x.FacilityId == facility.Id &&
+            OpenSessionStatuses.Contains(x.Status), cancellationToken);
+        if (hasOpenSession && command.LifecycleStatus != FacilityLifecycleStatus.Enabled)
+            return ResultFactory.Failure<FacilityConfigurationItemDto>("FACILITY_IN_USE", "服务位正在使用，不能维护或停用");
+        var previous = ConfigurationState(facility);
+        try
+        {
+            var code = string.IsNullOrWhiteSpace(command.Code) ? facility.Code : command.Code;
+            facility.Update(command.GroupId, typeId.Value, code, command.DisplayName, command.SortOrder,
+                command.DefaultCleaningMinutes, command.AllowReservation, command.ServiceName, command.EquipmentName,
+                command.ReferencePriceMinor, command.LifecycleStatus);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "facility.update", "Facility", facility.Id,
+                $"Version:{command.ExpectedVersion}", facility.LifecycleStatus.ToString(), Guid.CreateVersion7(), null,
+                clock.GetUtcNow(), JsonSerializer.Serialize(new { previous, current = ConfigurationState(facility) }));
+            await db.SaveChangesAsync(cancellationToken);
+            var typeName = await db.FacilityTypes.Where(x => x.Id == typeId.Value).Select(x => x.DisplayName)
+                .SingleAsync(cancellationToken);
+            return ResultFactory.Success(ToConfigurationItem(facility, typeName, hasOpenSession));
+        }
+        catch (DomainRuleException exception) { return ResultFactory.Failure<FacilityConfigurationItemDto>("VALIDATION_FAILED", exception.Message); }
+        catch (DbUpdateConcurrencyException) { return ResultFactory.Failure<FacilityConfigurationItemDto>("VERSION_CONFLICT", "服务位已被其他人修改，请刷新后重试"); }
+        catch (DbUpdateException exception) when (IsUniqueViolation(exception)) { return ResultFactory.Failure<FacilityConfigurationItemDto>("DUPLICATE_FACILITY_CODE", "同一门店的服务位编号不能重复"); }
     }
 
     public Task<Result<FacilityBoardItemDto>> StartAsync(Guid tenantId, StartFacilitySessionCommand command, CancellationToken cancellationToken) =>
@@ -294,15 +413,62 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
         };
         return new FacilityBoardItemDto(facility.Id, facility.Code, facility.DisplayName, typeName, status, facility.Version,
             session?.Id, session?.VisitId, visit?.VisitNo, session?.Status.ToString().ToUpperInvariant(), session?.StartedAtUtc,
-            session?.GetActiveSeconds(now) ?? 0, session?.GetPausedSeconds(now) ?? 0, visit?.ExpectedDurationMinutes, visit?.Note);
+            session?.GetActiveSeconds(now) ?? 0, session?.GetPausedSeconds(now) ?? 0, visit?.ExpectedDurationMinutes, visit?.Note,
+            facility.ServiceName, facility.EquipmentName, facility.ReferencePriceMinor);
     }
 
-    private void AddAudit(Guid tenantId, Guid storeId, Guid operatorId, string action, string entityType, Guid entityId,
-        string? previous, string? current, Guid commandId, string? reason, DateTimeOffset now) => db.AuditEvents.Add(new AuditEventRecord
+    private static FacilityConfigurationItemDto ToConfigurationItem(Facility facility, string typeName,
+        bool hasOpenSession) => new(facility.Id, facility.GroupId, facility.FacilityTypeId, typeName, facility.Code,
+        facility.DisplayName, facility.ServiceName, facility.EquipmentName, facility.ReferencePriceMinor,
+        facility.SortOrder, facility.DefaultCleaningMinutes, facility.AllowReservation,
+        facility.LifecycleStatus.ToString(), facility.Version, hasOpenSession);
+
+    private async Task<Dictionary<Guid, IReadOnlyList<string>>> ManagerNamesByStoreAsync(Guid tenantId,
+        CancellationToken cancellationToken)
+    {
+        var managerUserIds = await (from link in db.UserRoles.AsNoTracking()
+            join role in db.Roles.AsNoTracking() on link.RoleId equals role.Id
+            where role.TenantId == tenantId && role.Name == SystemRoles.StoreManager
+            select link.UserId).Distinct().ToListAsync(cancellationToken);
+        var rows = await (from assignment in db.EmployeeStores.AsNoTracking()
+            join employee in db.Employees.AsNoTracking() on assignment.EmployeeId equals employee.Id
+            where assignment.TenantId == tenantId && employee.TenantId == tenantId &&
+                  employee.Status == Erp.Domain.Organization.EmployeeStatus.Active && employee.UserId.HasValue &&
+                  managerUserIds.Contains(employee.UserId.Value)
+            select new { assignment.StoreId, employee.DisplayName }).ToListAsync(cancellationToken);
+        return rows.GroupBy(x => x.StoreId).ToDictionary(x => x.Key,
+            x => (IReadOnlyList<string>)x.Select(item => item.DisplayName).Distinct().Order().ToList());
+    }
+
+    private async Task<Guid?> ResolveTypeIdAsync(Guid tenantId, Guid? requestedTypeId,
+        CancellationToken cancellationToken)
+    {
+        if (requestedTypeId.HasValue)
+            return await db.FacilityTypes.AnyAsync(x => x.Id == requestedTypeId.Value && x.TenantId == tenantId,
+                cancellationToken) ? requestedTypeId : null;
+        var existing = await db.FacilityTypes.Where(x => x.TenantId == tenantId).OrderBy(x => x.DisplayName)
+            .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(cancellationToken);
+        if (existing.HasValue) return existing;
+        var fallback = new FacilityType(tenantId, "通用服务位");
+        db.FacilityTypes.Add(fallback);
+        await db.SaveChangesAsync(cancellationToken);
+        return fallback.Id;
+    }
+
+    private static string ConfigurationState(Facility facility) => JsonSerializer.Serialize(new
+    {
+        facility.GroupId, facility.FacilityTypeId, facility.Code, facility.DisplayName, facility.ServiceName,
+        facility.EquipmentName, facility.ReferencePriceMinor, facility.SortOrder, facility.DefaultCleaningMinutes,
+        facility.AllowReservation, LifecycleStatus = facility.LifecycleStatus.ToString(),
+    });
+
+    private void AddAudit(Guid tenantId, Guid? storeId, Guid operatorId, string action, string entityType, Guid entityId,
+        string? previous, string? current, Guid commandId, string? reason, DateTimeOffset now, string? metadata = null) => db.AuditEvents.Add(new AuditEventRecord
         {
             TenantId = tenantId, StoreId = storeId, OperatorId = operatorId, Action = action, EntityType = entityType,
             EntityId = entityId, PreviousState = previous, CurrentState = current, Reason = reason, RequestId = commandId,
-            TraceId = httpContextAccessor.HttpContext?.TraceIdentifier ?? "background", OccurredAtUtc = now,
+            TraceId = httpContextAccessor.HttpContext?.TraceIdentifier ?? "background", Metadata = metadata ?? "{}",
+            OccurredAtUtc = now,
         });
 
     private static bool IsUniqueViolation(DbUpdateException exception) =>
