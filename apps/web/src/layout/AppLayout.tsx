@@ -1,5 +1,5 @@
-import { AppstoreOutlined, AuditOutlined, BarChartOutlined, ClockCircleOutlined, CloudServerOutlined, DatabaseOutlined, InboxOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, SafetyCertificateOutlined, SettingOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
-import { Avatar, Button, Layout, Menu, Select, Space, Typography, type MenuProps } from 'antd'
+import { AppstoreOutlined, AuditOutlined, BarChartOutlined, BellOutlined, ClockCircleOutlined, CloudServerOutlined, DatabaseOutlined, InboxOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, QuestionCircleOutlined, SafetyCertificateOutlined, SettingOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
+import { Avatar, Badge, Button, Dropdown, Empty, Layout, Menu, Popover, Select, Tooltip, Typography, type MenuProps } from 'antd'
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/useAuth'
@@ -14,7 +14,7 @@ const baseMenuItems: NonNullable<MenuProps['items']> = [
   { type: 'divider' },
   { key: '/catalog/items', icon: <DatabaseOutlined />, label: '服务项目' },
   { key: '/catalog/products', icon: <DatabaseOutlined />, label: '产品目录' },
-  { key: '/catalog/prices', icon: <DatabaseOutlined />, label: '价格版本' },
+  { key: '/catalog/prices', icon: <DatabaseOutlined />, label: '价格管理' },
   { key: '/reports', icon: <BarChartOutlined />, label: '经营报表' },
   { key: '/audit', icon: <AuditOutlined />, label: '审计记录' },
 ]
@@ -23,10 +23,21 @@ export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
   const auth = useAuth(); const navigate = useNavigate(); const location = useLocation()
   const canConfigureFacilities = auth.user?.roles.some((role) => role === 'OWNER' || role === 'STORE_MANAGER')
+  const isOwner = auth.user?.roles.includes('OWNER') ?? false
   const menuItems: MenuProps['items'] = [
     ...baseMenuItems,
     ...(canConfigureFacilities ? [{ key: '/settings/facilities', icon: <SettingOutlined />, label: '门店设施配置' }] : []),
-    ...(auth.user?.roles.includes('OWNER') ? [{ key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }, { key: '/settings/payment-channels', icon: <CloudServerOutlined />, label: '支付渠道配置' }] : []),
+    ...(isOwner ? [{ key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }, { key: '/settings/payment-channels', icon: <CloudServerOutlined />, label: '支付渠道配置' }] : []),
+  ]
+  const settingsItems: MenuProps['items'] = [
+    ...(canConfigureFacilities ? [{ key: '/settings/facilities', icon: <ShopOutlined />, label: '门店设施配置' }] : []),
+    ...(isOwner ? [{ key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }, { key: '/settings/payment-channels', icon: <CloudServerOutlined />, label: '支付渠道配置' }] : []),
+  ]
+  const accountItems: MenuProps['items'] = [
+    { key: 'account', disabled: true, label: <div className="account-menu-summary"><strong>{auth.user?.displayName}</strong><span>{auth.user?.roles.join(' / ')}</span></div> },
+    { type: 'divider' },
+    { key: 'password', icon: <LockOutlined />, label: '修改密码' },
+    { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true },
   ]
   const logout = async () => {
     await auth.logout()
@@ -42,11 +53,20 @@ export function AppLayout() {
       <Header className="app-header">
         <Button type="text" className="collapse-button" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed((value) => !value)} />
         <div className="header-context"><Typography.Text type="secondary">当前门店</Typography.Text><Select value={auth.store?.id} options={auth.user?.stores.map((store) => ({ value: store.id, label: `${store.name} · ${store.code}` }))} onChange={(id) => { const store = auth.user?.stores.find((item) => item.id === id); if (store) auth.setStore(store) }} variant="borderless" className="store-select" /></div>
-        <Space className="header-user">
-          <div className="header-user-copy"><strong>{auth.user?.displayName}</strong><span>{auth.user?.roles.join(' / ')}</span></div>
-          <Avatar className="user-avatar">{auth.user?.displayName.slice(0, 1)}</Avatar>
-          <Button type="text" icon={<LogoutOutlined />} onClick={logout}>退出登录</Button>
-        </Space>
+        <div className="header-actions">
+          <Popover trigger="click" placement="bottomRight" content={<div className="header-popover notification-popover"><div className="header-popover-title"><strong>消息通知</strong><Typography.Text type="secondary">0 条未读</Typography.Text></div><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无新消息" /><Typography.Text type="secondary">订单异常、退款审批和系统公告将在这里提醒。</Typography.Text></div>}>
+            <Tooltip title="消息通知"><Badge count={0} size="small"><Button type="text" className="header-icon-button" icon={<BellOutlined />} aria-label="消息通知" /></Badge></Tooltip>
+          </Popover>
+          <Popover trigger="click" placement="bottomRight" content={<div className="header-popover"><div className="header-popover-title"><strong>使用帮助</strong></div><div className="header-help-list"><span>① 先选择当前门店</span><span>② 从左侧进入对应业务</span><span>③ 涉及金额的操作会保留审计记录</span></div></div>}>
+            <Tooltip title="使用帮助"><Button type="text" className="header-icon-button" icon={<QuestionCircleOutlined />} aria-label="使用帮助" /></Tooltip>
+          </Popover>
+          {settingsItems.length > 0 && <Dropdown menu={{ items: settingsItems, onClick: ({ key }) => navigate(key) }} placement="bottomRight" trigger={['click']}>
+            <Tooltip title="系统设置"><Button type="text" className="header-icon-button" icon={<SettingOutlined />} aria-label="系统设置" /></Tooltip>
+          </Dropdown>}
+          <Dropdown menu={{ items: accountItems, onClick: ({ key }) => { if (key === 'password') navigate('/change-password'); if (key === 'logout') void logout() } }} placement="bottomRight" trigger={['click']}>
+            <Button type="text" className="account-trigger" aria-label="个人账号菜单"><span className="header-user-copy"><strong>{auth.user?.displayName}</strong><small>{auth.user?.roles.join(' / ')}</small></span><Avatar className="user-avatar">{auth.user?.displayName.slice(0, 1)}</Avatar></Button>
+          </Dropdown>
+        </div>
       </Header>
       <Content className="app-content"><Outlet /></Content>
     </Layout>
