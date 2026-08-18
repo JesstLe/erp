@@ -20,14 +20,31 @@ public sealed partial class EmployeeService(ErpDbContext db, UserManager<Applica
         [SystemRoles.FrontDesk] = "前台", [SystemRoles.Cashier] = "收银员", [SystemRoles.Technician] = "服务员工",
     };
 
-    public async Task<IReadOnlyList<EmployeeDto>> ListAsync(Guid tenantId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<EmployeeDto>> ListAsync(Guid tenantId, string? query,
+        CancellationToken cancellationToken)
     {
-        var employees = await db.Set<Employee>().AsNoTracking().Where(x => x.TenantId == tenantId)
+        var term = query?.Trim();
+        if (term?.Length > 100) return [];
+        var employeeQuery = db.Set<Employee>().AsNoTracking().Where(x => x.TenantId == tenantId);
+        if (!string.IsNullOrWhiteSpace(term))
+        {
+            employeeQuery = employeeQuery.Where(employee =>
+                employee.EmployeeNo.Contains(term) || employee.DisplayName.Contains(term) ||
+                employee.PositionCode.Contains(term) ||
+                db.Users.Any(user => employee.UserId.HasValue && user.Id == employee.UserId.Value &&
+                    user.TenantId == tenantId && user.UserName != null && user.UserName.Contains(term)) ||
+                db.Set<EmployeeStore>().Any(assignment => assignment.EmployeeId == employee.Id &&
+                    assignment.TenantId == tenantId && db.Stores.Any(store => store.Id == assignment.StoreId &&
+                        store.TenantId == tenantId && (store.Code.Contains(term) || store.Name.Contains(term)))));
+        }
+        var employees = await employeeQuery
             .OrderBy(x => x.EmployeeNo).ToListAsync(cancellationToken);
         var userIds = employees.Where(x => x.UserId.HasValue).Select(x => x.UserId!.Value).ToList();
         var users = await db.Users.AsNoTracking().Where(x => userIds.Contains(x.Id) && x.TenantId == tenantId)
             .ToDictionaryAsync(x => x.Id, cancellationToken);
-        var assignments = await db.Set<EmployeeStore>().AsNoTracking().Where(x => x.TenantId == tenantId)
+        var employeeIds = employees.Select(x => x.Id).ToList();
+        var assignments = await db.Set<EmployeeStore>().AsNoTracking().Where(x =>
+                x.TenantId == tenantId && employeeIds.Contains(x.EmployeeId))
             .Join(db.Stores.AsNoTracking(), x => x.StoreId, x => x.Id, (assignment, store) => new { assignment, store })
             .ToListAsync(cancellationToken);
         var userRoles = await (from link in db.UserRoles.AsNoTracking()

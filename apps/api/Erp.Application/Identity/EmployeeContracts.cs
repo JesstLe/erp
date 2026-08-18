@@ -18,7 +18,7 @@ public sealed record SetEmployeeAccountStatusCommand(Guid EmployeeId, bool IsEna
 
 public interface IEmployeeService
 {
-    Task<IReadOnlyList<EmployeeDto>> ListAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<EmployeeDto>> ListAsync(Guid tenantId, string? query, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<RoleDto>> ListRolesAsync(Guid tenantId, CancellationToken cancellationToken);
 

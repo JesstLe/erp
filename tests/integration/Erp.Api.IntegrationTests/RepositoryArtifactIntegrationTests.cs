@@ -6,6 +6,8 @@ namespace Erp.Api.IntegrationTests;
 public sealed partial class RepositoryArtifactIntegrationTests
 {
     private static readonly string RepositoryRoot = FindRepositoryRoot();
+    private static readonly string[] RealtimeSearchPages =
+        ["CustomersPage.tsx", "EmployeesPage.tsx", "ServiceItemsPage.tsx", "ProductsPage.tsx"];
 
     [Fact]
     public void DatabaseMigrationsAreUniquelyVersionedAndNonDestructive()
@@ -422,6 +424,39 @@ public sealed partial class RepositoryArtifactIntegrationTests
         Assert.All(projects, project => Assert.True(
             File.Exists(Path.Combine(Path.GetDirectoryName(project)!, "packages.lock.json")),
             $"缺少 NuGet 锁文件：{Path.GetRelativePath(RepositoryRoot, project)}"));
+    }
+
+    [Fact]
+    public void RealtimeSearchIsDebouncedCancelableAndBackedBySubstringIndexes()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180021__realtime_search_indexes.sql"));
+        var hook = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "web", "src", "hooks",
+            "useDebouncedValue.ts"));
+        var employeeEndpoint = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Api",
+            "Endpoints", "EmployeeEndpoints.cs"));
+        var employeeService = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Identity", "EmployeeService.cs"));
+        var pages = RealtimeSearchPages
+            .Select(name => File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "web", "src", "pages", name)))
+            .ToList();
+
+        Assert.Contains("CREATE EXTENSION IF NOT EXISTS pg_trgm", migration, StringComparison.Ordinal);
+        Assert.Contains("USING gin (name gin_trgm_ops)", migration, StringComparison.Ordinal);
+        Assert.Contains("ix_organization_employees_name_trgm", migration, StringComparison.Ordinal);
+        Assert.Contains("setTimeout", hook, StringComparison.Ordinal);
+        Assert.Contains("clearTimeout", hook, StringComparison.Ordinal);
+        Assert.Contains("query?.Trim().Length > 100", employeeEndpoint, StringComparison.Ordinal);
+        Assert.Contains("employee.DisplayName.Contains(term)", employeeService, StringComparison.Ordinal);
+        Assert.Contains("user.UserName.Contains(term)", employeeService, StringComparison.Ordinal);
+        Assert.Contains("store.Name.Contains(term)", employeeService, StringComparison.Ordinal);
+        Assert.All(pages, page =>
+        {
+            Assert.Contains("useDebouncedValue", page, StringComparison.Ordinal);
+            Assert.Contains("({ signal })", page, StringComparison.Ordinal);
+            Assert.Contains("自动加载，无需点击查询", page, StringComparison.Ordinal);
+            Assert.DoesNotContain(">查询</Button>", page, StringComparison.Ordinal);
+        });
     }
 
     [Fact]

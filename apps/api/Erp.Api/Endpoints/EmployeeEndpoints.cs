@@ -10,10 +10,17 @@ public static class EmployeeEndpoints
         var group = endpoints.MapGroup("/api/v1/employees").WithTags("Employees")
             .RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
 
-        group.MapGet("", async (IIdentityService identity, IEmployeeService employees, CancellationToken cancellationToken) =>
+        group.MapGet("", async (string? query, IIdentityService identity, IEmployeeService employees,
+            CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
-            return current is null ? Results.Unauthorized() : Results.Ok(await employees.ListAsync(current.TenantId, cancellationToken));
+            if (current is null) return Results.Unauthorized();
+            if (query?.Trim().Length > 100)
+                return Results.UnprocessableEntity(new
+                {
+                    error = new { code = "VALIDATION_FAILED", message = "员工查询关键词不能超过100个字符" },
+                });
+            return Results.Ok(await employees.ListAsync(current.TenantId, query, cancellationToken));
         });
 
         group.MapGet("/roles", async (IIdentityService identity, IEmployeeService employees, CancellationToken cancellationToken) =>

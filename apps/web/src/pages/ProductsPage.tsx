@@ -1,4 +1,4 @@
-import { DeleteOutlined, EditOutlined, PictureOutlined, PlusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EditOutlined, LoadingOutlined, PictureOutlined, PlusOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Checkbox, Form, Image, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, Upload, message } from 'antd'
 import type { UploadFile } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { apiRequest, ApiError } from '../api/client'
 import type { ProductItem } from '../api/types'
 import { useAuth } from '../auth/useAuth'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 interface ProductForm { code?: string; name: string; unitName: string; trackInventory: boolean; status: string }
 
@@ -16,12 +17,13 @@ function requestError(error: unknown): string {
 export function ProductsPage() {
   const auth = useAuth(); const canManage = auth.user?.roles.includes('OWNER') ?? false
   const [open, setOpen] = useState(false); const [editing, setEditing] = useState<ProductItem>()
-  const [queryText, setQueryText] = useState(''); const [appliedQuery, setAppliedQuery] = useState(''); const [status, setStatus] = useState<string>()
+  const [queryText, setQueryText] = useState(''); const [status, setStatus] = useState<string>()
+  const normalizedQuery = queryText.trim(); const appliedQuery = useDebouncedValue(normalizedQuery)
   const [form] = Form.useForm<ProductForm>(); const queryClient = useQueryClient()
   const [imageProduct, setImageProduct] = useState<ProductItem>(); const [imageFiles, setImageFiles] = useState<UploadFile[]>([])
   const params = new URLSearchParams(); if (appliedQuery) params.set('query', appliedQuery); if (status) params.set('status', status)
   const path = `/api/v1/catalog/products${params.size ? `?${params}` : ''}`
-  const query = useQuery({ queryKey: ['product-items', appliedQuery, status], queryFn: () => apiRequest<ProductItem[]>(path) })
+  const query = useQuery({ queryKey: ['product-items', appliedQuery, status], queryFn: ({ signal }) => apiRequest<ProductItem[]>(path, { signal }) })
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['product-items'] })
   const save = useMutation({
     mutationFn: (values: ProductForm) => editing
@@ -49,15 +51,14 @@ export function ProductsPage() {
   }
   const showCreate = () => { setEditing(undefined); form.resetFields(); form.setFieldsValue({ unitName: '件', trackInventory: false, status: 'ENABLED' }); setOpen(true) }
   const showEdit = (item: ProductItem) => { setEditing(item); form.setFieldsValue({ code: item.code, name: item.name, unitName: item.unitName, trackInventory: item.trackInventory, status: item.status }); setOpen(true) }
-  const search = () => setAppliedQuery(queryText.trim())
-  const reset = () => { setQueryText(''); setAppliedQuery(''); setStatus(undefined) }
+  const reset = () => { setQueryText(''); setStatus(undefined) }
 
   return <div className="page-stack">
     <div className="page-heading"><div><Typography.Title level={2}>产品目录</Typography.Title><Typography.Paragraph>支持查询、修改、停用与恢复；图片可选，标准售价由最高权限账号在价格版本中统一发布。</Typography.Paragraph></div>{canManage && <Button type="primary" icon={<PlusOutlined />} onClick={showCreate}>新建产品</Button>}</div>
     <Alert type="info" showIcon title="删除仅用于从未上传图片、设置价格、进入订单或库存的误建产品；已有业务记录的产品请停用。" />
-    <Card variant="borderless"><Space wrap><Input value={queryText} onChange={(event) => setQueryText(event.target.value)} onPressEnter={search} allowClear placeholder="输入产品编码或名称" maxLength={100} style={{ width: 280 }} /><Select value={status} onChange={setStatus} allowClear placeholder="全部状态" style={{ width: 140 }} options={[{ value: 'ENABLED', label: '启用' }, { value: 'DISABLED', label: '停用' }]} /><Button type="primary" icon={<SearchOutlined />} onClick={search}>查询</Button><Button onClick={reset}>重置</Button></Space></Card>
+    <Card variant="borderless"><Space wrap><Input value={queryText} onChange={(event) => setQueryText(event.target.value)} allowClear placeholder="输入产品编码或名称，自动匹配" maxLength={100} style={{ width: 300 }} prefix={<SearchOutlined />} suffix={normalizedQuery !== appliedQuery || query.isFetching ? <LoadingOutlined spin /> : null} aria-label="实时查询产品" /><Select value={status} onChange={setStatus} allowClear placeholder="全部状态" style={{ width: 140 }} options={[{ value: 'ENABLED', label: '启用' }, { value: 'DISABLED', label: '停用' }]} /><Button onClick={reset}>重置</Button><Typography.Text type="secondary">输入后自动加载，无需点击查询</Typography.Text></Space></Card>
     {query.error && <Alert type="error" showIcon title={requestError(query.error)} />}
-    <Card variant="borderless"><Table<ProductItem> rowKey="id" loading={query.isLoading} dataSource={query.data ?? []} pagination={{ pageSize: 10, showSizeChanger: false }} locale={{ emptyText: '没有符合条件的产品' }} scroll={{ x: 1100 }} columns={[
+    <Card variant="borderless"><Table<ProductItem> rowKey="id" loading={query.isFetching} dataSource={query.data ?? []} pagination={{ pageSize: 10, showSizeChanger: false }} locale={{ emptyText: '没有符合条件的产品' }} scroll={{ x: 1100 }} columns={[
       { title: '图片', dataIndex: 'imageFileId', width: 76, render: (value: string | undefined, item: ProductItem) => value ? <Image width={48} height={48} style={{ objectFit: 'cover', borderRadius: 8 }} src={`/api/v1/catalog/products/${item.id}/image?v=${value}`} /> : <div style={{ width: 48, height: 48, borderRadius: 8, background: '#f3f5f7', display: 'grid', placeItems: 'center' }}><PictureOutlined /></div> },
       { title: '产品编码', dataIndex: 'code', width: 130 }, { title: '产品名称', dataIndex: 'name', width: 170 }, { title: '计量单位', dataIndex: 'unitName', width: 90 },
       { title: '库存属性', dataIndex: 'trackInventory', width: 120, render: (value: boolean) => <Tag color={value ? 'blue' : 'default'}>{value ? '跟踪库存' : '不管理库存'}</Tag> },
