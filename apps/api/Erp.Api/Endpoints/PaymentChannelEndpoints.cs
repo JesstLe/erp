@@ -1,7 +1,9 @@
+using System.Text;
 using Erp.Application.Cashier;
 using Erp.Application.Identity;
 using Erp.Application.Security;
 using Erp.Domain.Cashier;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace Erp.Api.Endpoints;
 
@@ -42,11 +44,129 @@ public static class PaymentChannelEndpoints
                     request.IsEnabled, request.ExpectedVersion, current.Id), cancellationToken));
         }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
 
+        group.MapPost("/orders/{orderId:guid}/initiate", async (Guid orderId, InitiateChannelRequest request,
+            IIdentityService identity, IPaymentChannelPaymentService payments,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await payments.InitiateAsync(current.TenantId,
+                new InitiatePaymentChannelCommand(request.StoreId, orderId, request.ExpectedOrderVersion,
+                    request.MethodId, request.CommandId, current.Id), cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager,
+            SystemRoles.Cashier));
+
+        group.MapGet("/orders/by-service-order/{orderId:guid}", async (Guid orderId, Guid storeId,
+            IIdentityService identity, IPaymentChannelPaymentService payments,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, storeId)) return Results.Forbid();
+            return EndpointResults.From(await payments.GetByServiceOrderAsync(current.TenantId, storeId,
+                orderId, cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager,
+            SystemRoles.Cashier));
+
+        group.MapPost("/orders/{channelOrderId:guid}/query", async (Guid channelOrderId,
+            OperateChannelRequest request, IIdentityService identity, IPaymentChannelPaymentService payments,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await payments.QueryAsync(current.TenantId,
+                new OperatePaymentChannelCommand(request.StoreId, channelOrderId, current.Id),
+                cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager,
+            SystemRoles.Cashier));
+
+        group.MapPost("/orders/{channelOrderId:guid}/close", async (Guid channelOrderId,
+            OperateChannelRequest request, IIdentityService identity, IPaymentChannelPaymentService payments,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await payments.CloseAsync(current.TenantId,
+                new OperatePaymentChannelCommand(request.StoreId, channelOrderId, current.Id),
+                cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager,
+            SystemRoles.Cashier));
+
+        endpoints.MapPost("/api/integrations/payment-notifications/{provider}/{configurationId:guid}",
+            ProcessNotification).AllowAnonymous().RequireRateLimiting("payment-notification")
+            .WithTags("Payment Channel Notifications");
+
         return endpoints;
+    }
+
+    private static async Task<IResult> ProcessNotification(string provider, Guid configurationId,
+        HttpRequest request, IPaymentChannelPaymentService payments, CancellationToken cancellationToken)
+    {
+        if (!TryProvider(provider, out var parsedProvider)) return Results.NotFound();
+        const int maximumBodyBytes = 256 * 1024;
+        if (request.ContentLength is > maximumBodyBytes)
+            return NotificationResponse(parsedProvider, false, StatusCodes.Status413PayloadTooLarge);
+        using var reader = new StreamReader(request.Body, leaveOpen: false);
+        var body = await reader.ReadToEndAsync(cancellationToken);
+        if (Encoding.UTF8.GetByteCount(body) > maximumBodyBytes)
+            return NotificationResponse(parsedProvider, false, StatusCodes.Status413PayloadTooLarge);
+
+        IReadOnlyDictionary<string, string>? form = null;
+        if (parsedProvider == PaymentChannelProvider.Alipay)
+        {
+            if (!request.HasFormContentType)
+                return NotificationResponse(parsedProvider, false, StatusCodes.Status400BadRequest);
+            var parsed = QueryHelpers.ParseQuery(body);
+            if (parsed.Any(x => x.Value.Count != 1))
+                return NotificationResponse(parsedProvider, false, StatusCodes.Status400BadRequest);
+            form = parsed.ToDictionary(x => x.Key, x => x.Value[0] ?? string.Empty,
+                StringComparer.Ordinal);
+        }
+        else if (!request.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return NotificationResponse(parsedProvider, false, StatusCodes.Status400BadRequest);
+        }
+
+        var headers = request.Headers.ToDictionary(x => x.Key, x => x.Value.ToString(),
+            StringComparer.OrdinalIgnoreCase);
+        var result = await payments.ProcessNotificationAsync(new PaymentChannelNotificationCommand(
+            parsedProvider, configurationId, headers, body, form), cancellationToken);
+        return NotificationResponse(parsedProvider, result.Acknowledge,
+            result.Acknowledge ? StatusCodes.Status200OK : StatusCodes.Status500InternalServerError);
+    }
+
+    private static IResult NotificationResponse(PaymentChannelProvider provider, bool success, int statusCode) =>
+        provider == PaymentChannelProvider.Alipay
+            ? Results.Text(success ? "success" : "failure", "text/plain", Encoding.UTF8, statusCode)
+            : Results.Json(success
+                ? new { code = "SUCCESS", message = "成功" }
+                : new { code = "FAIL", message = "处理失败" }, statusCode: statusCode);
+
+    private static bool TryProvider(string value, out PaymentChannelProvider provider)
+    {
+        if (value.Equals("wechat", StringComparison.OrdinalIgnoreCase) ||
+            value.Equals("wechatpay", StringComparison.OrdinalIgnoreCase))
+        {
+            provider = PaymentChannelProvider.WeChatPay;
+            return true;
+        }
+        if (value.Equals("alipay", StringComparison.OrdinalIgnoreCase))
+        {
+            provider = PaymentChannelProvider.Alipay;
+            return true;
+        }
+        provider = default;
+        return false;
     }
 
     private static bool HasStore(CurrentUserDto user, Guid storeId) => user.Stores.Any(x => x.Id == storeId);
 
     private sealed record ConfigureChannelRequest(Guid StoreId, string? Environment, string? DisplayName,
         string? CredentialProfile, bool IsEnabled, uint ExpectedVersion);
+    private sealed record InitiateChannelRequest(Guid StoreId, uint ExpectedOrderVersion, Guid MethodId,
+        Guid CommandId);
+    private sealed record OperateChannelRequest(Guid StoreId);
 }

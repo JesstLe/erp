@@ -68,6 +68,14 @@ public sealed class ServiceOrder : Entity
         Touch();
     }
 
+    public void CancelCheckout()
+    {
+        if (Status != ServiceOrderStatus.PaymentProcessing)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "消费单当前不能取消支付处理");
+        Status = ServiceOrderStatus.PendingPayment;
+        Touch();
+    }
+
     public void ApplyRefund(long amountMinor)
     {
         if (Status is not (ServiceOrderStatus.Settled or ServiceOrderStatus.PartiallyRefunded))

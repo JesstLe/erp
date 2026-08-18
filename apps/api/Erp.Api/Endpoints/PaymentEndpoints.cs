@@ -14,11 +14,13 @@ public static class PaymentEndpoints
         var group = endpoints.MapGroup("/api/v1/payments").WithTags("Payments")
             .RequireAuthorization(policy => policy.RequireRole(CashierRoles));
 
-        group.MapGet("/methods", async (IIdentityService identity, IPaymentService payments,
+        group.MapGet("/methods", async (Guid? storeId, IIdentityService identity, IPaymentService payments,
             CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
-            return current is null ? Results.Unauthorized() : Results.Ok(await payments.ListMethodsAsync(current.TenantId, cancellationToken));
+            if (current is null) return Results.Unauthorized();
+            if (storeId.HasValue && !HasStore(current, storeId.Value)) return Results.Forbid();
+            return Results.Ok(await payments.ListMethodsAsync(current.TenantId, storeId, cancellationToken));
         });
 
         group.MapGet("", async (Guid storeId, IIdentityService identity, IPaymentService payments,

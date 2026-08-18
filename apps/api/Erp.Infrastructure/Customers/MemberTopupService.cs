@@ -82,6 +82,9 @@ internal sealed class MemberTopupService(ErpDbContext db, TimeProvider clock,
                 return await FailureAndRollback(transaction, "PAYMENT_METHOD_NOT_FOUND", "支付方式不存在或已停用", cancellationToken);
             if (methods.Values.Any(x => x.Category == PaymentMethodCategory.InternalAccount))
                 return await FailureAndRollback(transaction, "PAYMENT_METHOD_NOT_ALLOWED", "会员账户余额不能用于购买自身储值", cancellationToken);
+            if (methods.Values.Any(x => x.Category == PaymentMethodCategory.ChannelExternal))
+                return await FailureAndRollback(transaction, "CHANNEL_TOPUP_NOT_AVAILABLE",
+                    "微信或支付宝储值必须等待独立异步入账流程开放，不能先增加会员余额", cancellationToken);
 
             CashierShift? shift = null;
             if (methods.Values.Any(x => x.RequiresOpenShift))
@@ -106,7 +109,8 @@ internal sealed class MemberTopupService(ErpDbContext db, TimeProvider clock,
             {
                 var method = methods[line.MethodId];
                 return new PaymentAllocationDraft(method.Id, method.Code, method.Name, method.Category,
-                    line.AmountMinor, line.ExternalReference, method.RequiresOpenShift ? shift?.Id : null);
+                    line.AmountMinor, line.ExternalReference, method.RequiresOpenShift ? shift?.Id : null,
+                    ChannelProvider: method.ChannelProvider);
             }).ToList();
             var payment = new Payment(tenantId, command.StoreId, PaymentBusinessType.MemberTopup, topup.Id,
                 CreatePaymentNo(localTime.Value), topup.ReceivableMinor, drafts, now);
@@ -165,7 +169,7 @@ internal sealed class MemberTopupService(ErpDbContext db, TimeProvider clock,
             .Select(x => new PaymentAllocationDto(x.Id, x.MethodId, x.MethodCodeSnapshot,
                 x.MethodNameSnapshot, x.Category.ToString(), x.AmountMinor, x.ExternalReference,
                 x.ConfirmationStatus.ToString(), x.ReconciliationStatus.ToString(), x.ShiftId,
-                x.MemberAccountId)).ToList());
+                x.MemberAccountId, x.ChannelProvider?.ToString())).ToList());
 
     private async Task<Result<MemberTopupDto>?> ReplayAsync(Guid tenantId, Guid commandId, byte[] hash,
         Func<Guid, Task<Result<MemberTopupDto>>> load, CancellationToken cancellationToken)

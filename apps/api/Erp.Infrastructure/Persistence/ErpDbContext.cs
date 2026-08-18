@@ -551,6 +551,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.Category).HasColumnName("category").HasConversion<string>().HasMaxLength(32);
             entity.Property(x => x.InternalAccountType).HasColumnName("internal_account_type")
                 .HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.ChannelProvider).HasColumnName("channel_provider")
+                .HasConversion<string>().HasMaxLength(24);
             entity.Property(x => x.RequiresOpenShift).HasColumnName("requires_open_shift");
             entity.Property(x => x.IsEnabled).HasColumnName("is_enabled");
             entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
@@ -595,8 +597,10 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasMany(x => x.Allocations).WithOne().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
             entity.Navigation(x => x.Allocations).UsePropertyAccessMode(PropertyAccessMode.Field);
             entity.HasIndex(x => new { x.TenantId, x.PaymentNo }).IsUnique();
-            entity.HasIndex(x => x.OrderId).IsUnique().HasFilter("order_id IS NOT NULL");
-            entity.HasIndex(x => new { x.TenantId, x.BusinessType, x.BusinessId }).IsUnique();
+            entity.HasIndex(x => x.OrderId).IsUnique()
+                .HasFilter("order_id IS NOT NULL AND status IN ('Processing','Paid','PartiallyRefunded','Refunded')");
+            entity.HasIndex(x => new { x.TenantId, x.BusinessType, x.BusinessId }).IsUnique()
+                .HasFilter("status IN ('Processing','Paid','PartiallyRefunded','Refunded')");
         });
         builder.Entity<PaymentAllocation>(entity =>
         {
@@ -608,9 +612,11 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.MethodNameSnapshot).HasColumnName("method_name_snapshot").HasMaxLength(80);
             entity.Property(x => x.Category).HasColumnName("category").HasConversion<string>().HasMaxLength(32);
             entity.Property(x => x.AmountMinor).HasColumnName("amount_minor");
-            entity.Property(x => x.ExternalReference).HasColumnName("external_reference").HasMaxLength(100);
+            entity.Property(x => x.ExternalReference).HasColumnName("external_reference").HasMaxLength(128);
             entity.Property(x => x.ShiftId).HasColumnName("shift_id");
             entity.Property(x => x.MemberAccountId).HasColumnName("member_account_id");
+            entity.Property(x => x.ChannelProvider).HasColumnName("channel_provider")
+                .HasConversion<string>().HasMaxLength(24);
             entity.Property(x => x.ConfirmationStatus).HasColumnName("confirmation_status").HasConversion<string>().HasMaxLength(48);
             entity.Property(x => x.ReconciliationStatus).HasColumnName("reconciliation_status").HasConversion<string>().HasMaxLength(32);
             entity.Property(x => x.ConfirmedAtUtc).HasColumnName("confirmed_at_utc");

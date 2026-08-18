@@ -6,12 +6,11 @@ using Erp.Domain.Common;
 using Erp.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Npgsql;
 
 namespace Erp.Infrastructure.Cashier;
 
-internal sealed class PaymentChannelConfigurationService(ErpDbContext db, IConfiguration configuration,
+internal sealed class PaymentChannelConfigurationService(ErpDbContext db, PaymentChannelCredentialResolver credentialResolver,
     IHttpContextAccessor httpContextAccessor) : IPaymentChannelConfigurationService
 {
     public async Task<IReadOnlyList<PaymentChannelConfigurationDto>> ListAsync(Guid tenantId, Guid storeId,
@@ -60,10 +59,28 @@ internal sealed class PaymentChannelConfigurationService(ErpDbContext db, IConfi
                     command.IsEnabled);
             }
 
-            var readiness = Inspect(command.Provider, item.CredentialProfile);
+            var readiness = credentialResolver.Inspect(command.Provider, item.CredentialProfile);
             if (command.IsEnabled && !readiness.IsPresent)
                 return await Fail(transaction, "PAYMENT_CHANNEL_CREDENTIALS_INCOMPLETE",
                     $"渠道凭据不完整：{string.Join('、', readiness.Missing)}", cancellationToken);
+            if (command.IsEnabled && credentialResolver.TryResolve(command.Provider, item.CredentialProfile,
+                    out var resolved, out _) && resolved is not null &&
+                !PaymentChannelCredentialResolver.IsEnvironmentCompatible(item.Environment, resolved,
+                    out var environmentMessage))
+                return await Fail(transaction, "PAYMENT_CHANNEL_ENVIRONMENT_MISMATCH", environmentMessage,
+                    cancellationToken);
+
+            var methodCode = command.Provider == PaymentChannelProvider.WeChatPay
+                ? "WECHAT_NATIVE" : "ALIPAY_QR";
+            var paymentMethod = await db.PaymentMethods.SingleOrDefaultAsync(x => x.TenantId == tenantId &&
+                x.Code == methodCode, cancellationToken);
+            if (paymentMethod is null)
+                return await Fail(transaction, "PAYMENT_METHOD_NOT_FOUND",
+                    "渠道支付方式尚未完成数据库初始化", cancellationToken);
+            var enabledInAnotherStore = !command.IsEnabled && await db.PaymentChannelConfigurations
+                .AnyAsync(x => x.TenantId == tenantId && x.Provider == command.Provider &&
+                    x.StoreId != command.StoreId && x.IsEnabled, cancellationToken);
+            paymentMethod.SetEnabled(command.IsEnabled || enabledInAnotherStore);
 
             db.AuditEvents.Add(new AuditEventRecord
             {
@@ -105,45 +122,10 @@ internal sealed class PaymentChannelConfigurationService(ErpDbContext db, IConfi
 
     private PaymentChannelConfigurationDto Map(PaymentChannelConfiguration item)
     {
-        var readiness = Inspect(item.Provider, item.CredentialProfile);
+        var readiness = credentialResolver.Inspect(item.Provider, item.CredentialProfile);
         return new PaymentChannelConfigurationDto(item.Id, item.StoreId, item.Provider.ToString(),
             item.Environment.ToString(), item.DisplayName, item.CredentialProfile, item.IsEnabled,
             readiness.IsPresent, readiness.Missing, item.Version);
-    }
-
-    private CredentialReadiness Inspect(PaymentChannelProvider provider, string profile)
-    {
-        var section = configuration.GetSection($"PaymentChannels:Profiles:{profile}");
-        var missing = new List<string>();
-        var requiredValues = provider == PaymentChannelProvider.WeChatPay
-            ? new[] { "AppId", "MerchantId", "MerchantCertificateSerial", "ApiV3Key" }
-            : new[] { "AppId" };
-        foreach (var key in requiredValues)
-            if (string.IsNullOrWhiteSpace(section[key])) missing.Add(key);
-
-        if (provider == PaymentChannelProvider.WeChatPay && section["ApiV3Key"] is { } apiV3Key &&
-            !string.IsNullOrWhiteSpace(apiV3Key) && apiV3Key.Length != 32)
-            missing.Add("ApiV3Key(必须32字符)");
-
-        var requiredFiles = provider == PaymentChannelProvider.WeChatPay
-            ? new[] { "MerchantPrivateKeyPath", "PlatformPublicKeyPath" }
-            : new[] { "MerchantPrivateKeyPath", "AlipayPublicKeyPath" };
-        foreach (var key in requiredFiles)
-        {
-            var path = section[key];
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) missing.Add($"{key}(文件不存在)");
-        }
-
-        var requiredUrls = provider == PaymentChannelProvider.WeChatPay
-            ? new[] { "NotifyUrl" }
-            : new[] { "NotifyUrl", "GatewayUrl" };
-        foreach (var key in requiredUrls)
-        {
-            var value = section[key];
-            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
-                missing.Add($"{key}(必须为HTTPS)");
-        }
-        return new CredentialReadiness(missing.Count == 0, missing.Distinct().ToList());
     }
 
     private static async Task<Result<PaymentChannelConfigurationDto>> Fail(
@@ -154,5 +136,4 @@ internal sealed class PaymentChannelConfigurationService(ErpDbContext db, IConfi
         return ResultFactory.Failure<PaymentChannelConfigurationDto>(code, message);
     }
 
-    private sealed record CredentialReadiness(bool IsPresent, IReadOnlyList<string> Missing);
 }

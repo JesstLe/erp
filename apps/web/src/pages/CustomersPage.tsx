@@ -22,7 +22,7 @@ export function CustomersPage() {
   const customers = useQuery({ queryKey: ['customers', storeId, submittedQuery], enabled: Boolean(storeId), queryFn: () => apiRequest<CustomerSummary[]>(`/api/v1/customers?storeId=${storeId}&query=${encodeURIComponent(submittedQuery)}`) })
   const detail = useQuery({ queryKey: ['customer', storeId, selectedId], enabled: Boolean(storeId && selectedId), queryFn: () => apiRequest<CustomerDetail>(`/api/v1/customers/${selectedId}?storeId=${storeId}`) })
   const cardTypes = useQuery({ queryKey: ['member-card-types'], queryFn: () => apiRequest<MemberCardType[]>('/api/v1/customers/membership/card-types') })
-  const paymentMethods = useQuery({ queryKey: ['payment-methods'], queryFn: () => apiRequest<PaymentMethod[]>('/api/v1/payments/methods') })
+  const paymentMethods = useQuery({ queryKey: ['payment-methods', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<PaymentMethod[]>(`/api/v1/payments/methods?storeId=${storeId}`) })
   const currentShift = useQuery({ queryKey: ['cashier-shift', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<CashierShift | undefined>(`/api/v1/payments/shifts/current?storeId=${storeId}`) })
   const topups = useQuery({ queryKey: ['member-topups', storeId, selectedId], enabled: Boolean(storeId && selectedId), queryFn: () => apiRequest<MemberTopup[]>(`/api/v1/member-topups?storeId=${storeId}&customerId=${selectedId}`) })
   const onError = (error: unknown) => message.error(error instanceof ApiError ? error.message : '操作失败')
