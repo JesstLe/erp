@@ -1,4 +1,4 @@
-import { AppstoreOutlined, AuditOutlined, BarChartOutlined, ClockCircleOutlined, CloudServerOutlined, DatabaseOutlined, InboxOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, SafetyCertificateOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
+import { AppstoreOutlined, AuditOutlined, BarChartOutlined, ClockCircleOutlined, CloudServerOutlined, DatabaseOutlined, InboxOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, SafetyCertificateOutlined, SettingOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
 import { Avatar, Button, Layout, Menu, Select, Space, Typography, type MenuProps } from 'antd'
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -22,9 +22,12 @@ const baseMenuItems: NonNullable<MenuProps['items']> = [
 export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
   const auth = useAuth(); const navigate = useNavigate(); const location = useLocation()
-  const menuItems: MenuProps['items'] = auth.user?.roles.includes('OWNER')
-    ? [...baseMenuItems, { key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }, { key: '/settings/payment-channels', icon: <CloudServerOutlined />, label: '支付渠道配置' }]
-    : baseMenuItems
+  const canConfigureFacilities = auth.user?.roles.some((role) => role === 'OWNER' || role === 'STORE_MANAGER')
+  const menuItems: MenuProps['items'] = [
+    ...baseMenuItems,
+    ...(canConfigureFacilities ? [{ key: '/settings/facilities', icon: <SettingOutlined />, label: '门店设施配置' }] : []),
+    ...(auth.user?.roles.includes('OWNER') ? [{ key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }, { key: '/settings/payment-channels', icon: <CloudServerOutlined />, label: '支付渠道配置' }] : []),
+  ]
   const logout = async () => {
     await auth.logout()
     navigate('/login')

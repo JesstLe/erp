@@ -203,6 +203,24 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void FacilityConfigurationKeepsReferencePriceOptionalAndOutsideCashierPricing()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180017__facility_configuration_management.sql"));
+        var endpoints = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Api",
+            "Endpoints", "FacilityEndpoints.cs"));
+        var cashier = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Cashier", "CashierService.cs"));
+
+        Assert.Contains("reference_price_minor bigint", migration, StringComparison.Ordinal);
+        Assert.Contains("reference_price_minor IS NULL", migration, StringComparison.Ordinal);
+        Assert.Contains("ConfigurationOperators = [SystemRoles.Owner, SystemRoles.StoreManager]", endpoints,
+            StringComparison.Ordinal);
+        Assert.Contains("RequireRole(SystemRoles.Owner)", endpoints, StringComparison.Ordinal);
+        Assert.DoesNotContain("db.Facilities", cashier, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");

@@ -352,6 +352,9 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.SortOrder).HasColumnName("sort_order");
             entity.Property(x => x.DefaultCleaningMinutes).HasColumnName("default_cleaning_minutes");
             entity.Property(x => x.AllowReservation).HasColumnName("allow_reservation");
+            entity.Property(x => x.ServiceName).HasColumnName("service_name").HasMaxLength(120);
+            entity.Property(x => x.EquipmentName).HasColumnName("equipment_name").HasMaxLength(120);
+            entity.Property(x => x.ReferencePriceMinor).HasColumnName("reference_price_minor");
             entity.Property(x => x.LifecycleStatus).HasColumnName("lifecycle_status").HasConversion<string>().HasMaxLength(24);
             entity.HasIndex(x => new { x.StoreId, x.Code }).IsUnique();
         });
