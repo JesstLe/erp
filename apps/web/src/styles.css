@@ -9,7 +9,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
 .login-shell { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 3fr) minmax(420px, 2fr); background: #fff; }
 .login-brand-panel { position: relative; min-width: 0; overflow: hidden; padding: 9vh 6vw; color: #fff; background: radial-gradient(circle at 72% 18%, rgba(48,207,189,.24), transparent 28%), linear-gradient(145deg,#09263f 0%,#0c4051 58%,#126b69 100%); display: flex; flex-direction: column; justify-content: center; }
 .login-brand-panel::after { content: ""; position: absolute; width: 460px; height: 460px; border: 1px solid rgba(255,255,255,.15); border-radius: 48% 52% 42% 58%; right: -140px; bottom: -180px; transform: rotate(30deg); }
-.brand-mark { width: 58px; height: 58px; border-radius: 18px; display: grid; place-items: center; font-size: 26px; background: rgba(255,255,255,.13); border: 1px solid rgba(255,255,255,.16); margin-bottom: 30px; }
+.brand-mark { width: 64px; height: 64px; display: grid; place-items: center; margin-bottom: 30px; filter: drop-shadow(0 12px 24px rgba(2,38,48,.24)); }
+.brand-mark img { display: block; width: 100%; height: 100%; }
 .login-brand-panel h1.ant-typography { color: #fff; font-size: clamp(38px,3.4vw,56px); line-height: 1.1; max-width: 650px; overflow-wrap: anywhere; letter-spacing: -.04em; margin: 0 0 22px; }
 .login-brand-copy { margin: 0; color: rgba(255,255,255,.76); font-size: 17px; max-width: 600px; line-height: 1.8; }
 .login-stat-row { display: flex; gap: 34px; margin-top: 70px; }
@@ -26,18 +27,24 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
 .public-shell, .platform-login-shell { min-height: 100vh; padding: 48px 20px; background: linear-gradient(145deg,#edf7f6,#f5f7fb 55%,#eef3fa); display: grid; place-items: center; }
 .public-card { width: min(680px,100%); box-shadow: 0 24px 70px rgba(15,56,72,.12); }
 .public-icon { color: #138f84; font-size: 28px; }
+.public-brand-logo { display: block; width: 48px; height: 48px; margin-bottom: 8px; }
+.platform-brand-lockup { position: relative; display: inline-grid; width: 52px; height: 52px; margin-bottom: 8px; }
+.platform-brand-lockup img { width: 52px; height: 52px; }
+.platform-brand-lockup .anticon { position: absolute; right: -5px; bottom: -3px; display: grid; place-items: center; width: 23px; height: 23px; border: 2px solid #fff; border-radius: 50%; color: #fff; background: #102f3a; font-size: 12px; }
 .registration-success { padding: 36px 8px; text-align: center; }
 .registration-success > .anticon { color: #33a56f; font-size: 52px; }
 .platform-login-shell .login-card { background: #fff; padding: 20px; border-radius: 16px; box-shadow: 0 24px 70px rgba(15,56,72,.12); }
 .platform-shell { min-height: 100vh; background: #f2f5f8; }
 .platform-header { height: 66px; padding-inline: 28px; background: #102f3a; display: flex; justify-content: space-between; align-items: center; }
 .platform-header h4.ant-typography, .platform-header .ant-typography, .platform-header .anticon { color: #fff; margin: 0; }
+.platform-header-logo { display: block; width: 34px; height: 34px; }
 .platform-content { padding: 24px 28px 48px; overflow: auto; }
 .app-shell { min-height: 100vh; }
 .app-sider { position: sticky !important; top: 0; height: 100vh; height: 100dvh; background: #102b3f !important; box-shadow: 8px 0 30px rgba(7,32,51,.08); }
 .app-sider .ant-layout-sider-children { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .app-logo { height: 72px; display: flex; align-items: center; gap: 12px; padding: 0 20px; color: #fff; font-size: 18px; }
-.app-logo span { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; background: #20a99a; flex: none; }
+.app-logo-mark { width: 40px; height: 40px; display: grid; place-items: center; flex: none; filter: drop-shadow(0 7px 13px rgba(0,0,0,.18)); }
+.app-logo-mark img { display: block; width: 100%; height: 100%; }
 .app-logo strong { white-space: nowrap; }
 .sider-menu-scroll { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .sider-menu-scroll::-webkit-scrollbar { width: 6px; }

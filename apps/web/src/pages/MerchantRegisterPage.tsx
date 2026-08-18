@@ -1,9 +1,10 @@
-import { CheckCircleOutlined, ShopOutlined } from '@ant-design/icons'
+import { CheckCircleOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Checkbox, Form, Input, Space, Typography } from 'antd'
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { apiRequest, ApiError } from '../api/client'
 import type { MerchantRegistrationReceipt } from '../api/types'
+import { BrandLogo } from '../components/BrandLogo'
 
 interface RegistrationValues {
   merchantName: string; storeName: string; contactName: string; contactMobile: string
@@ -22,7 +23,7 @@ export function MerchantRegisterPage() {
   }
   return <main className="public-shell">
     <Card className="public-card" variant="borderless">
-      <Space orientation="vertical" size={4} className="login-heading"><ShopOutlined className="public-icon" /><Typography.Title level={2}>申请开通商户</Typography.Title><Typography.Paragraph type="secondary">提交后由平台管理员审核，不会立即创建登录账号。</Typography.Paragraph></Space>
+      <Space orientation="vertical" size={4} className="login-heading"><BrandLogo className="public-brand-logo" /><Typography.Title level={2}>申请开通商户</Typography.Title><Typography.Paragraph type="secondary">提交后由平台管理员审核，不会立即创建登录账号。</Typography.Paragraph></Space>
       {receipt ? <div className="registration-success"><CheckCircleOutlined /><Typography.Title level={3}>申请已提交</Typography.Title><Typography.Paragraph>申请编号：<Typography.Text copyable strong>{receipt.applicationNo}</Typography.Text></Typography.Paragraph><Typography.Paragraph type="secondary">当前状态：待审核。平台管理员审核通过后会线下交付负责人初始密码。</Typography.Paragraph><Link to="/login">返回登录</Link></div> : <>
         {error && <Alert type="error" showIcon title={error} className="login-alert" />}
         <Form<RegistrationValues> layout="vertical" onFinish={submit} requiredMark="optional">

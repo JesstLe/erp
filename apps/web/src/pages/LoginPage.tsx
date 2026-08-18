@@ -1,10 +1,11 @@
-import { LockOutlined, ShopOutlined, UserOutlined } from '@ant-design/icons'
+import { LockOutlined, UserOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Checkbox, Form, Input, Space, Typography } from 'antd'
 import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { apiRequest, ApiError, resetCsrfToken } from '../api/client'
 import type { CurrentUser } from '../api/types'
 import { useAuth } from '../auth/useAuth'
+import { BrandLogo } from '../components/BrandLogo'
 
 interface LoginValues { account: string; password: string; rememberMe: boolean }
 
@@ -30,7 +31,7 @@ export function LoginPage() {
 
   return <main className="login-shell">
     <section className="login-brand-panel">
-      <div className="brand-mark"><ShopOutlined /></div>
+      <div className="brand-mark"><BrandLogo /></div>
       <Typography.Title level={1}>把门店经营，放在一个清楚的工作台里</Typography.Title>
       <p className="login-brand-copy">从设施接待、服务录单到会员和交班，每个动作都有状态、权限和审计记录。</p>
       <div className="login-stat-row">
