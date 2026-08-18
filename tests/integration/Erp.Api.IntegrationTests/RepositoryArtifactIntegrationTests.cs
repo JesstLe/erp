@@ -144,6 +144,26 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void ChannelReconciliationStoresDigestAndDifferencesButNeverRawBillOrAutomaticCorrections()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180014__channel_bill_reconciliation.sql"));
+        var service = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Cashier", "PaymentChannelReconciliationService.cs"));
+
+        Assert.Contains("source_sha256 bytea", migration, StringComparison.Ordinal);
+        Assert.Contains("octet_length(source_sha256) = 32", migration, StringComparison.Ordinal);
+        Assert.DoesNotContain("raw_bill", migration, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("PaymentChannelReconciliationItemStatus.AmountMismatch", service,
+            StringComparison.Ordinal);
+        Assert.Contains("PaymentChannelReconciliationItemStatus.ChannelOnly", service,
+            StringComparison.Ordinal);
+        Assert.Contains("item.Resolve", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyRefund", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("ConfirmChannelAllocation", service, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");

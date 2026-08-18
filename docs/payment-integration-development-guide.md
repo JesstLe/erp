@@ -1,9 +1,9 @@
 # 微信支付与支付宝支付开发设计 v0.1
 
 日期：2026-08-18  
-阶段：真实渠道交易与原路退款代码基线，尚未接入任何真实商户配置
+阶段：真实渠道交易、原路退款与日账单对账代码基线，尚未接入任何真实商户配置
 
-实现进度说明：统一支付、微信 Native、支付宝订单码、回调验签、主动查单、先查后关、原路退款和退款查单已进入可运行代码；数据库不保存任何商户密钥。渠道账单下载、自动对账、财务差异处置和真实商户验收仍在开发。可运行配置路径见[微信支付与支付宝渠道安全配置](user-manual/14-payment-channel-configuration.md)。
+实现进度说明：统一支付、微信 Native、支付宝订单码、回调验签、主动查单、先查后关、原路退款、退款查单、渠道账单下载、自动匹配和差异处置均已进入可运行代码；数据库不保存商户密钥或原始账单。尚未使用真实商户资料验收，不能描述为真实收付款已上线。可运行配置路径见[微信支付与支付宝渠道安全配置及对账](user-manual/14-payment-channel-configuration.md)。
 
 ## 1. 文档目的与状态边界
 
@@ -15,7 +15,7 @@
 - 未申请、读取或保存商户号、应用 ID、私钥、证书、APIv3 密钥等正式配置。
 - 已安装支付宝官方 .NET SDK，并实现微信 APIv3 适配器、统一状态机、数据库迁移、前端操作和本地签名夹具。
 - 未开放公网回调地址，未向真实微信或支付宝商户发起支付、退款、查询、关单或账单下载请求。
-- 渠道账单、自动对账和差异处置仍是目标设计，不能描述为已上线能力。
+- 渠道账单下载、自动匹配和差异处置已有本地代码、迁移、解析夹具和界面，但没有真实账单验收证据，不能描述为生产已上线能力。
 
 在支付接口通过完整验收并按门店启用前，微信、支付宝仍按“人工登记待核对”处理，不能标记为渠道确认。
 
@@ -280,8 +280,8 @@ sequenceDiagram
 | `payment_channel_order` | allocation_id、provider、merchant_scope_id、out_trade_no、provider_trade_no、status、provider_status、qr_payload、expires_at、request_hash | 商户范围内 `out_trade_no` 唯一 |
 | `payment_channel_event` | provider、event_key、channel_order_id、event_type、signature_verified、payload_digest、received_at、processed_at、process_status | `provider + event_key` 唯一；只追加 |
 | `payment_refund` | payment_id、allocation_id、out_refund_no、provider_refund_no、amount_minor、reason_code、status、approved_by | 退款累计不超过渠道已确认金额 |
-| `payment_reconciliation_batch` | provider、merchant_scope_id、bill_date、file_digest、status、started_at、completed_at | 同商户同账单类型同日期唯一 |
-| `payment_reconciliation_item` | batch_id、channel_order_id、provider_trade_no、channel_amount_minor、local_amount_minor、match_status、resolution | 不覆盖原支付流水 |
+| `payment_channel_reconciliation_runs` | configuration_id、provider、business_date、attempt_no、source_sha256、status、started_at_utc、completed_at_utc | 同配置、账单日和尝试次数唯一；同日最多一个执行中批次 |
+| `payment_channel_reconciliation_items` | run_id、match_key、商户单号、provider_trade_no、channel_amount_minor、local_amount_minor、status、resolution_reason | 不覆盖原支付流水；同批次匹配键唯一 |
 | `payment_channel_config` | tenant_id、store_scope、provider、mode、merchant_id、app_id、secret_reference、enabled、version | 数据库只保存密钥引用，不保存明文私钥 |
 | `idempotency_record` | tenant_id、operation、idempotency_key、request_hash、resource_id、response_code、expires_at | 相同键不同请求必须返回冲突 |
 
@@ -402,6 +402,16 @@ downloadBill
 
 差异只能形成调查、补记、退款、冲正或财务调整任务，不能直接改原始支付金额。
 
+### 12.3 当前实现规则
+
+- 仅允许下载最近 90 天内且早于当前中国标准时间日期的交易账单；同渠道同账单日并发执行由数据库唯一约束拒绝。
+- 微信先请求交易账单下载信息，验签响应，再校验下载地址、20 MiB 上限和渠道返回的 SHA-1 文件摘要；内部另存 SHA-256 摘要。
+- 支付宝通过官方 SDK 查询交易账单下载地址，只允许支付宝账单域名，限制压缩包与解压明细大小，并兼容 UTF-8/GB18030。
+- 原始账单只在当前请求内解析，不写数据库；数据库只保留必要业务标识、整数分金额、手续费、双方状态和 SHA-256 摘要。
+- 支付按商户订单号匹配；退款按固定商户退款单号匹配。结果分为 `Matched`、`LocalOnly`、`ChannelOnly`、`AmountMismatch`、`StateMismatch`。
+- 微信退款账单反映受理时快照，支付宝账单也不能替代退款查询；本地退款最终完成仍只由可信退款查询/响应推进。
+- `OWNER` 执行对账和登记差异处置，店长只读。处置必须填写原因，只把对账投影标为 `Resolved`，不会修改支付、退款、消费单或会员余额。
+
 ## 13. 安全设计
 
 ### 13.1 密钥与证书
@@ -510,7 +520,7 @@ downloadBill
 - [x] 本地代码中全额退款、部分退款和重复退款请求满足金额约束。
 - [x] 本地代码中退款超时通过原请求号查询或重试，不创建重复退款单。
 - [ ] 使用真实商户资料验证微信与支付宝退款成功、处理中、失败和超时恢复。
-- [ ] 渠道账单能匹配支付与退款，并识别金额、状态和缺失记录差异。
+- [x] 本地代码与解析夹具能匹配支付和退款，并识别金额、状态和缺失记录差异；真实商户账单仍待验收。
 - [ ] 已关班或已关账期间的差异通过调整/冲正处理，不覆盖原流水。
 
 ## 18. 建议开发顺序
@@ -521,7 +531,7 @@ downloadBill
 4. 完成消费单锁价、支付分摊和内部账户结算。
 5. 接入支付宝订单码测试环境并验证下单、查询、撤销、通知和退款。
 6. 接入微信 Native 测试环境并验证下单、查单、关单、通知和退款。
-7. 完成日账单下载、自动对账和财务差异处理。
+7. 使用真实商户日账单验收自动对账和财务差异处理。
 8. 执行安全审查、故障演练和双渠道验收后，再按门店灰度启用。
 
 ## 19. 官方资料

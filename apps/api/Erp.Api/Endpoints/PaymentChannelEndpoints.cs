@@ -95,6 +95,45 @@ public static class PaymentChannelEndpoints
         }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager,
             SystemRoles.Cashier));
 
+        group.MapGet("/reconciliations", async (Guid storeId, DateOnly? fromDate, DateOnly? toDate,
+            IIdentityService identity, IPaymentChannelReconciliationService reconciliations,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, storeId)) return Results.Forbid();
+            return Results.Ok(await reconciliations.ListAsync(current.TenantId, storeId, fromDate, toDate,
+                cancellationToken));
+        });
+
+        group.MapPost("/reconciliations/run", async (StartReconciliationRequest request,
+            IIdentityService identity, IPaymentChannelReconciliationService reconciliations,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            if (!Enum.TryParse<PaymentChannelProvider>(request.Provider, true, out var provider) ||
+                !Enum.IsDefined(provider))
+                return Results.UnprocessableEntity(new
+                    { error = new { code = "VALIDATION_FAILED", message = "支付渠道无效" } });
+            return EndpointResults.From(await reconciliations.StartAsync(current.TenantId,
+                new StartPaymentChannelReconciliationCommand(request.StoreId, provider,
+                    request.BusinessDate, current.Id), cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
+        group.MapPost("/reconciliations/items/{itemId:guid}/resolve", async (Guid itemId,
+            ResolveReconciliationRequest request, IIdentityService identity,
+            IPaymentChannelReconciliationService reconciliations, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await reconciliations.ResolveAsync(current.TenantId,
+                new ResolvePaymentChannelReconciliationItemCommand(request.StoreId, itemId,
+                    request.ExpectedVersion, request.Reason ?? string.Empty, current.Id), cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
         endpoints.MapPost("/api/integrations/payment-notifications/{provider}/{configurationId:guid}",
             ProcessNotification).AllowAnonymous().RequireRateLimiting("payment-notification")
             .WithTags("Payment Channel Notifications");
@@ -169,4 +208,6 @@ public static class PaymentChannelEndpoints
     private sealed record InitiateChannelRequest(Guid StoreId, uint ExpectedOrderVersion, Guid MethodId,
         Guid CommandId);
     private sealed record OperateChannelRequest(Guid StoreId);
+    private sealed record StartReconciliationRequest(Guid StoreId, string Provider, DateOnly BusinessDate);
+    private sealed record ResolveReconciliationRequest(Guid StoreId, uint ExpectedVersion, string? Reason);
 }

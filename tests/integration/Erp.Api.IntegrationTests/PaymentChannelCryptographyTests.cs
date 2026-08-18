@@ -79,7 +79,8 @@ public sealed class PaymentChannelCryptographyTests
                 "2026000000000001", null, null, null, publicKeyPath, publicKeyPath, null,
                 "https://erp.example.test/api/integrations/payment-notifications/alipay",
                 "https://openapi.alipay.com/gateway.do");
-            var gateway = new AlipayGateway();
+            using var http = new HttpClient();
+            var gateway = new AlipayGateway(http);
 
             var verified = gateway.VerifyNotification(credentials,
                 new PaymentChannelNotificationEnvelope(new Dictionary<string, string>(), "signed-form", form));
@@ -97,6 +98,46 @@ public sealed class PaymentChannelCryptographyTests
         {
             File.Delete(publicKeyPath);
         }
+    }
+
+    [Fact]
+    public void WechatBillParserTreatsRefundRowAsRefundOnly()
+    {
+        var csv = "交易时间,微信订单号,商户订单号,交易状态,订单金额,手续费,商户退款单号,微信退款单号,申请退款金额,退款状态\n" +
+                  "2026-08-17 09:00:00,WX-PAY-1,PAY-1,SUCCESS,500.00,0.30,,,,\n" +
+                  "2026-08-17 10:00:00,WX-PAY-OLD,PAY-OLD,SUCCESS,500.00,0.30,RF-1,WX-RF-1,50.00,PROCESSING\n";
+
+        var entries = PaymentChannelBillCsv.ParseWechat(csv);
+
+        Assert.Collection(entries.OrderBy(x => x.MatchKey),
+            payment =>
+            {
+                Assert.Equal("PAY:PAY-1", payment.MatchKey);
+                Assert.Equal(50_000, payment.AmountMinor);
+            },
+            refund =>
+            {
+                Assert.Equal("REFUND:RF-1", refund.MatchKey);
+                Assert.Equal(5_000, refund.AmountMinor);
+            });
+        Assert.DoesNotContain(entries, x => x.MatchKey == "PAY:PAY-OLD");
+    }
+
+    [Fact]
+    public void AlipayBillParserHandlesQuotedValuesAndNegativeRefundAmounts()
+    {
+        var csv = "支付宝交易号,商户订单号,业务类型,订单金额（元）,商家实收（元）,服务费（元）,退款批次号/请求号,退款金额（元）\n" +
+                  "ALI-PAY-1,PAY-1,交易,600.00,600.00,0.60,,\n" +
+                  "ALI-PAY-1,PAY-1,\"退款,成功\",600.00,-50.00,-0.05,RF-1,-50.00\n";
+
+        var entries = PaymentChannelBillCsv.ParseAlipay(csv);
+
+        Assert.Equal(2, entries.Count);
+        Assert.Equal(60_000, entries.Single(x => x.MatchKey == "PAY:PAY-1").AmountMinor);
+        var refund = entries.Single(x => x.MatchKey == "REFUND:RF-1");
+        Assert.Equal(5_000, refund.AmountMinor);
+        Assert.Equal(5, refund.FeeMinor);
+        Assert.Equal("退款,成功", refund.ChannelStatus);
     }
 
     [Fact]
@@ -151,6 +192,53 @@ public sealed class PaymentChannelCryptographyTests
         }
     }
 
+    [Fact]
+    public async Task WechatBillDownloadVerifiesSignedLinkAndProviderFileHash()
+    {
+        using var merchantRsa = RSA.Create(2048);
+        using var platformRsa = RSA.Create(2048);
+        var merchantKeyPath = Path.GetTempFileName();
+        var platformKeyPath = Path.GetTempFileName();
+        var now = new DateTimeOffset(2026, 8, 18, 2, 30, 0, TimeSpan.Zero);
+        const string platformKeyId = "PLATFORM_KEY_20260818";
+        var csv = "交易时间,微信订单号,商户订单号,交易状态,订单金额,手续费,商户退款单号,微信退款单号,申请退款金额,退款状态\n" +
+                  "2026-08-17 09:00:00,WX-1,PAY-1,SUCCESS,123.00,0.12,,,,\n";
+        var billBytes = Encoding.UTF8.GetBytes(csv);
+#pragma warning disable CA5350
+        var sha1 = Convert.ToHexString(SHA1.HashData(billBytes));
+#pragma warning restore CA5350
+        try
+        {
+            await File.WriteAllTextAsync(merchantKeyPath, merchantRsa.ExportRSAPrivateKeyPem());
+            await File.WriteAllTextAsync(platformKeyPath, platformRsa.ExportSubjectPublicKeyInfoPem());
+            var handler = new WechatBillHandler(platformRsa, platformKeyId, now, billBytes, sha1);
+            using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.mch.weixin.qq.com") };
+            var gateway = new WechatPayGateway(http, new FixedTimeProvider(now));
+            var credentials = new PaymentChannelCredentialProfile(PaymentChannelProvider.WeChatPay,
+                "TEST_WECHAT", "wx2026000000000001", "1900000001", "MERCHANT_CERT_20260818",
+                "12345678901234567890123456789012", merchantKeyPath, platformKeyPath, platformKeyId,
+                "https://erp.example.test/api/integrations/payment-notifications/wechat", null);
+
+            var result = await gateway.DownloadBillAsync(credentials, new DateOnly(2026, 8, 17),
+                CancellationToken.None);
+
+            Assert.True(result.IsSuccess);
+            var entry = Assert.Single(result.Entries);
+            Assert.Equal("PAY:PAY-1", entry.MatchKey);
+            Assert.Equal(12_300, entry.AmountMinor);
+            Assert.Equal(SHA256.HashData(billBytes), result.SourceSha256);
+            Assert.Contains("WECHATPAY2-SHA256-RSA2048", handler.LinkAuthorization,
+                StringComparison.Ordinal);
+            Assert.Contains("WECHATPAY2-SHA256-RSA2048", handler.DownloadAuthorization,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(merchantKeyPath);
+            File.Delete(platformKeyPath);
+        }
+    }
+
     private static string Extract(string authorization, string key)
     {
         var prefix = $"{key}=\"";
@@ -196,6 +284,45 @@ public sealed class PaymentChannelCryptographyTests
             response.Headers.TryAddWithoutValidation("Wechatpay-Signature", signature);
             response.Headers.TryAddWithoutValidation("Wechatpay-Serial", keyId);
             return response;
+        }
+    }
+
+    private sealed class WechatBillHandler(RSA platformRsa, string keyId, DateTimeOffset now,
+        byte[] billBytes, string sha1) : HttpMessageHandler
+    {
+        public string LinkAuthorization { get; private set; } = string.Empty;
+        public string DownloadAuthorization { get; private set; } = string.Empty;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (request.RequestUri?.AbsolutePath == "/v3/billdownload/file")
+            {
+                DownloadAuthorization = request.Headers.Authorization?.ToString() ?? string.Empty;
+                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(billBytes),
+                });
+            }
+
+            LinkAuthorization = request.Headers.Authorization?.ToString() ?? string.Empty;
+            var body = $$"""
+                {"hash_type":"SHA1","hash_value":"{{sha1}}","download_url":"https://api.mch.weixin.qq.com/v3/billdownload/file?token=test"}
+                """;
+            var timestamp = now.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+            const string nonce = "bill-response-nonce";
+            var signature = Convert.ToBase64String(platformRsa.SignData(
+                Encoding.UTF8.GetBytes($"{timestamp}\n{nonce}\n{body}\n"), HashAlgorithmName.SHA256,
+                RSASignaturePadding.Pkcs1));
+            var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            };
+            response.Headers.TryAddWithoutValidation("Wechatpay-Timestamp", timestamp);
+            response.Headers.TryAddWithoutValidation("Wechatpay-Nonce", nonce);
+            response.Headers.TryAddWithoutValidation("Wechatpay-Signature", signature);
+            response.Headers.TryAddWithoutValidation("Wechatpay-Serial", keyId);
+            return Task.FromResult(response);
         }
     }
 }
