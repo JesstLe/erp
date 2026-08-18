@@ -1,4 +1,4 @@
-import { AppstoreOutlined, AuditOutlined, BarChartOutlined, BellOutlined, CalendarOutlined, ClockCircleOutlined, CloudServerOutlined, DatabaseOutlined, InboxOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, QuestionCircleOutlined, SafetyCertificateOutlined, SettingOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
+import { AppstoreOutlined, AuditOutlined, BankOutlined, BarChartOutlined, BellOutlined, CalendarOutlined, ClockCircleOutlined, ControlOutlined, CreditCardOutlined, InboxOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, ProfileOutlined, QuestionCircleOutlined, SafetyCertificateOutlined, SettingOutlined, ShoppingOutlined, TagsOutlined, TeamOutlined, TruckOutlined } from '@ant-design/icons'
 import { Avatar, Badge, Button, Dropdown, Empty, Layout, Menu, Popover, Select, Tag, Tooltip, Typography, type MenuProps } from 'antd'
 import { useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -8,6 +8,7 @@ import { apiRequest } from '../api/client'
 import type { NotificationInbox } from '../api/types'
 import { Permission, type PermissionCode } from '../security/permissions'
 import { useAuthorization } from '../security/useAuthorization'
+import { BrandLogo } from '../components/BrandLogo'
 
 const { Header, Sider, Content } = Layout
 const appVersion = import.meta.env.VITE_APP_VERSION?.trim() || '0.0.0-local'
@@ -21,12 +22,12 @@ const operationMenuItems: AuthorizedMenuItem[] = [
   { key: '/customers', icon: <TeamOutlined />, label: '顾客与会员', permission: Permission.CustomerRead },
   { key: '/cashier', icon: <PayCircleOutlined />, label: '服务录单与收银', permission: Permission.CashierCheckout },
   { key: '/inventory', icon: <InboxOutlined />, label: '商品库存', permission: Permission.InventoryRead },
-  { key: '/supply-chain', icon: <CloudServerOutlined />, label: '采购与供应链', permission: Permission.SupplyChainRead },
+  { key: '/supply-chain', icon: <TruckOutlined />, label: '采购与供应链', permission: Permission.SupplyChainRead },
 ]
 const managementMenuItems: AuthorizedMenuItem[] = [
-  { key: '/catalog/items', icon: <DatabaseOutlined />, label: '服务项目', permission: Permission.CatalogRead },
-  { key: '/catalog/products', icon: <DatabaseOutlined />, label: '产品目录', permission: Permission.CatalogRead },
-  { key: '/catalog/prices', icon: <DatabaseOutlined />, label: '价格管理', permission: Permission.CatalogRead },
+  { key: '/catalog/items', icon: <ProfileOutlined />, label: '服务项目', permission: Permission.CatalogRead },
+  { key: '/catalog/products', icon: <ShoppingOutlined />, label: '产品目录', permission: Permission.CatalogRead },
+  { key: '/catalog/prices', icon: <TagsOutlined />, label: '价格管理', permission: Permission.CatalogRead },
   { key: '/reports', icon: <BarChartOutlined />, label: '经营报表', permission: Permission.ReportRead },
   { key: '/audit', icon: <AuditOutlined />, label: '审计记录', permission: Permission.AuditRead },
 ]
@@ -45,16 +46,16 @@ export function AppLayout() {
   const notifications = useQuery({ queryKey: ['notifications', auth.store?.id], enabled: Boolean(auth.store?.id), queryFn: () => apiRequest<NotificationInbox>(`/api/v1/notifications?storeId=${auth.store?.id}`), refetchInterval: 30_000 })
   const menuItems: MenuProps['items'] = [
     ...visibleBaseItems,
-    ...(can(Permission.FacilityConfigure) ? [{ key: '/settings/facilities', icon: <SettingOutlined />, label: '门店设施配置' }] : []),
-    ...(can(Permission.OrganizationManage) ? [{ key: '/settings/organization', icon: <ShopOutlined />, label: '品牌与门店' }] : []),
+    ...(can(Permission.FacilityConfigure) ? [{ key: '/settings/facilities', icon: <ControlOutlined />, label: '门店设施配置' }] : []),
+    ...(can(Permission.OrganizationManage) ? [{ key: '/settings/organization', icon: <BankOutlined />, label: '品牌与门店' }] : []),
     ...(can(Permission.EmployeeManage) ? [{ key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }] : []),
-    ...(can(Permission.PaymentChannelManage) ? [{ key: '/settings/payment-channels', icon: <CloudServerOutlined />, label: '支付渠道配置' }] : []),
+    ...(can(Permission.PaymentChannelManage) ? [{ key: '/settings/payment-channels', icon: <CreditCardOutlined />, label: '支付渠道配置' }] : []),
   ]
   const settingsItems: MenuProps['items'] = [
-    ...(can(Permission.FacilityConfigure) ? [{ key: '/settings/facilities', icon: <ShopOutlined />, label: '门店设施配置' }] : []),
-    ...(can(Permission.OrganizationManage) ? [{ key: '/settings/organization', icon: <ShopOutlined />, label: '品牌与门店' }] : []),
+    ...(can(Permission.FacilityConfigure) ? [{ key: '/settings/facilities', icon: <ControlOutlined />, label: '门店设施配置' }] : []),
+    ...(can(Permission.OrganizationManage) ? [{ key: '/settings/organization', icon: <BankOutlined />, label: '品牌与门店' }] : []),
     ...(can(Permission.EmployeeManage) ? [{ key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }] : []),
-    ...(can(Permission.PaymentChannelManage) ? [{ key: '/settings/payment-channels', icon: <CloudServerOutlined />, label: '支付渠道配置' }] : []),
+    ...(can(Permission.PaymentChannelManage) ? [{ key: '/settings/payment-channels', icon: <CreditCardOutlined />, label: '支付渠道配置' }] : []),
   ]
   const accountItems: MenuProps['items'] = [
     { key: 'account', disabled: true, label: <div className="account-menu-summary"><strong>{auth.user?.displayName}</strong><span>{auth.user?.roles.join(' / ')}</span></div> },
@@ -68,7 +69,7 @@ export function AppLayout() {
   }
   return <Layout className="app-shell">
     <Sider width={232} collapsedWidth={76} breakpoint="lg" collapsed={collapsed} onBreakpoint={setCollapsed} className="app-sider">
-      <div className="app-logo"><span><ShopOutlined /></span>{!collapsed && <strong>门店 ERP</strong>}</div>
+      <div className="app-logo"><span className="app-logo-mark"><BrandLogo /></span>{!collapsed && <strong>门店 ERP</strong>}</div>
       <nav className="sider-menu-scroll" aria-label="主导航">
         <Menu theme="dark" mode="inline" items={menuItems} selectedKeys={[location.pathname]} onClick={({ key }) => navigate(key)} />
       </nav>

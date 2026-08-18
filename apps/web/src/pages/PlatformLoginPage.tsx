@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { apiRequest, ApiError, resetCsrfToken } from '../api/client'
 import type { PlatformCurrentUser } from '../api/types'
+import { BrandLogo } from '../components/BrandLogo'
 
 interface Values { account: string; password: string; rememberMe: boolean }
 
@@ -18,7 +19,7 @@ export function PlatformLoginPage() {
     finally { setLoading(false) }
   }
   return <main className="platform-login-shell"><Card className="login-card" variant="borderless">
-    <Space orientation="vertical" size={4} className="login-heading"><SafetyCertificateOutlined className="public-icon" /><Typography.Text type="secondary">ERP 平台控制面</Typography.Text><Typography.Title level={2}>平台管理员登录</Typography.Title><Typography.Paragraph type="secondary">该账号独立于所有商户 OWNER。</Typography.Paragraph></Space>
+    <Space orientation="vertical" size={4} className="login-heading"><span className="platform-brand-lockup"><BrandLogo /><SafetyCertificateOutlined /></span><Typography.Text type="secondary">ERP 平台控制面</Typography.Text><Typography.Title level={2}>平台管理员登录</Typography.Title><Typography.Paragraph type="secondary">该账号独立于所有商户 OWNER。</Typography.Paragraph></Space>
     {error && <Alert type="error" showIcon title={error} className="login-alert" />}
     <Form<Values> layout="vertical" size="large" initialValues={{ rememberMe: false }} onFinish={submit} requiredMark={false}>
       <Form.Item name="account" label="平台账号" rules={[{ required: true }]}><Input autoComplete="username" /></Form.Item>

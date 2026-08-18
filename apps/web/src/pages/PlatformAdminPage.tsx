@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { apiRequest, ApiError, resetCsrfToken } from '../api/client'
 import type { LoginSecurityEvent, MerchantRegistrationApplication, PlatformCurrentUser, PlatformMerchant, PlatformPage } from '../api/types'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { BrandLogo } from '../components/BrandLogo'
 
 const requestError = (error: unknown) => error instanceof ApiError ? error.message : '操作失败，请稍后重试'
 const time = (value?: string) => value ? new Date(value).toLocaleString() : '—'
@@ -188,7 +189,7 @@ export function PlatformAdminPage() {
       { title: '追踪号', dataIndex: 'traceId', ellipsis: true },
     ]} /></Card>
   return <Layout className="platform-shell">
-    <Layout.Header className="platform-header"><Space><SafetyCertificateOutlined /><Typography.Title level={4}>ERP 平台管理中心</Typography.Title></Space><Space><Typography.Text>{me.data?.displayName} · PLATFORM_ADMIN</Typography.Text><Button icon={<LogoutOutlined />} onClick={logout}>退出</Button></Space></Layout.Header>
+    <Layout.Header className="platform-header"><Space><BrandLogo className="platform-header-logo" /><Typography.Title level={4}>ERP 平台管理中心</Typography.Title><SafetyCertificateOutlined /></Space><Space><Typography.Text>{me.data?.displayName} · PLATFORM_ADMIN</Typography.Text><Button icon={<LogoutOutlined />} onClick={logout}>退出</Button></Space></Layout.Header>
     <Layout.Content className="platform-content"><Tabs items={[
       { key: 'registrations', label: <span><UserAddOutlined />注册审核</span>, children: registrationView },
       { key: 'merchants', label: <span><ShopOutlined />全部商户</span>, children: merchantView },
