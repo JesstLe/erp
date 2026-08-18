@@ -202,9 +202,8 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
                     !topupAccounts.TryGetValue(MemberAccountType.Bonus, out var bonus))
                     return await Fail(transaction, "MEMBER_ACCOUNT_NOT_FOUND",
                         "会员资金账户不完整，不能冲正储值", cancellationToken);
-                if (principal.BalanceUnits < topup.PrincipalMinor || bonus.BalanceUnits < topup.BonusMinor)
-                    return await Fail(transaction, "TOPUP_BALANCE_ALREADY_USED",
-                        "本次储值本金或赠送奖励已被使用，不能整单冲正", cancellationToken);
+                MemberTopupReversalPolicy.EnsureOriginalBalancesAvailable(principal.BalanceUnits,
+                    bonus.BalanceUnits, topup.PrincipalMinor, topup.BonusMinor);
                 db.MemberAccountLedgers.Add(principal.Debit("MemberTopupRefund", refund.Id,
                     topup.PrincipalMinor, command.CommandId, now));
                 if (topup.BonusMinor > 0)
