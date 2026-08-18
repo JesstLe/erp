@@ -42,7 +42,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   const unsafe = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
-  if (init.body) headers.set('Content-Type', 'application/json')
+  if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   if (unsafe) headers.set('X-CSRF-TOKEN', await getCsrfToken())
   const response = await fetch(path, { ...init, headers, credentials: 'include' })
   if (!response.ok) {

@@ -182,6 +182,27 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void ImageAndServiceArchiveMigrationUsesPrivateBoundedAppendOnlyStorage()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180016__product_images_and_customer_service_records.sql"));
+        var storage = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Files", "SecureFileStorage.cs"));
+        var endpoints = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Api",
+            "Endpoints", "CustomerEndpoints.cs"));
+
+        Assert.Contains("size_bytes BETWEEN 1 AND 5242880", migration, StringComparison.Ordinal);
+        Assert.Contains("octet_length(sha256) = 32", migration, StringComparison.Ordinal);
+        Assert.Contains("service archive records are append-only", migration, StringComparison.Ordinal);
+        Assert.DoesNotContain("file_content bytea", migration, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("protector.Protect(content)", storage, StringComparison.Ordinal);
+        Assert.Contains("DetectContentType(content)", storage, StringComparison.Ordinal);
+        Assert.Contains("Path.GetFullPath", storage, StringComparison.Ordinal);
+        Assert.Contains("ServiceRecordOperators = [SystemRoles.Owner, SystemRoles.StoreManager]", endpoints,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");

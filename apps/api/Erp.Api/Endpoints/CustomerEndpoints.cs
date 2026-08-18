@@ -1,4 +1,5 @@
 using Erp.Application.Customers;
+using Erp.Application.Common;
 using Erp.Application.Identity;
 using Erp.Application.Security;
 
@@ -9,6 +10,7 @@ public static class CustomerEndpoints
     private static readonly string[] CustomerOperators =
         [SystemRoles.Owner, SystemRoles.StoreManager, SystemRoles.FrontDesk, SystemRoles.Cashier];
     private static readonly string[] MembershipOperators = [SystemRoles.Owner, SystemRoles.StoreManager];
+    private static readonly string[] ServiceRecordOperators = [SystemRoles.Owner, SystemRoles.StoreManager];
 
     public static IEndpointRouteBuilder MapCustomerEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -70,6 +72,82 @@ public static class CustomerEndpoints
                 new OpenMembershipCommand(request.StoreId, customerId, request.CardTypeId, request.CardNo,
                     request.Note, request.CommandId, current.Id), cancellationToken));
         }).RequireAuthorization(policy => policy.RequireRole(MembershipOperators));
+
+        group.MapGet("/{customerId:guid}/service-records", async (Guid customerId, Guid storeId,
+            IIdentityService identity, IServiceRecordService records, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, storeId)) return Results.Forbid();
+            return Results.Ok(await records.ListAsync(current.TenantId, storeId, customerId, cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(ServiceRecordOperators));
+
+        group.MapGet("/{customerId:guid}/service-record-order-options", async (Guid customerId, Guid storeId,
+            IIdentityService identity, IServiceRecordService records, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, storeId)) return Results.Forbid();
+            return Results.Ok(await records.ListOrderOptionsAsync(current.TenantId, storeId, customerId,
+                cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(ServiceRecordOperators));
+
+        group.MapPost("/{customerId:guid}/service-records", async (Guid customerId, HttpRequest request,
+            IIdentityService identity, IServiceRecordService records, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!request.HasFormContentType)
+                return Results.Json(new { error = new { code = "VALIDATION_FAILED", message = "请使用表单提交服务记录" } },
+                    statusCode: StatusCodes.Status422UnprocessableEntity);
+            var form = await request.ReadFormAsync(cancellationToken);
+            if (!Guid.TryParse(form["storeId"], out var storeId) || !HasStore(current, storeId))
+                return Results.Forbid();
+            if (!Guid.TryParse(form["commandId"], out var commandId) ||
+                !DateTimeOffset.TryParse(form["serviceOccurredAtUtc"], System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.RoundtripKind, out var occurredAtUtc))
+                return Results.Json(new { error = new { code = "VALIDATION_FAILED", message = "服务时间或请求号无效" } },
+                    statusCode: StatusCodes.Status422UnprocessableEntity);
+            Guid? serviceOrderId = Guid.TryParse(form["serviceOrderId"], out var parsedOrderId) ? parsedOrderId : null;
+            if (form.Files.Count > 6)
+                return Results.Json(new { error = new { code = "VALIDATION_FAILED", message = "每条服务记录最多上传6张图片" } },
+                    statusCode: StatusCodes.Status422UnprocessableEntity);
+            var streams = new List<Stream>();
+            try
+            {
+                var images = form.Files.Select(file =>
+                {
+                    var stream = file.OpenReadStream();
+                    streams.Add(stream);
+                    return new FileUploadInput(file.FileName, file.ContentType, file.Length, stream);
+                }).ToList();
+                return EndpointResults.From(await records.CreateAsync(current.TenantId,
+                    new CreateServiceRecordCommand(storeId, customerId, serviceOrderId, occurredAtUtc,
+                        form["conditionNotes"], form["serviceContent"], form["followUpNotes"], commandId,
+                        current.Id, images), cancellationToken),
+                    value => Results.Created($"/api/v1/customers/{customerId}/service-records/{value.Id}", value));
+            }
+            finally
+            {
+                foreach (var stream in streams) await stream.DisposeAsync();
+            }
+        }).RequireAuthorization(policy => policy.RequireRole(ServiceRecordOperators))
+            .RequireRateLimiting("file-upload")
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(32 * 1024 * 1024));
+
+        group.MapGet("/{customerId:guid}/service-record-files/{fileId:guid}", async (Guid customerId, Guid fileId,
+            Guid storeId, HttpResponse response, IIdentityService identity, IServiceRecordService records,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, storeId)) return Results.Forbid();
+            var result = await records.ReadImageAsync(current.TenantId, storeId, customerId, fileId,
+                cancellationToken);
+            if (!result.IsSuccess || result.Value is null) return EndpointResults.From(result);
+            response.Headers.CacheControl = "private, no-store";
+            return Results.File(result.Value.Content, result.Value.ContentType, enableRangeProcessing: false);
+        }).RequireAuthorization(policy => policy.RequireRole(ServiceRecordOperators));
 
         return endpoints;
     }

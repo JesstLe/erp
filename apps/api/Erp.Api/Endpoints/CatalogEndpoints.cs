@@ -1,4 +1,5 @@
 using Erp.Application.Catalog;
+using Erp.Application.Common;
 using Erp.Application.Identity;
 using Erp.Application.Security;
 
@@ -46,6 +47,38 @@ public static class CatalogEndpoints
                     request.UnitName ?? string.Empty, request.TrackInventory, current.Id, DefaultStoreId(current)), cancellationToken),
                 value => Results.Created($"/api/v1/catalog/products/{value.Id}", value));
         }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
+        group.MapPost("/products/{id:guid}/image", async (Guid id, HttpRequest request,
+            IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!request.HasFormContentType)
+                return Results.Json(new { error = new { code = "VALIDATION_FAILED", message = "请使用表单上传图片" } },
+                    statusCode: StatusCodes.Status422UnprocessableEntity);
+            var form = await request.ReadFormAsync(cancellationToken);
+            var file = form.Files.GetFile("image");
+            if (file is null)
+                return Results.Json(new { error = new { code = "VALIDATION_FAILED", message = "请选择产品图片" } },
+                    statusCode: StatusCodes.Status422UnprocessableEntity);
+            await using var stream = file.OpenReadStream();
+            return EndpointResults.From(await catalog.SetProductImageAsync(current.TenantId, id, current.Id,
+                DefaultStoreId(current), new FileUploadInput(file.FileName, file.ContentType, file.Length, stream),
+                cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner))
+            .RequireRateLimiting("file-upload")
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(6 * 1024 * 1024));
+
+        group.MapGet("/products/{id:guid}/image", async (Guid id, HttpResponse response,
+            IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            var result = await catalog.ReadProductImageAsync(current.TenantId, id, cancellationToken);
+            if (!result.IsSuccess || result.Value is null) return EndpointResults.From(result);
+            response.Headers.CacheControl = "private, max-age=300";
+            return Results.File(result.Value.Content, result.Value.ContentType, enableRangeProcessing: false);
+        });
 
         group.MapGet("/price-books", async (IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
         {

@@ -26,7 +26,17 @@ public sealed class ProductItem : Entity
 
     public bool TrackInventory { get; private set; }
 
+    public Guid? ImageFileId { get; private set; }
+
     public CatalogItemStatus Status { get; private set; }
+
+    public void SetImage(Guid fileId)
+    {
+        if (fileId == Guid.Empty)
+            throw new DomainRuleException("VALIDATION_FAILED", "产品图片文件无效");
+        ImageFileId = fileId;
+        Touch();
+    }
 
     private static string Normalize(string value, int maxLength, string field)
     {

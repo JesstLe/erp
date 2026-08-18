@@ -20,8 +20,9 @@
 10. [消费退款与会员储值整单冲正](13-payment-refunds-and-topup-reversals.md)
 11. [微信支付与支付宝渠道安全配置及对账](14-payment-channel-configuration.md)（本地交易、原路退款和日账单对账代码已具备，待商户验收）
 12. [商品销售与门店库存](15-product-sales-and-inventory.md)
-13. [审计记录](07-audit-events.md)
-14. [经营工作台与经营报表](08-dashboard-and-operations-reports.md)
-15. [员工、登录账号与门店权限](09-employees-accounts-and-permissions.md)
+13. [产品图片与顾客服务档案](16-product-images-and-service-records.md)
+14. [审计记录](07-audit-events.md)
+15. [经营工作台与经营报表](08-dashboard-and-operations-reports.md)
+16. [员工、登录账号与门店权限](09-employees-accounts-and-permissions.md)
 
 截图统一保存在 `docs/user-manual/assets/`，示例数据必须是本地虚构数据，不得包含参考系统里的真实顾客、员工、手机号或资金信息。

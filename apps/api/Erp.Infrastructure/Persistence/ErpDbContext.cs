@@ -7,6 +7,7 @@ using Erp.Domain.Facilities;
 using Erp.Domain.Inventory;
 using Erp.Domain.Organization;
 using Erp.Infrastructure.Identity;
+using Erp.Infrastructure.Files;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -76,6 +77,9 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<InventoryDocument> InventoryDocuments => Set<InventoryDocument>();
     public DbSet<InventoryDocumentLine> InventoryDocumentLines => Set<InventoryDocumentLine>();
     public DbSet<ProductReturn> ProductReturns => Set<ProductReturn>();
+    public DbSet<StoredFileRecord> StoredFiles => Set<StoredFileRecord>();
+    public DbSet<ServiceRecord> ServiceRecords => Set<ServiceRecord>();
+    public DbSet<ServiceRecordAttachment> ServiceRecordAttachments => Set<ServiceRecordAttachment>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -101,6 +105,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
         ConfigureCustomers(builder);
         ConfigureCashier(builder);
         ConfigureInventory(builder);
+        ConfigureFilesAndServiceRecords(builder);
         ConfigureSystemRecords(builder);
     }
 
@@ -276,8 +281,11 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(120);
             entity.Property(x => x.UnitName).HasColumnName("unit_name").HasMaxLength(20);
             entity.Property(x => x.TrackInventory).HasColumnName("track_inventory");
+            entity.Property(x => x.ImageFileId).HasColumnName("image_file_id");
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
             entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+            entity.HasOne<StoredFileRecord>().WithMany().HasForeignKey(x => x.ImageFileId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<PriceBook>(entity =>
@@ -1001,6 +1009,67 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.ResponseBody).HasColumnName("response_body").HasColumnType("jsonb");
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
             entity.Property(x => x.CompletedAtUtc).HasColumnName("completed_at_utc");
+        });
+    }
+
+    private static void ConfigureFilesAndServiceRecords(ModelBuilder builder)
+    {
+        builder.Entity<StoredFileRecord>(entity =>
+        {
+            entity.ToTable("stored_files");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(x => x.TenantId).HasColumnName("tenant_id");
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.Purpose).HasColumnName("purpose").HasMaxLength(32);
+            entity.Property(x => x.StorageKey).HasColumnName("storage_key").HasMaxLength(260);
+            entity.Property(x => x.OriginalFileName).HasColumnName("original_file_name").HasMaxLength(180);
+            entity.Property(x => x.ContentType).HasColumnName("content_type").HasMaxLength(40);
+            entity.Property(x => x.SizeBytes).HasColumnName("size_bytes");
+            entity.Property(x => x.Sha256).HasColumnName("sha256");
+            entity.Property(x => x.CreatedBy).HasColumnName("created_by");
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
+            entity.HasIndex(x => x.StorageKey).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.StoreId, x.Purpose, x.CreatedAtUtc });
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CreatedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<ServiceRecord>(entity =>
+        {
+            entity.ToTable("customer_service_records");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.ServiceOrderId).HasColumnName("service_order_id");
+            entity.Property(x => x.ServiceOccurredAtUtc).HasColumnName("service_occurred_at_utc");
+            entity.Property(x => x.ConditionNotes).HasColumnName("condition_notes").HasMaxLength(2000);
+            entity.Property(x => x.ServiceContent).HasColumnName("service_content").HasMaxLength(4000);
+            entity.Property(x => x.FollowUpNotes).HasColumnName("follow_up_notes").HasMaxLength(2000);
+            entity.Property(x => x.CommandId).HasColumnName("command_id");
+            entity.Property(x => x.CreatedBy).HasColumnName("created_by");
+            entity.HasIndex(x => x.CommandId).IsUnique();
+            entity.HasIndex(x => new { x.StoreId, x.CustomerId, x.ServiceOccurredAtUtc });
+            entity.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ServiceOrder>().WithMany().HasForeignKey(x => x.ServiceOrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CreatedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasMany(x => x.Attachments).WithOne().HasForeignKey(x => x.ServiceRecordId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.Navigation(x => x.Attachments).UsePropertyAccessMode(PropertyAccessMode.Field);
+        });
+        builder.Entity<ServiceRecordAttachment>(entity =>
+        {
+            entity.ToTable("customer_service_record_attachments");
+            ConfigureBase(entity);
+            entity.Property(x => x.ServiceRecordId).HasColumnName("service_record_id");
+            entity.Property(x => x.FileId).HasColumnName("file_id");
+            entity.Property(x => x.SortOrder).HasColumnName("sort_order");
+            entity.HasIndex(x => new { x.ServiceRecordId, x.FileId }).IsUnique();
+            entity.HasIndex(x => new { x.ServiceRecordId, x.SortOrder }).IsUnique();
+            entity.HasOne<StoredFileRecord>().WithMany().HasForeignKey(x => x.FileId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 
