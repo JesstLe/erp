@@ -23,6 +23,19 @@ public static class MemberDeductionPolicy
     }
 }
 
+public static class MemberTopupReversalPolicy
+{
+    public static void EnsureOriginalBalancesAvailable(long principalBalance, long bonusBalance,
+        long originalPrincipal, long originalBonus)
+    {
+        if (principalBalance < 0 || bonusBalance < 0 || originalPrincipal <= 0 || originalBonus < 0)
+            throw new DomainRuleException("VALIDATION_FAILED", "会员储值冲正金额或账户余额无效");
+        if (principalBalance < originalPrincipal || bonusBalance < originalBonus)
+            throw new DomainRuleException("TOPUP_BALANCE_ALREADY_USED",
+                "本次储值本金或赠送奖励已被使用，不能整单冲正");
+    }
+}
+
 public sealed class MemberCardType : Entity
 {
     private MemberCardType() { }

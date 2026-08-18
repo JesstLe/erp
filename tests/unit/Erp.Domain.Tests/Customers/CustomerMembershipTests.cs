@@ -127,6 +127,30 @@ public sealed class CustomerMembershipTests
     }
 
     [Fact]
+    public void SpendingFromFiveHundredPlusOneHundredBlocksAFullTopupReversal()
+    {
+        var customerId = Guid.CreateVersion7();
+        var cardId = Guid.CreateVersion7();
+        var topupId = Guid.CreateVersion7();
+        var serviceOrderId = Guid.CreateVersion7();
+        var now = new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero);
+        var principal = new MemberAccount(TenantId, customerId, cardId, MemberAccountType.Principal);
+        var bonus = new MemberAccount(TenantId, customerId, cardId, MemberAccountType.Bonus);
+        principal.Credit("MemberTopup", topupId, 50_000, Guid.CreateVersion7(), now);
+        bonus.Credit("MemberTopup", topupId, 10_000, Guid.CreateVersion7(), now);
+
+        MemberDeductionPolicy.EnsurePrincipalFirst(principal.BalanceUnits, 5_000, 0);
+        principal.Debit("ServiceOrder", serviceOrderId, 5_000, Guid.CreateVersion7(), now);
+
+        Assert.Equal(45_000, principal.BalanceUnits);
+        Assert.Equal(10_000, bonus.BalanceUnits);
+        var exception = Assert.Throws<DomainRuleException>(() =>
+            MemberTopupReversalPolicy.EnsureOriginalBalancesAvailable(principal.BalanceUnits,
+                bonus.BalanceUnits, 50_000, 10_000));
+        Assert.Equal("TOPUP_BALANCE_ALREADY_USED", exception.Code);
+    }
+
+    [Fact]
     public void VerificationChallengeLimitsAttemptsAndCanOnlyAuthorizeItsExactOrderAndAmountOnce()
     {
         var expectedHash = Enumerable.Repeat((byte)7, 32).ToArray();
