@@ -1,4 +1,4 @@
-import { AppstoreOutlined, AuditOutlined, BarChartOutlined, ClockCircleOutlined, CloudServerOutlined, DatabaseOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, SafetyCertificateOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
+import { AppstoreOutlined, AuditOutlined, BarChartOutlined, ClockCircleOutlined, CloudServerOutlined, DatabaseOutlined, InboxOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, SafetyCertificateOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
 import { Avatar, Button, Layout, Menu, Select, Space, Typography, type MenuProps } from 'antd'
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -10,6 +10,7 @@ const baseMenuItems: NonNullable<MenuProps['items']> = [
   { key: '/facilities', icon: <ClockCircleOutlined />, label: '设施接待' },
   { key: '/customers', icon: <TeamOutlined />, label: '顾客与会员' },
   { key: '/cashier', icon: <PayCircleOutlined />, label: '服务录单与收银' },
+  { key: '/inventory', icon: <InboxOutlined />, label: '商品库存' },
   { type: 'divider' },
   { key: '/catalog/items', icon: <DatabaseOutlined />, label: '服务项目' },
   { key: '/catalog/products', icon: <DatabaseOutlined />, label: '产品目录' },

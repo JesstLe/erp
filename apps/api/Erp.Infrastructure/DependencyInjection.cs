@@ -5,11 +5,13 @@ using Erp.Application.Customers;
 using Erp.Application.Cashier;
 using Erp.Application.Auditing;
 using Erp.Application.Reports;
+using Erp.Application.Inventory;
 using Erp.Infrastructure.Catalog;
 using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Cashier;
 using Erp.Infrastructure.Auditing;
 using Erp.Infrastructure.Reports;
+using Erp.Infrastructure.Inventory;
 using Erp.Infrastructure.Facilities;
 using Erp.Infrastructure.Identity;
 using Erp.Infrastructure.Persistence;
@@ -89,6 +91,8 @@ public static class DependencyInjection
         services.AddScoped<MemberVerificationCodeService>();
         services.AddScoped<IMemberVerificationService, MemberVerificationService>();
         services.AddScoped<ICashierService, CashierService>();
+        services.AddScoped<InventoryPostingService>();
+        services.AddScoped<IInventoryService>(provider => provider.GetRequiredService<InventoryPostingService>());
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddSingleton<PaymentChannelCredentialResolver>();
         services.AddHttpClient<WechatPayGateway>(client =>

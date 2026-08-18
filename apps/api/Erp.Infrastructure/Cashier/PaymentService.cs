@@ -10,6 +10,7 @@ using Erp.Domain.Common;
 using Erp.Domain.Customers;
 using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Persistence;
+using Erp.Infrastructure.Inventory;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -17,7 +18,8 @@ using Npgsql;
 
 namespace Erp.Infrastructure.Cashier;
 
-internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService privacy, TimeProvider clock,
+internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService privacy, InventoryPostingService inventory,
+    TimeProvider clock,
     IHttpContextAccessor httpContextAccessor) : IPaymentService
 {
     public async Task<IReadOnlyList<PaymentMethodDto>> ListMethodsAsync(Guid tenantId, Guid? storeId,
@@ -333,6 +335,8 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                     account.BalanceUnits.ToString(CultureInfo.InvariantCulture), command.CommandId,
                     $"消费单 {order.OrderNo}", now);
             }
+            await inventory.ConsumeOrderAsync(order, command.CommandId, command.OperatorId, now,
+                cancellationToken);
             order.Settle(now);
             var visit = await db.Visits.SingleAsync(x => x.Id == order.VisitId && x.TenantId == tenantId, cancellationToken);
             visit.Complete();

@@ -47,9 +47,21 @@ public static class CashierEndpoints
             if (!HasStore(current, request.StoreId)) return Results.Forbid();
             return EndpointResults.From(await cashier.CreateOrderAsync(current.TenantId,
                 new CreateServiceOrderCommand(request.StoreId, request.VisitId, request.CustomerId, request.Note,
-                    (request.Lines ?? []).Select(x => new CreateServiceOrderLineCommand(x.ServiceItemId, x.Quantity,
-                        x.ActualSeconds, x.EnteredPriceMinor, x.PriceOverrideReason)).ToList(), request.CommandId,
+                    (request.Lines ?? []).Select(x => new CreateServiceOrderLineCommand(x.LineType, x.ServiceItemId,
+                        x.ProductItemId, x.Quantity, x.ActualSeconds, x.EnteredPriceMinor,
+                        x.PriceOverrideReason)).ToList(), request.CommandId,
                     current.Id), cancellationToken));
+        });
+
+        group.MapPost("/orders/{orderId:guid}/void", async (Guid orderId, VoidOrderRequest request,
+            IIdentityService identity, ICashierService cashier, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await cashier.VoidOrderAsync(current.TenantId,
+                new VoidServiceOrderCommand(request.StoreId, orderId, request.ExpectedVersion, request.Reason,
+                    request.CommandId, current.Id), cancellationToken));
         });
 
         group.MapPost("/orders/{orderId:guid}/confirm", async (Guid orderId, ConfirmOrderRequest request,
@@ -67,9 +79,10 @@ public static class CashierEndpoints
     }
 
     private static bool HasStore(CurrentUserDto user, Guid storeId) => user.Stores.Any(x => x.Id == storeId);
-    private sealed record CreateOrderLineRequest(Guid ServiceItemId, int Quantity, int? ActualSeconds,
-        long EnteredPriceMinor, string? PriceOverrideReason);
+    private sealed record CreateOrderLineRequest(string? LineType, Guid? ServiceItemId, Guid? ProductItemId,
+        int Quantity, int? ActualSeconds, long EnteredPriceMinor, string? PriceOverrideReason);
     private sealed record CreateOrderRequest(Guid StoreId, Guid? VisitId, Guid? CustomerId, string? Note,
         IReadOnlyList<CreateOrderLineRequest>? Lines, Guid CommandId);
     private sealed record ConfirmOrderRequest(Guid StoreId, uint ExpectedVersion, Guid CommandId);
+    private sealed record VoidOrderRequest(Guid StoreId, uint ExpectedVersion, string Reason, Guid CommandId);
 }

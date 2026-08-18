@@ -4,6 +4,7 @@ using Erp.Domain.Cashier;
 using Erp.Domain.Common;
 using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
+using Erp.Domain.Inventory;
 using Erp.Domain.Organization;
 using Erp.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
@@ -69,6 +70,12 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
         Set<PaymentChannelReconciliationRun>();
     public DbSet<PaymentChannelReconciliationItem> PaymentChannelReconciliationItems =>
         Set<PaymentChannelReconciliationItem>();
+    public DbSet<InventoryBalance> InventoryBalances => Set<InventoryBalance>();
+    public DbSet<InventoryReservation> InventoryReservations => Set<InventoryReservation>();
+    public DbSet<InventoryMovement> InventoryMovements => Set<InventoryMovement>();
+    public DbSet<InventoryDocument> InventoryDocuments => Set<InventoryDocument>();
+    public DbSet<InventoryDocumentLine> InventoryDocumentLines => Set<InventoryDocumentLine>();
+    public DbSet<ProductReturn> ProductReturns => Set<ProductReturn>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -93,6 +100,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
         ConfigureFacilities(builder);
         ConfigureCustomers(builder);
         ConfigureCashier(builder);
+        ConfigureInventory(builder);
         ConfigureSystemRecords(builder);
     }
 
@@ -536,8 +544,11 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             ConfigureBase(entity);
             entity.Property(x => x.OrderId).HasColumnName("order_id");
             entity.Property(x => x.ServiceItemId).HasColumnName("service_item_id");
+            entity.Property(x => x.LineType).HasColumnName("line_type").HasConversion<string>().HasMaxLength(16);
+            entity.Property(x => x.ProductItemId).HasColumnName("product_item_id");
             entity.Property(x => x.ItemCodeSnapshot).HasColumnName("item_code_snapshot").HasMaxLength(40);
             entity.Property(x => x.ItemNameSnapshot).HasColumnName("item_name_snapshot").HasMaxLength(120);
+            entity.Property(x => x.UnitNameSnapshot).HasColumnName("unit_name_snapshot").HasMaxLength(20);
             entity.Property(x => x.Quantity).HasColumnName("quantity");
             entity.Property(x => x.ActualSeconds).HasColumnName("actual_seconds");
             entity.Property(x => x.ReferencePriceMinor).HasColumnName("reference_price_minor");
@@ -545,7 +556,15 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.ReferenceAmountMinor).HasColumnName("reference_amount_minor");
             entity.Property(x => x.LineAmountMinor).HasColumnName("line_amount_minor");
             entity.Property(x => x.PriceOverrideReason).HasColumnName("price_override_reason").HasMaxLength(500);
-            entity.HasIndex(x => new { x.OrderId, x.ServiceItemId }).IsUnique();
+            entity.Property(x => x.ReturnedQuantity).HasColumnName("returned_quantity");
+            entity.HasIndex(x => new { x.OrderId, x.ServiceItemId }).IsUnique()
+                .HasFilter("line_type = 'Service'");
+            entity.HasIndex(x => new { x.OrderId, x.ProductItemId }).IsUnique()
+                .HasFilter("line_type = 'Product'");
+            entity.HasOne<ServiceItem>().WithMany().HasForeignKey(x => x.ServiceItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProductItem>().WithMany().HasForeignKey(x => x.ProductItemId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<PaymentMethod>(entity =>
         {
@@ -819,6 +838,132 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasOne<PaymentChannelRefund>().WithMany().HasForeignKey(x => x.ChannelRefundId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.ResolvedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureInventory(ModelBuilder builder)
+    {
+        builder.Entity<InventoryBalance>(entity =>
+        {
+            entity.ToTable("inventory_balances");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.ProductItemId).HasColumnName("product_item_id");
+            entity.Property(x => x.OnHandQuantity).HasColumnName("on_hand_quantity");
+            entity.Property(x => x.ReservedQuantity).HasColumnName("reserved_quantity");
+            entity.Ignore(x => x.AvailableQuantity);
+            entity.HasIndex(x => new { x.StoreId, x.ProductItemId }).IsUnique();
+            entity.HasOne<Erp.Domain.Organization.Store>().WithMany().HasForeignKey(x => x.StoreId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProductItem>().WithMany().HasForeignKey(x => x.ProductItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<InventoryReservation>(entity =>
+        {
+            entity.ToTable("inventory_reservations");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.OrderId).HasColumnName("order_id");
+            entity.Property(x => x.OrderLineId).HasColumnName("order_line_id");
+            entity.Property(x => x.ProductItemId).HasColumnName("product_item_id");
+            entity.Property(x => x.BalanceId).HasColumnName("balance_id");
+            entity.Property(x => x.Quantity).HasColumnName("quantity");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(16);
+            entity.Property(x => x.ReservedAtUtc).HasColumnName("reserved_at_utc");
+            entity.Property(x => x.ConsumedAtUtc).HasColumnName("consumed_at_utc");
+            entity.Property(x => x.ReleasedAtUtc).HasColumnName("released_at_utc");
+            entity.HasIndex(x => x.OrderLineId).IsUnique();
+            entity.HasIndex(x => new { x.OrderId, x.Status });
+            entity.HasOne<ServiceOrder>().WithMany().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ServiceOrderLine>().WithMany().HasForeignKey(x => x.OrderLineId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProductItem>().WithMany().HasForeignKey(x => x.ProductItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<InventoryBalance>().WithMany().HasForeignKey(x => x.BalanceId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<InventoryDocument>(entity =>
+        {
+            entity.ToTable("inventory_documents");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.DocumentNo).HasColumnName("document_no").HasMaxLength(40);
+            entity.Property(x => x.DocumentType).HasColumnName("document_type").HasConversion<string>()
+                .HasMaxLength(24);
+            entity.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500);
+            entity.Property(x => x.PostedBy).HasColumnName("posted_by");
+            entity.Property(x => x.PostedAtUtc).HasColumnName("posted_at_utc");
+            entity.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.DocumentId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasIndex(x => new { x.TenantId, x.DocumentNo }).IsUnique();
+            entity.HasIndex(x => new { x.StoreId, x.PostedAtUtc });
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.PostedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<InventoryDocumentLine>(entity =>
+        {
+            entity.ToTable("inventory_document_lines");
+            ConfigureBase(entity);
+            entity.Property(x => x.DocumentId).HasColumnName("document_id");
+            entity.Property(x => x.ProductItemId).HasColumnName("product_item_id");
+            entity.Property(x => x.Quantity).HasColumnName("quantity");
+            entity.HasIndex(x => new { x.DocumentId, x.ProductItemId }).IsUnique();
+            entity.HasOne<ProductItem>().WithMany().HasForeignKey(x => x.ProductItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<ProductReturn>(entity =>
+        {
+            entity.ToTable("product_returns");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.OrderId).HasColumnName("order_id");
+            entity.Property(x => x.OrderLineId).HasColumnName("order_line_id");
+            entity.Property(x => x.ProductItemId).HasColumnName("product_item_id");
+            entity.Property(x => x.Quantity).HasColumnName("quantity");
+            entity.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500);
+            entity.Property(x => x.CommandId).HasColumnName("command_id");
+            entity.Property(x => x.ReturnedBy).HasColumnName("returned_by");
+            entity.Property(x => x.ReturnedAtUtc).HasColumnName("returned_at_utc");
+            entity.HasIndex(x => new { x.OrderLineId, x.ReturnedAtUtc });
+            entity.HasIndex(x => x.CommandId).IsUnique();
+            entity.HasOne<ServiceOrder>().WithMany().HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ServiceOrderLine>().WithMany().HasForeignKey(x => x.OrderLineId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProductItem>().WithMany().HasForeignKey(x => x.ProductItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.ReturnedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<InventoryMovement>(entity =>
+        {
+            entity.ToTable("inventory_movements");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.ProductItemId).HasColumnName("product_item_id");
+            entity.Property(x => x.BalanceId).HasColumnName("balance_id");
+            entity.Property(x => x.MovementType).HasColumnName("movement_type").HasConversion<string>()
+                .HasMaxLength(24);
+            entity.Property(x => x.Direction).HasColumnName("direction").HasConversion<string>().HasMaxLength(8);
+            entity.Property(x => x.Quantity).HasColumnName("quantity");
+            entity.Property(x => x.OnHandBefore).HasColumnName("on_hand_before");
+            entity.Property(x => x.OnHandAfter).HasColumnName("on_hand_after");
+            entity.Property(x => x.SourceType).HasColumnName("source_type").HasMaxLength(40);
+            entity.Property(x => x.SourceId).HasColumnName("source_id");
+            entity.Property(x => x.SourceLineId).HasColumnName("source_line_id");
+            entity.Property(x => x.CommandId).HasColumnName("command_id");
+            entity.Property(x => x.OperatorId).HasColumnName("operator_id");
+            entity.Property(x => x.OccurredAtUtc).HasColumnName("occurred_at_utc");
+            entity.HasIndex(x => new { x.MovementType, x.SourceLineId }).IsUnique();
+            entity.HasIndex(x => new { x.CommandId, x.SourceLineId }).IsUnique();
+            entity.HasIndex(x => new { x.StoreId, x.ProductItemId, x.OccurredAtUtc });
+            entity.HasOne<InventoryBalance>().WithMany().HasForeignKey(x => x.BalanceId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ProductItem>().WithMany().HasForeignKey(x => x.ProductItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.OperatorId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

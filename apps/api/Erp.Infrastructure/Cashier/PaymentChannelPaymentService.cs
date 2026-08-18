@@ -8,6 +8,7 @@ using Erp.Domain.Cashier;
 using Erp.Domain.Common;
 using Erp.Domain.Facilities;
 using Erp.Infrastructure.Persistence;
+using Erp.Infrastructure.Inventory;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -15,7 +16,8 @@ using Npgsql;
 namespace Erp.Infrastructure.Cashier;
 
 internal sealed class PaymentChannelPaymentService(ErpDbContext db, PaymentChannelCredentialResolver credentials,
-    PaymentChannelGatewayRegistry gateways, TimeProvider clock, IHttpContextAccessor httpContextAccessor)
+    PaymentChannelGatewayRegistry gateways, InventoryPostingService inventory, TimeProvider clock,
+    IHttpContextAccessor httpContextAccessor)
     : IPaymentChannelPaymentService
 {
     public async Task<Result<PaymentChannelOrderDto>> GetByServiceOrderAsync(Guid tenantId, Guid storeId,
@@ -403,7 +405,7 @@ internal sealed class PaymentChannelPaymentService(ErpDbContext db, PaymentChann
             x.Id == channelOrder.PaymentAllocationId, cancellationToken);
         var payment = await db.Payments.Include(x => x.Allocations).SingleAsync(x =>
             x.Id == allocation.PaymentId, cancellationToken);
-        var order = await db.ServiceOrders.SingleAsync(x => x.Id == payment.BusinessId,
+        var order = await db.ServiceOrders.Include(x => x.Lines).SingleAsync(x => x.Id == payment.BusinessId,
             cancellationToken);
 
         if (channelOrder.Status is PaymentChannelOrderStatus.Closed or PaymentChannelOrderStatus.Failed or
@@ -422,7 +424,11 @@ internal sealed class PaymentChannelPaymentService(ErpDbContext db, PaymentChann
         channelOrder.MarkPaid(providerTradeNo, paidAt);
         payment.ConfirmChannelAllocation(allocation.Id, providerTradeNo, paidAt);
         if (order.Status == ServiceOrderStatus.PaymentProcessing)
+        {
+            await inventory.ConsumeOrderAsync(order, channelEvent.Id, operatorId, paidAt,
+                cancellationToken);
             order.Settle(paidAt);
+        }
         else if (order.Status != ServiceOrderStatus.Settled)
             throw new DomainRuleException("CHANNEL_RESULT_CONFLICT", "消费单状态与已支付结果不一致");
         var visit = await db.Visits.SingleAsync(x => x.Id == order.VisitId, cancellationToken);

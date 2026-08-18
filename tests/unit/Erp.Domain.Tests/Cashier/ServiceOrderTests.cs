@@ -80,6 +80,42 @@ public sealed class ServiceOrderTests
         Assert.Throws<DomainRuleException>(() => order.ApplyRefund(1));
     }
 
+    [Fact]
+    public void ProductLineKeepsUnitAndSupportsBoundedReturns()
+    {
+        var productId = Guid.CreateVersion7();
+        var order = CreateOrder([ServiceOrderLineDraft.Product(productId, "P01", "护理液", "瓶",
+            2, 3_000, 3_000, null)]);
+        var line = order.Lines.Single();
+
+        Assert.Equal(ServiceOrderLineType.Product, line.LineType);
+        Assert.Equal(productId, line.ProductItemId);
+        Assert.Null(line.ServiceItemId);
+        Assert.Equal("瓶", line.UnitNameSnapshot);
+        Assert.Null(line.ActualSeconds);
+
+        line.ApplyProductReturn(1);
+        Assert.Equal(1, line.ReturnedQuantity);
+        Assert.Throws<DomainRuleException>(() => line.ApplyProductReturn(2));
+    }
+
+    [Fact]
+    public void PendingOrderCanBeVoidedButSettledOrderCannot()
+    {
+        var pending = CreateOrder([new(Guid.CreateVersion7(), "S01", "标准服务", 1, null, 10_000,
+            10_000, null)]);
+        pending.Confirm(DateTimeOffset.UtcNow);
+        pending.Void();
+        Assert.Equal(ServiceOrderStatus.Voided, pending.Status);
+
+        var settled = CreateOrder([new(Guid.CreateVersion7(), "S02", "标准服务", 1, null, 10_000,
+            10_000, null)]);
+        settled.Confirm(DateTimeOffset.UtcNow);
+        settled.BeginCheckout();
+        settled.Settle(DateTimeOffset.UtcNow);
+        Assert.Throws<DomainRuleException>(() => settled.Void());
+    }
+
     private static ServiceOrder CreateOrder(IEnumerable<ServiceOrderLineDraft> lines) => new(Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), null, "SO202608180001", Guid.CreateVersion7(), null, lines);
 }

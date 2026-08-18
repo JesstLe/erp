@@ -79,6 +79,8 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
 
     public async Task<Result<PriceBookDto>> CreatePriceBookAsync(Guid tenantId, CreatePriceBookCommand command, CancellationToken cancellationToken)
     {
+        if (command.Lines.Count == 0 && command.ProductLines.Count == 0)
+            return ResultFactory.Failure<PriceBookDto>("VALIDATION_FAILED", "请至少选择一个需要新增或调整价格的服务或产品");
         var serviceItemIds = command.Lines.Select(x => x.ServiceItemId).Distinct().ToArray();
         if (serviceItemIds.Length != command.Lines.Count)
         {
@@ -99,13 +101,22 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
 
         try
         {
+            var previous = await dbContext.PriceBooks.AsNoTracking().AsSplitQuery()
+                .Include(x => x.Lines).Include(x => x.ProductLines)
+                .Where(x => x.TenantId == tenantId && x.Status == PriceBookStatus.Published &&
+                    x.EffectiveFrom <= command.EffectiveFrom)
+                .OrderByDescending(x => x.EffectiveFrom).ThenByDescending(x => x.PublishedAtUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+            var effectiveServicePrices = previous?.Lines.ToDictionary(x => x.ServiceItemId,
+                x => x.UnitPriceMinor) ?? [];
+            var effectiveProductPrices = previous?.ProductLines.ToDictionary(x => x.ProductItemId,
+                x => x.UnitPriceMinor) ?? [];
+            foreach (var line in command.Lines) effectiveServicePrices[line.ServiceItemId] = line.UnitPriceMinor;
+            foreach (var line in command.ProductLines) effectiveProductPrices[line.ProductItemId] = line.UnitPriceMinor;
+
             var book = new PriceBook(tenantId, command.Name, command.EffectiveFrom);
-            foreach (var line in command.Lines)
-            {
-                book.SetPrice(line.ServiceItemId, line.UnitPriceMinor);
-            }
-            foreach (var line in command.ProductLines)
-                book.SetProductPrice(line.ProductItemId, line.UnitPriceMinor);
+            foreach (var line in effectiveServicePrices) book.SetPrice(line.Key, line.Value);
+            foreach (var line in effectiveProductPrices) book.SetProductPrice(line.Key, line.Value);
 
             dbContext.PriceBooks.Add(book);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.price_book.create", "PriceBook", book.Id,
