@@ -1,4 +1,5 @@
 using Erp.Application.Common;
+using Erp.Domain.Catalog;
 
 namespace Erp.Application.Catalog;
 
@@ -6,12 +7,17 @@ public sealed record ServiceItemDto(Guid Id, string Code, string Name, int Stand
 
 public sealed record CreateServiceItemCommand(string Code, string Name, int StandardDurationMinutes, Guid OperatorId,
     Guid? StoreId);
+public sealed record UpdateServiceItemCommand(Guid Id, string Name, int StandardDurationMinutes,
+    CatalogItemStatus Status, uint ExpectedVersion, Guid OperatorId, Guid? StoreId);
+public sealed record DeleteCatalogItemCommand(Guid Id, uint ExpectedVersion, Guid OperatorId, Guid? StoreId);
 
 public sealed record ProductItemDto(Guid Id, string Code, string Name, string UnitName, bool TrackInventory,
     Guid? ImageFileId, string Status, uint Version);
 
 public sealed record CreateProductItemCommand(string Code, string Name, string UnitName, bool TrackInventory,
     Guid OperatorId, Guid? StoreId);
+public sealed record UpdateProductItemCommand(Guid Id, string Name, string UnitName, bool TrackInventory,
+    CatalogItemStatus Status, uint ExpectedVersion, Guid OperatorId, Guid? StoreId);
 
 public sealed record PriceBookDto(
     Guid Id,
@@ -33,13 +39,23 @@ public sealed record CreateProductPriceBookLineCommand(Guid ProductItemId, long 
 
 public interface ICatalogService
 {
-    Task<IReadOnlyList<ServiceItemDto>> ListServiceItemsAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ServiceItemDto>> ListServiceItemsAsync(Guid tenantId, string? query, CatalogItemStatus? status,
+        CancellationToken cancellationToken);
 
     Task<Result<ServiceItemDto>> CreateServiceItemAsync(Guid tenantId, CreateServiceItemCommand command, CancellationToken cancellationToken);
+    Task<Result<ServiceItemDto>> UpdateServiceItemAsync(Guid tenantId, UpdateServiceItemCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<bool>> DeleteServiceItemAsync(Guid tenantId, DeleteCatalogItemCommand command,
+        CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<ProductItemDto>> ListProductItemsAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ProductItemDto>> ListProductItemsAsync(Guid tenantId, string? query, CatalogItemStatus? status,
+        CancellationToken cancellationToken);
 
     Task<Result<ProductItemDto>> CreateProductItemAsync(Guid tenantId, CreateProductItemCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<ProductItemDto>> UpdateProductItemAsync(Guid tenantId, UpdateProductItemCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<bool>> DeleteProductItemAsync(Guid tenantId, DeleteCatalogItemCommand command,
         CancellationToken cancellationToken);
     Task<Result<ProductItemDto>> SetProductImageAsync(Guid tenantId, Guid productItemId, Guid operatorId,
         Guid? storeId, FileUploadInput image, CancellationToken cancellationToken);

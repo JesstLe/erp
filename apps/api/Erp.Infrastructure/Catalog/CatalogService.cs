@@ -6,19 +6,26 @@ using Erp.Infrastructure.Persistence;
 using Erp.Infrastructure.Files;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace Erp.Infrastructure.Catalog;
 
 public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor httpContextAccessor,
     SecureFileStorage fileStorage) : ICatalogService
 {
-    public async Task<IReadOnlyList<ServiceItemDto>> ListServiceItemsAsync(Guid tenantId, CancellationToken cancellationToken)
-        => await dbContext.ServiceItems
-            .AsNoTracking()
-            .Where(x => x.TenantId == tenantId)
+    public async Task<IReadOnlyList<ServiceItemDto>> ListServiceItemsAsync(Guid tenantId, string? query,
+        CatalogItemStatus? status, CancellationToken cancellationToken)
+    {
+        var normalizedQuery = query?.Trim();
+        var items = dbContext.ServiceItems.AsNoTracking().Where(x => x.TenantId == tenantId);
+        if (!string.IsNullOrWhiteSpace(normalizedQuery))
+            items = items.Where(x => x.Code.Contains(normalizedQuery) || x.Name.Contains(normalizedQuery));
+        if (status.HasValue) items = items.Where(x => x.Status == status.Value);
+        return await items
             .OrderBy(x => x.Code)
             .Select(x => new ServiceItemDto(x.Id, x.Code, x.Name, x.StandardDurationMinutes, x.Status.ToString().ToUpperInvariant(), x.Version))
             .ToListAsync(cancellationToken);
+    }
 
     public async Task<Result<ServiceItemDto>> CreateServiceItemAsync(Guid tenantId, CreateServiceItemCommand command, CancellationToken cancellationToken)
     {
@@ -42,10 +49,80 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
         }
     }
 
-    public async Task<IReadOnlyList<ProductItemDto>> ListProductItemsAsync(Guid tenantId, CancellationToken cancellationToken)
-        => await dbContext.Set<ProductItem>().AsNoTracking().Where(x => x.TenantId == tenantId).OrderBy(x => x.Code)
+    public async Task<Result<ServiceItemDto>> UpdateServiceItemAsync(Guid tenantId, UpdateServiceItemCommand command,
+        CancellationToken cancellationToken)
+    {
+        var item = await dbContext.ServiceItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.Id,
+            cancellationToken);
+        if (item is null) return ResultFactory.Failure<ServiceItemDto>("SERVICE_ITEM_NOT_FOUND", "服务项目不存在");
+        if (item.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<ServiceItemDto>("VERSION_CONFLICT", "服务项目已被其他人修改，请刷新后重试");
+        try
+        {
+            var previous = JsonSerializer.Serialize(Map(item));
+            item.Update(command.Name, command.StandardDurationMinutes);
+            if (command.Status == CatalogItemStatus.Enabled) item.Enable(); else item.Disable();
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.service_item.update", "ServiceItem",
+                item.Id, previous, JsonSerializer.Serialize(Map(item)));
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(Map(item));
+        }
+        catch (DomainRuleException exception)
+        {
+            return ResultFactory.Failure<ServiceItemDto>(exception.Code, exception.Message);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ResultFactory.Failure<ServiceItemDto>("VERSION_CONFLICT", "服务项目已被其他人修改，请刷新后重试");
+        }
+    }
+
+    public async Task<Result<bool>> DeleteServiceItemAsync(Guid tenantId, DeleteCatalogItemCommand command,
+        CancellationToken cancellationToken)
+    {
+        var item = await dbContext.ServiceItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.Id,
+            cancellationToken);
+        if (item is null) return ResultFactory.Failure<bool>("SERVICE_ITEM_NOT_FOUND", "服务项目不存在");
+        if (item.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<bool>("VERSION_CONFLICT", "服务项目已被其他人修改，请刷新后重试");
+        var isReferenced = await dbContext.PriceBookLines.AnyAsync(x => x.TenantId == tenantId && x.ServiceItemId == item.Id,
+                cancellationToken) ||
+            await dbContext.ServiceOrderLines.AnyAsync(x => x.TenantId == tenantId && x.ServiceItemId == item.Id,
+                cancellationToken) ||
+            await dbContext.Visits.AnyAsync(x => x.TenantId == tenantId && x.PlannedServiceItemId == item.Id,
+                cancellationToken);
+        if (isReferenced)
+            return ResultFactory.Failure<bool>("RESOURCE_IN_USE", "该服务项目已有价格、接待或订单记录，请停用而不是删除");
+        try
+        {
+            dbContext.ServiceItems.Remove(item);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.service_item.delete", "ServiceItem",
+                item.Id, JsonSerializer.Serialize(Map(item)), null);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(true);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ResultFactory.Failure<bool>("VERSION_CONFLICT", "服务项目已被其他人修改，请刷新后重试");
+        }
+        catch (DbUpdateException)
+        {
+            return ResultFactory.Failure<bool>("RESOURCE_IN_USE", "该服务项目已被业务引用，请停用而不是删除");
+        }
+    }
+
+    public async Task<IReadOnlyList<ProductItemDto>> ListProductItemsAsync(Guid tenantId, string? query,
+        CatalogItemStatus? status, CancellationToken cancellationToken)
+    {
+        var normalizedQuery = query?.Trim();
+        var items = dbContext.ProductItems.AsNoTracking().Where(x => x.TenantId == tenantId);
+        if (!string.IsNullOrWhiteSpace(normalizedQuery))
+            items = items.Where(x => x.Code.Contains(normalizedQuery) || x.Name.Contains(normalizedQuery));
+        if (status.HasValue) items = items.Where(x => x.Status == status.Value);
+        return await items.OrderBy(x => x.Code)
             .Select(x => new ProductItemDto(x.Id, x.Code, x.Name, x.UnitName, x.TrackInventory,
                 x.ImageFileId, x.Status.ToString().ToUpperInvariant(), x.Version)).ToListAsync(cancellationToken);
+    }
 
     public async Task<Result<ProductItemDto>> CreateProductItemAsync(Guid tenantId, CreateProductItemCommand command,
         CancellationToken cancellationToken)
@@ -65,6 +142,69 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
         catch (DomainRuleException exception)
         {
             return ResultFactory.Failure<ProductItemDto>(exception.Code, exception.Message);
+        }
+    }
+
+    public async Task<Result<ProductItemDto>> UpdateProductItemAsync(Guid tenantId, UpdateProductItemCommand command,
+        CancellationToken cancellationToken)
+    {
+        var item = await dbContext.ProductItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.Id,
+            cancellationToken);
+        if (item is null) return ResultFactory.Failure<ProductItemDto>("PRODUCT_NOT_FOUND", "产品不存在");
+        if (item.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<ProductItemDto>("VERSION_CONFLICT", "产品已被其他人修改，请刷新后重试");
+        if (item.TrackInventory != command.TrackInventory && await ProductHasInventoryHistoryAsync(tenantId, item.Id,
+                cancellationToken))
+            return ResultFactory.Failure<ProductItemDto>("PRODUCT_INVENTORY_MODE_LOCKED",
+                "该产品已有订单或库存记录，不能再修改库存跟踪属性");
+        try
+        {
+            var previous = JsonSerializer.Serialize(Map(item));
+            item.Update(command.Name, command.UnitName, command.TrackInventory);
+            if (command.Status == CatalogItemStatus.Enabled) item.Enable(); else item.Disable();
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.product_item.update", "ProductItem",
+                item.Id, previous, JsonSerializer.Serialize(Map(item)));
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(Map(item));
+        }
+        catch (DomainRuleException exception)
+        {
+            return ResultFactory.Failure<ProductItemDto>(exception.Code, exception.Message);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ResultFactory.Failure<ProductItemDto>("VERSION_CONFLICT", "产品已被其他人修改，请刷新后重试");
+        }
+    }
+
+    public async Task<Result<bool>> DeleteProductItemAsync(Guid tenantId, DeleteCatalogItemCommand command,
+        CancellationToken cancellationToken)
+    {
+        var item = await dbContext.ProductItems.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == command.Id,
+            cancellationToken);
+        if (item is null) return ResultFactory.Failure<bool>("PRODUCT_NOT_FOUND", "产品不存在");
+        if (item.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<bool>("VERSION_CONFLICT", "产品已被其他人修改，请刷新后重试");
+        var isReferenced = item.ImageFileId.HasValue ||
+            await dbContext.ProductPriceBookLines.AnyAsync(x => x.TenantId == tenantId && x.ProductItemId == item.Id,
+                cancellationToken) || await ProductHasInventoryHistoryAsync(tenantId, item.Id, cancellationToken);
+        if (isReferenced)
+            return ResultFactory.Failure<bool>("RESOURCE_IN_USE", "该产品已有图片、价格、订单或库存记录，请停用而不是删除");
+        try
+        {
+            dbContext.ProductItems.Remove(item);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.product_item.delete", "ProductItem",
+                item.Id, JsonSerializer.Serialize(Map(item)), null);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(true);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ResultFactory.Failure<bool>("VERSION_CONFLICT", "产品已被其他人修改，请刷新后重试");
+        }
+        catch (DbUpdateException)
+        {
+            return ResultFactory.Failure<bool>("RESOURCE_IN_USE", "该产品已被业务引用，请停用而不是删除");
         }
     }
 
@@ -221,6 +361,21 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
             .Select(x => new { x.Id, x.Name, x.UnitName }).ToListAsync(cancellationToken);
         return items.ToDictionary(x => x.Id, x => (x.Name, x.UnitName));
     }
+
+    private async Task<bool> ProductHasInventoryHistoryAsync(Guid tenantId, Guid productItemId,
+        CancellationToken cancellationToken)
+        => await dbContext.ServiceOrderLines.AnyAsync(x => x.TenantId == tenantId && x.ProductItemId == productItemId,
+               cancellationToken) ||
+           await dbContext.InventoryBalances.AnyAsync(x => x.TenantId == tenantId && x.ProductItemId == productItemId,
+               cancellationToken) ||
+           await dbContext.InventoryReservations.AnyAsync(x => x.TenantId == tenantId && x.ProductItemId == productItemId,
+               cancellationToken) ||
+           await dbContext.InventoryMovements.AnyAsync(x => x.TenantId == tenantId && x.ProductItemId == productItemId,
+               cancellationToken) ||
+           await dbContext.InventoryDocumentLines.AnyAsync(x => x.TenantId == tenantId && x.ProductItemId == productItemId,
+               cancellationToken) ||
+           await dbContext.ProductReturns.AnyAsync(x => x.TenantId == tenantId && x.ProductItemId == productItemId,
+               cancellationToken);
 
     private static ServiceItemDto Map(ServiceItem item)
         => new(item.Id, item.Code, item.Name, item.StandardDurationMinutes, item.Status.ToString().ToUpperInvariant(), item.Version);

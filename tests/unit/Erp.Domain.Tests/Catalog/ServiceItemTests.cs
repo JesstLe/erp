@@ -26,4 +26,21 @@ public sealed class ServiceItemTests
 
         Assert.Equal("VALIDATION_FAILED", exception.Code);
     }
+
+    [Fact]
+    public void ItemCanBeUpdatedDisabledAndRestoredWithoutChangingCode()
+    {
+        var item = new ServiceItem(Guid.CreateVersion7(), "SV001", "基础服务", 60);
+
+        item.Update("进阶服务", 90);
+        item.Disable();
+
+        Assert.Equal("SV001", item.Code);
+        Assert.Equal("进阶服务", item.Name);
+        Assert.Equal(90, item.StandardDurationMinutes);
+        Assert.Equal(CatalogItemStatus.Disabled, item.Status);
+
+        item.Enable();
+        Assert.Equal(CatalogItemStatus.Enabled, item.Status);
+    }
 }

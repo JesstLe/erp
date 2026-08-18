@@ -240,6 +240,33 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void CatalogManagementSupportsSearchEditSafeDeleteAndOwnerAuthorization()
+    {
+        var endpoints = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Api", "Endpoints",
+            "CatalogEndpoints.cs"));
+        var service = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Catalog", "CatalogService.cs"));
+        var servicePage = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "web", "src", "pages",
+            "ServiceItemsPage.tsx"));
+        var productPage = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "web", "src", "pages",
+            "ProductsPage.tsx"));
+
+        Assert.Contains("MapPut(\"/service-items/{id:guid}\"", endpoints, StringComparison.Ordinal);
+        Assert.Contains("MapDelete(\"/service-items/{id:guid}\"", endpoints, StringComparison.Ordinal);
+        Assert.Contains("MapPut(\"/products/{id:guid}\"", endpoints, StringComparison.Ordinal);
+        Assert.Contains("MapDelete(\"/products/{id:guid}\"", endpoints, StringComparison.Ordinal);
+        Assert.Contains("RequireRole(SystemRoles.Owner)", endpoints, StringComparison.Ordinal);
+        Assert.Contains("x.Code.Contains(normalizedQuery) || x.Name.Contains(normalizedQuery)", service,
+            StringComparison.Ordinal);
+        Assert.Contains("RESOURCE_IN_USE", service, StringComparison.Ordinal);
+        Assert.Contains("ProductHasInventoryHistoryAsync", service, StringComparison.Ordinal);
+        Assert.Contains("expectedVersion", servicePage, StringComparison.Ordinal);
+        Assert.Contains("永久删除", servicePage, StringComparison.Ordinal);
+        Assert.Contains("expectedVersion", productPage, StringComparison.Ordinal);
+        Assert.Contains("已有业务记录的产品请停用", productPage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");
