@@ -86,6 +86,11 @@ sudo ERP_RESTORE_CONFIRM=RESTORE_TO_DISPOSABLE_DATABASE \
 /etc/erp                          root 管理的运行密钥
 ```
 
+对于早于平台管理功能安装、尚无 `SecurityEvents__AccountHashPepper` 和
+`PlatformRegistration__ContactHashPepper` 的既有主机，应用会从原有高强度
+`CustomerPrivacy__LookupPepper` 按不同用途确定性派生两把隔离密钥，保证应用包可直接蓝绿升级且历史检索值稳定。
+新装主机仍由 `Initialize-Host.sh` 分别生成独立随机密钥；显式设置的短值或模板值会继续拒绝启动。
+
 首次成功发布后会启用每日加密备份和 `erp-health.timer`。健康检查每五分钟检查活动服务、HTTPS入口、schema、PostgreSQL、根磁盘、36小时内加密备份和24小时证书余量，失败写入 journald。若需要外部告警，可在仅 root 可读的 `/etc/erp/monitor.env` 配置 HTTPS `ERP_ALERT_WEBHOOK_URL`；没有外部告警接收方时只能算本机监测，不能算告警闭环。
 
 服务器只有一台，Blue/Green 可以减少普通代码发布中断，但不能消除主机、磁盘、网络或 PostgreSQL 单点。加密备份必须定期复制到服务器之外并执行隔离恢复演练。

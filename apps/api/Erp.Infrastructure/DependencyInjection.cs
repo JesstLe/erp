@@ -33,6 +33,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace Erp.Infrastructure;
 
@@ -60,12 +62,13 @@ public static class DependencyInjection
             throw new InvalidOperationException("生产环境必须配置独立持久化目录 FileStorage:RootPath");
         if (!environment.IsDevelopment() && string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
             throw new InvalidOperationException("生产环境必须配置持久化 DataProtection:KeyRingPath");
-        if (!environment.IsDevelopment() && (string.IsNullOrWhiteSpace(securityEventPepper) ||
-            securityEventPepper.Length < 32 || securityEventPepper.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException("生产环境必须配置至少32字符的 SecurityEvents:AccountHashPepper");
-        if (!environment.IsDevelopment() && (string.IsNullOrWhiteSpace(registrationContactPepper) ||
-            registrationContactPepper.Length < 32 || registrationContactPepper.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)))
-            throw new InvalidOperationException("生产环境必须配置至少32字符的 PlatformRegistration:ContactHashPepper");
+        if (!environment.IsDevelopment())
+        {
+            EnsurePurposePepper(configuration, "SecurityEvents:AccountHashPepper", securityEventPepper,
+                customerLookupPepper!, "Erp.SecurityEvents.AccountHashPepper.v1");
+            EnsurePurposePepper(configuration, "PlatformRegistration:ContactHashPepper", registrationContactPepper,
+                customerLookupPepper!, "Erp.PlatformRegistration.ContactHashPepper.v1");
+        }
 
         services.AddDbContext<ErpDbContext>(options => options.UseNpgsql(connectionString));
         var dataProtection = services.AddDataProtection().SetApplicationName("Erp");
@@ -182,5 +185,25 @@ public static class DependencyInjection
         services.AddScoped<Seed.ProductionBootstrapper>();
         services.AddScoped<Seed.PlatformAdminBootstrapper>();
         return services;
+    }
+
+    private static void EnsurePurposePepper(IConfiguration configuration, string key, string? configured,
+        string legacyRootPepper, string purpose)
+    {
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            if (configured.Length < 32 || configured.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"生产环境必须配置至少32字符且非模板值的 {key}");
+            return;
+        }
+
+        // Hosts installed before platform administration existed do not have these two settings. Derive
+        // stable, purpose-separated keys from the already required high-entropy lookup pepper so an
+        // application-only blue/green upgrade remains possible without introducing hard-coded secrets.
+        var rootKey = SHA256.HashData(Encoding.UTF8.GetBytes(legacyRootPepper));
+        var derived = HMACSHA256.HashData(rootKey, Encoding.UTF8.GetBytes(purpose));
+        configuration[key] = Convert.ToHexString(derived);
+        CryptographicOperations.ZeroMemory(rootKey);
+        CryptographicOperations.ZeroMemory(derived);
     }
 }
