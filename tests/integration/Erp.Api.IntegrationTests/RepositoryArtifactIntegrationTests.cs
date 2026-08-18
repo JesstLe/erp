@@ -267,6 +267,30 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void ServiceCommissionMigrationUsesOwnerRulesEmployeeSnapshotsAndRefundDeductions()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180019__service_staff_commission_snapshots.sql"));
+        var catalogEndpoints = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Api",
+            "Endpoints", "CatalogEndpoints.cs"));
+        var cashierService = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Cashier", "CashierService.cs"));
+        var reportService = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Reports", "ReportService.cs"));
+
+        Assert.Contains("commission_rate_basis_points BETWEEN 1 AND 10000", migration, StringComparison.Ordinal);
+        Assert.Contains("commission_amount_minor = commission_fixed_minor * quantity", migration,
+            StringComparison.Ordinal);
+        Assert.Contains("REFERENCES organization_employees(id) ON DELETE RESTRICT", migration,
+            StringComparison.Ordinal);
+        Assert.Contains("Immutable gross commission snapshot", migration, StringComparison.Ordinal);
+        Assert.Contains("RequireRole(SystemRoles.Owner)", catalogEndpoints, StringComparison.Ordinal);
+        Assert.Contains("employee.Status == EmployeeStatus.Active", cashierService, StringComparison.Ordinal);
+        Assert.Contains("assignment.StoreId == command.StoreId", cashierService, StringComparison.Ordinal);
+        Assert.Contains("AllocateRefundDeduction", reportService, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");

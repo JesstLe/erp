@@ -15,6 +15,7 @@ public sealed class ServiceItem : Entity
         Name = Normalize(name, 120, nameof(name));
         SetStandardDuration(standardDurationMinutes);
         Status = CatalogItemStatus.Enabled;
+        CommissionMode = CommissionMode.None;
     }
 
     public string Code { get; private set; } = string.Empty;
@@ -24,6 +25,12 @@ public sealed class ServiceItem : Entity
     public int StandardDurationMinutes { get; private set; }
 
     public CatalogItemStatus Status { get; private set; }
+
+    public CommissionMode CommissionMode { get; private set; }
+
+    public int? CommissionRateBasisPoints { get; private set; }
+
+    public long? CommissionFixedMinor { get; private set; }
 
     public void Update(string name, int standardDurationMinutes)
     {
@@ -41,6 +48,26 @@ public sealed class ServiceItem : Entity
     public void Enable()
     {
         Status = CatalogItemStatus.Enabled;
+        Touch();
+    }
+
+    public void ConfigureCommission(CommissionMode mode, int? rateBasisPoints, long? fixedMinor)
+    {
+        switch (mode)
+        {
+            case CommissionMode.None when rateBasisPoints is null && fixedMinor is null:
+                break;
+            case CommissionMode.Percentage when rateBasisPoints is >= 1 and <= 10_000 && fixedMinor is null:
+                break;
+            case CommissionMode.FixedAmount when fixedMinor is >= 1 and <= 10_000_000_000 && rateBasisPoints is null:
+                break;
+            default:
+                throw new DomainRuleException("VALIDATION_FAILED", "提成规则必须选择不计提、0.01%精度的比例或固定金额中的一种");
+        }
+
+        CommissionMode = mode;
+        CommissionRateBasisPoints = rateBasisPoints;
+        CommissionFixedMinor = fixedMinor;
         Touch();
     }
 
@@ -70,4 +97,11 @@ public enum CatalogItemStatus
 {
     Enabled = 1,
     Disabled = 2,
+}
+
+public enum CommissionMode
+{
+    None = 0,
+    Percentage = 1,
+    FixedAmount = 2,
 }

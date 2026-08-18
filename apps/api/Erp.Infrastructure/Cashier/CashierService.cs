@@ -9,6 +9,7 @@ using Erp.Domain.Catalog;
 using Erp.Domain.Common;
 using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
+using Erp.Domain.Organization;
 using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Persistence;
 using Erp.Infrastructure.Inventory;
@@ -55,6 +56,16 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             visit.ArrivedAtUtc, visit.ServiceEndedAtUtc,
             sessions.Where(x => x.VisitId == visit.Id).Sum(x => x.GetActiveSeconds(now)), visit.Note)).ToList();
     }
+
+    public async Task<IReadOnlyList<ServiceEmployeeDto>> ListServiceEmployeesAsync(Guid tenantId, Guid storeId,
+        CancellationToken cancellationToken)
+        => await db.Employees.AsNoTracking().Where(employee => employee.TenantId == tenantId &&
+                employee.Status == EmployeeStatus.Active && db.EmployeeStores.Any(assignment =>
+                    assignment.TenantId == tenantId && assignment.EmployeeId == employee.Id &&
+                    assignment.StoreId == storeId))
+            .OrderBy(employee => employee.DisplayName).ThenBy(employee => employee.EmployeeNo)
+            .Select(employee => new ServiceEmployeeDto(employee.Id, employee.EmployeeNo, employee.DisplayName,
+                employee.PositionCode)).ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<ServiceOrderDto>> ListOrdersAsync(Guid tenantId, Guid storeId, CancellationToken cancellationToken)
     {
@@ -107,6 +118,10 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                     type == ServiceOrderLineType.Product).Select(x => x.ProductItemId!.Value).ToList();
             if (serviceIds.Distinct().Count() != serviceIds.Count || productIds.Distinct().Count() != productIds.Count)
                 return await FailureAndRollback(transaction, "VALIDATION_FAILED", "同一服务项目或产品不能重复录入，请调整数量", cancellationToken);
+            if (command.Lines.Any(line => TryGetLineType(line, out var type) &&
+                    type == ServiceOrderLineType.Product && line.ServiceEmployeeId.HasValue))
+                return await FailureAndRollback(transaction, "VALIDATION_FAILED", "商品明细不能选择服务员工",
+                    cancellationToken);
             var items = await db.ServiceItems.Where(x => x.TenantId == tenantId && serviceIds.Contains(x.Id) &&
                 x.Status == CatalogItemStatus.Enabled).ToDictionaryAsync(x => x.Id, cancellationToken);
             if (items.Count != serviceIds.Count)
@@ -115,6 +130,16 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                 x.Status == CatalogItemStatus.Enabled).ToDictionaryAsync(x => x.Id, cancellationToken);
             if (products.Count != productIds.Count)
                 return await FailureAndRollback(transaction, "VALIDATION_FAILED", "产品不存在或已停用", cancellationToken);
+            var employeeIds = command.Lines.Where(line => line.ServiceEmployeeId.HasValue)
+                .Select(line => line.ServiceEmployeeId!.Value).Distinct().ToList();
+            var employees = await db.Employees.Where(employee => employee.TenantId == tenantId &&
+                    employeeIds.Contains(employee.Id) && employee.Status == EmployeeStatus.Active &&
+                    db.EmployeeStores.Any(assignment => assignment.EmployeeId == employee.Id &&
+                        assignment.TenantId == tenantId && assignment.StoreId == command.StoreId))
+                .ToDictionaryAsync(employee => employee.Id, cancellationToken);
+            if (employees.Count != employeeIds.Count)
+                return await FailureAndRollback(transaction, "SERVICE_EMPLOYEE_NOT_ELIGIBLE",
+                    "所选服务员工不存在、已停用或不属于当前门店", cancellationToken);
             var prices = priceBook.Lines.ToDictionary(x => x.ServiceItemId, x => x.UnitPriceMinor);
             var productPrices = priceBook.ProductLines.ToDictionary(x => x.ProductItemId, x => x.UnitPriceMinor);
             if (serviceIds.Any(id => !prices.ContainsKey(id)))
@@ -161,8 +186,14 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                 if (type == ServiceOrderLineType.Service)
                 {
                     var id = line.ServiceItemId!.Value;
+                    var item = items[id];
+                    Employee? employee = line.ServiceEmployeeId.HasValue ? employees[line.ServiceEmployeeId.Value] : null;
+                    if (item.CommissionMode != CommissionMode.None && employee is null)
+                        throw new DomainRuleException("SERVICE_EMPLOYEE_REQUIRED", "已设置提成的服务项目必须选择服务员工");
                     return new ServiceOrderLineDraft(id, items[id].Code, items[id].Name, line.Quantity,
-                        line.ActualSeconds, prices[id], line.EnteredPriceMinor, line.PriceOverrideReason);
+                        line.ActualSeconds, prices[id], line.EnteredPriceMinor, line.PriceOverrideReason,
+                        employee?.Id, employee?.EmployeeNo, employee?.DisplayName, item.CommissionMode,
+                        item.CommissionRateBasisPoints, item.CommissionFixedMinor);
                 }
                 var productId = line.ProductItemId!.Value;
                 var product = products[productId];
@@ -288,7 +319,8 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             new ServiceOrderLineDto(x.Id, x.LineType.ToString(), x.ServiceItemId, x.ProductItemId,
                 x.ItemCodeSnapshot, x.ItemNameSnapshot, x.UnitNameSnapshot, x.Quantity, x.ReturnedQuantity,
                 x.ActualSeconds, x.ReferencePriceMinor, x.EnteredPriceMinor, x.LineAmountMinor,
-                x.PriceOverrideReason)).ToList());
+                x.PriceOverrideReason, x.ServiceEmployeeId, x.EmployeeNoSnapshot,
+                x.EmployeeNameSnapshot)).ToList());
 
     private static bool TryGetLineType(CreateServiceOrderLineCommand line, out ServiceOrderLineType type)
     {

@@ -10,11 +10,14 @@ public sealed record PaymentMixDto(string MethodCode, string MethodName, long Am
     long PendingReconciliationMinor, long RefundMinor, long NetAmountMinor, int AllocationCount);
 public sealed record ServicePerformanceDto(Guid ServiceItemId, string ItemCode, string ItemName,
     int Quantity, long RevenueMinor, int OrderCount);
+public sealed record EmployeeCommissionDto(Guid EmployeeId, string EmployeeNo, string EmployeeName,
+    int ServiceQuantity, int OrderCount, long GrossServiceRevenueMinor, long GrossCommissionMinor,
+    long RefundDeductionMinor, long NetCommissionMinor);
 public sealed record FacilityUsageDto(Guid FacilityId, string FacilityName, long ActiveSeconds, decimal UsageShare);
 public sealed record OperationsReportDto(DateOnly FromDate, DateOnly ToDate, string TimeZoneId,
     OperationsSummaryDto Summary, IReadOnlyList<DailyOperationsDto> Daily,
     IReadOnlyList<PaymentMixDto> PaymentMix, IReadOnlyList<ServicePerformanceDto> Services,
-    IReadOnlyList<FacilityUsageDto> Facilities);
+    IReadOnlyList<EmployeeCommissionDto> EmployeeCommissions, IReadOnlyList<FacilityUsageDto> Facilities);
 
 public interface IReportService
 {
