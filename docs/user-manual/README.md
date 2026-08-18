@@ -18,7 +18,7 @@
 8. [会员储值与资金分账](11-member-topups.md)
 9. [会员余额消费与手机号验证](12-member-balance-payments.md)
 10. [消费退款与会员储值整单冲正](13-payment-refunds-and-topup-reversals.md)
-11. 真实微信/支付宝渠道（继续开发）
+11. [微信支付与支付宝渠道安全配置](14-payment-channel-configuration.md)（交易链继续开发）
 12. [审计记录](07-audit-events.md)
 13. [经营工作台与经营报表](08-dashboard-and-operations-reports.md)
 14. [员工、登录账号与门店权限](09-employees-accounts-and-permissions.md)
