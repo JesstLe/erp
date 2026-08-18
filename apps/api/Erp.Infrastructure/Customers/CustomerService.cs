@@ -20,32 +20,8 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
     public async Task<IReadOnlyList<CustomerSummaryDto>> SearchAsync(Guid tenantId, Guid storeId, string? query,
         CancellationToken cancellationToken)
     {
-        var customers = db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId && x.HomeStoreId == storeId);
-        var term = query?.Trim();
-        if (term?.Length > 100) return [];
-        if (!string.IsNullOrEmpty(term))
-        {
-            var digits = new string(term.Where(char.IsDigit).ToArray());
-            if (digits.Length == 11)
-            {
-                try
-                {
-                    var hash = privacy.Hash(digits);
-                    customers = customers.Where(x => x.MobileLookupHash == hash);
-                }
-                catch (ArgumentException) { return []; }
-            }
-            else if (digits.Length == 4 && term.All(char.IsDigit))
-            {
-                customers = customers.Where(x => x.MobileLastFour == digits);
-            }
-            else
-            {
-                var upper = term.ToUpperInvariant();
-                customers = customers.Where(x => x.Name.Contains(term) ||
-                    db.MemberCards.Any(card => card.CustomerId == x.Id && card.CardNo == upper));
-            }
-        }
+        var customers = BuildCustomerQuery(tenantId, storeId, query);
+        if (customers is null) return [];
 
         var rows = await customers.OrderByDescending(x => x.CreatedAtUtc).Take(100)
             .Select(x => new { Customer = x, ActiveCards = db.MemberCards.Count(card => card.CustomerId == x.Id && card.Status == MemberCardStatus.Active) })
@@ -56,13 +32,91 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
     }
 
     public async Task<Result<CustomerDetailDto>> GetAsync(Guid tenantId, Guid storeId, Guid customerId,
-        CancellationToken cancellationToken)
+        bool includeFinancialDetails, CancellationToken cancellationToken)
     {
         var customer = await db.Customers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == customerId &&
             x.TenantId == tenantId && x.HomeStoreId == storeId, cancellationToken);
         return customer is null
             ? ResultFactory.Failure<CustomerDetailDto>("CUSTOMER_NOT_FOUND", "顾客不存在")
-            : ResultFactory.Success(await ToDetailAsync(customer, cancellationToken));
+            : ResultFactory.Success(await ToDetailAsync(customer, includeFinancialDetails, cancellationToken));
+    }
+
+    public async Task<Result<CustomerMobileRevealDto>> RevealMobileAsync(Guid tenantId,
+        RevealCustomerMobileCommand command, CancellationToken cancellationToken)
+    {
+        var purpose = NormalizePurpose(command.Purpose);
+        if (command.CommandId == Guid.Empty || purpose is null)
+            return ResultFactory.Failure<CustomerMobileRevealDto>("VALIDATION_FAILED", "查看完整手机号必须填写2到200字业务目的");
+        var requestHash = RequestHash($"CUSTOMER_MOBILE_REVEAL|{command.StoreId}|{command.CustomerId}|{purpose}");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted,
+            cancellationToken);
+        var replay = await ReplayAsync<CustomerMobileRevealDto>(tenantId, command.CommandId, requestHash,
+            _ => LoadMobileAsync(tenantId, command.StoreId, command.CustomerId, cancellationToken),
+            cancellationToken);
+        if (replay is not null) return replay;
+
+        var customer = await db.Customers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == command.CustomerId &&
+            x.TenantId == tenantId && x.HomeStoreId == command.StoreId, cancellationToken);
+        if (customer is null)
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<CustomerMobileRevealDto>("CUSTOMER_NOT_FOUND", "顾客不存在");
+        }
+
+        var now = clock.GetUtcNow();
+        AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, customer.Id, now);
+        AddAudit(tenantId, command.StoreId, command.OperatorId, "customer.mobile.reveal", "Customer", customer.Id,
+            null, "Revealed", command.CommandId, now, reason: purpose,
+            metadata: JsonSerializer.Serialize(new { field = "mobile" }));
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return ResultFactory.Success(new CustomerMobileRevealDto(customer.Id,
+            privacy.RevealProtectedMobile(customer.MobileCiphertext), now));
+    }
+
+    public async Task<Result<CustomerExportDto>> ExportAsync(Guid tenantId, ExportCustomersCommand command,
+        CancellationToken cancellationToken)
+    {
+        var purpose = NormalizePurpose(command.Purpose);
+        if (command.CommandId == Guid.Empty || purpose is null)
+            return ResultFactory.Failure<CustomerExportDto>("VALIDATION_FAILED", "导出顾客名单必须填写2到200字业务目的");
+        if (command.IncludeFullMobile && !command.CanExportFullMobile)
+            return ResultFactory.Failure<CustomerExportDto>("SENSITIVE_EXPORT_FORBIDDEN", "只有最高权限可以导出完整手机号");
+        var customers = BuildCustomerQuery(tenantId, command.StoreId, command.Query);
+        if (customers is null)
+            return ResultFactory.Failure<CustomerExportDto>("VALIDATION_FAILED", "查询条件不能超过100字");
+
+        var rows = await customers.OrderBy(x => x.Name).ThenBy(x => x.CreatedAtUtc).Take(5_001)
+            .Select(x => new
+            {
+                Customer = x,
+                ActiveCards = db.MemberCards.Count(card => card.CustomerId == x.Id &&
+                    card.Status == MemberCardStatus.Active),
+            }).ToListAsync(cancellationToken);
+        if (rows.Count > 5_000)
+            return ResultFactory.Failure<CustomerExportDto>("EXPORT_TOO_LARGE", "单次最多导出5000位顾客，请先缩小查询范围");
+
+        var exportRows = rows.Select(x => new CustomerExportRow(x.Customer.Name,
+            command.IncludeFullMobile
+                ? privacy.RevealProtectedMobile(x.Customer.MobileCiphertext)
+                : privacy.MaskProtectedMobile(x.Customer.MobileCiphertext),
+            x.Customer.Status.ToString(), x.ActiveCards, x.Customer.CreatedAtUtc)).ToList();
+        var now = clock.GetUtcNow();
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted,
+            cancellationToken);
+        AddAudit(tenantId, command.StoreId, command.OperatorId, "customer.export", "CustomerExport",
+            command.StoreId, null, "Exported", command.CommandId, now, reason: purpose,
+            metadata: JsonSerializer.Serialize(new
+            {
+                includesFullMobile = command.IncludeFullMobile,
+                rowCount = exportRows.Count,
+                queryApplied = !string.IsNullOrWhiteSpace(command.Query),
+            }));
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        var suffix = command.IncludeFullMobile ? "full-mobile" : "masked-mobile";
+        return ResultFactory.Success(new CustomerExportDto(CustomerExportFormatter.ToCsv(exportRows),
+            $"customers-{suffix}-{now:yyyyMMdd-HHmmss}.csv", exportRows.Count, command.IncludeFullMobile));
     }
 
     public async Task<Result<CustomerDetailDto>> CreateAsync(Guid tenantId, CreateCustomerCommand command,
@@ -83,7 +137,8 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         var requestHash = RequestHash($"CUSTOMER_CREATE|{command.StoreId}|{command.Name}|{Convert.ToHexString(mobile.LookupHash)}|{gender}|{command.BirthDate}|{command.SourceCode}|{command.ServiceNotificationConsent}|{command.MarketingConsent}");
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var replay = await ReplayAsync<CustomerDetailDto>(tenantId, command.CommandId, requestHash,
-            id => GetAsync(tenantId, command.StoreId, id, cancellationToken), cancellationToken);
+            id => GetAsync(tenantId, command.StoreId, id, includeFinancialDetails: false, cancellationToken),
+            cancellationToken);
         if (replay is not null) return replay;
 
         try
@@ -112,7 +167,8 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
                 null, customer.Status.ToString(), command.CommandId, now);
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return ResultFactory.Success(await ToDetailAsync(customer, cancellationToken));
+            return ResultFactory.Success(await ToDetailAsync(customer, includeFinancialDetails: false,
+                cancellationToken));
         }
         catch (DomainRuleException exception)
         {
@@ -177,7 +233,8 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         var requestHash = RequestHash($"MEMBERSHIP_OPEN|{command.StoreId}|{command.CustomerId}|{command.CardTypeId}|{normalizedCardNo}|{command.Note}");
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var replay = await ReplayAsync<CustomerDetailDto>(tenantId, command.CommandId, requestHash,
-            _ => GetAsync(tenantId, command.StoreId, command.CustomerId, cancellationToken), cancellationToken);
+            _ => GetAsync(tenantId, command.StoreId, command.CustomerId, includeFinancialDetails: true,
+                cancellationToken), cancellationToken);
         if (replay is not null) return replay;
 
         try
@@ -221,7 +278,8 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
                 new MemberAccount(tenantId, customer.Id, card.Id, type)));
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return await GetAsync(tenantId, command.StoreId, customer.Id, cancellationToken);
+            return await GetAsync(tenantId, command.StoreId, customer.Id, includeFinancialDetails: true,
+                cancellationToken);
         }
         catch (DomainRuleException exception)
         {
@@ -240,15 +298,18 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         }
     }
 
-    private async Task<CustomerDetailDto> ToDetailAsync(Customer customer, CancellationToken cancellationToken)
+    private async Task<CustomerDetailDto> ToDetailAsync(Customer customer, bool includeFinancialDetails,
+        CancellationToken cancellationToken)
     {
         var cards = await db.MemberCards.AsNoTracking().Where(x => x.CustomerId == customer.Id)
             .OrderByDescending(x => x.CreatedAtUtc).ToListAsync(cancellationToken);
         var cardTypeNames = await db.MemberCardTypes.AsNoTracking().Where(x => x.TenantId == customer.TenantId)
             .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
         var cardIds = cards.Select(x => x.Id).ToList();
-        var accounts = await db.MemberAccounts.AsNoTracking().Where(x => cardIds.Contains(x.CardId))
-            .OrderBy(x => x.AccountType).ToListAsync(cancellationToken);
+        var accounts = includeFinancialDetails
+            ? await db.MemberAccounts.AsNoTracking().Where(x => cardIds.Contains(x.CardId))
+                .OrderBy(x => x.AccountType).ToListAsync(cancellationToken)
+            : [];
         var cardDtos = cards.Select(card => new MemberCardDto(card.Id, cardTypeNames.GetValueOrDefault(card.CardTypeId, "未知卡类"),
             CustomerPrivacyService.MaskCardNo(card.CardNo), card.Status.ToString(), card.ValidFrom, card.ValidTo,
             accounts.Where(x => x.CardId == card.Id).OrderBy(x => AccountOrder(x.AccountType)).Select(x => new MemberAccountDto(x.Id, x.AccountType.ToString(),
@@ -257,6 +318,48 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             privacy.MaskProtectedMobile(customer.MobileCiphertext), customer.Gender.ToString(), customer.SourceCode,
             customer.ServiceNotificationConsent, customer.MarketingConsent, customer.Status.ToString(),
             customer.HomeStoreId, customer.Version, cardDtos);
+    }
+
+    private async Task<Result<CustomerMobileRevealDto>> LoadMobileAsync(Guid tenantId, Guid storeId,
+        Guid customerId, CancellationToken cancellationToken)
+    {
+        var customer = await db.Customers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == customerId &&
+            x.TenantId == tenantId && x.HomeStoreId == storeId, cancellationToken);
+        return customer is null
+            ? ResultFactory.Failure<CustomerMobileRevealDto>("CUSTOMER_NOT_FOUND", "顾客不存在")
+            : ResultFactory.Success(new CustomerMobileRevealDto(customer.Id,
+                privacy.RevealProtectedMobile(customer.MobileCiphertext), clock.GetUtcNow()));
+    }
+
+    private IQueryable<Customer>? BuildCustomerQuery(Guid tenantId, Guid storeId, string? query)
+    {
+        var customers = db.Customers.AsNoTracking().Where(x =>
+            x.TenantId == tenantId && x.HomeStoreId == storeId);
+        var term = query?.Trim();
+        if (term?.Length > 100) return null;
+        if (string.IsNullOrEmpty(term)) return customers;
+
+        var digits = new string(term.Where(char.IsDigit).ToArray());
+        if (digits.Length == 11)
+        {
+            try
+            {
+                var hash = privacy.Hash(digits);
+                return customers.Where(x => x.MobileLookupHash == hash);
+            }
+            catch (ArgumentException) { return null; }
+        }
+        if (digits.Length == 4 && term.All(char.IsDigit))
+            return customers.Where(x => x.MobileLastFour == digits);
+        var upper = term.ToUpperInvariant();
+        return customers.Where(x => x.Name.Contains(term) ||
+            db.MemberCards.Any(card => card.CustomerId == x.Id && card.CardNo == upper));
+    }
+
+    private static string? NormalizePurpose(string? value)
+    {
+        var purpose = value?.Trim();
+        return purpose?.Length is >= 2 and <= 200 ? purpose : null;
     }
 
     private async Task<Result<T>?> ReplayAsync<T>(Guid tenantId, Guid commandId, byte[] requestHash,
@@ -279,10 +382,12 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         });
 
     private void AddAudit(Guid tenantId, Guid? storeId, Guid operatorId, string action, string entityType, Guid entityId,
-        string? previous, string? current, Guid commandId, DateTimeOffset now) => db.AuditEvents.Add(new AuditEventRecord
+        string? previous, string? current, Guid commandId, DateTimeOffset now, string? reason = null,
+        string? metadata = null) => db.AuditEvents.Add(new AuditEventRecord
         {
             TenantId = tenantId, StoreId = storeId, OperatorId = operatorId, Action = action, EntityType = entityType,
             EntityId = entityId, PreviousState = previous, CurrentState = current, RequestId = commandId,
+            Reason = reason, Metadata = metadata ?? "{}",
             TraceId = httpContextAccessor.HttpContext?.TraceIdentifier ?? "background", OccurredAtUtc = now,
         });
 

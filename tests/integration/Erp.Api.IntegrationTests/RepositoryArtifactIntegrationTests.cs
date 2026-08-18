@@ -338,6 +338,34 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void SensitiveCustomerAccessIsPurposeBoundAuditedAndCsvFormulaSafe()
+    {
+        var endpoints = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Api", "Endpoints",
+            "CustomerEndpoints.cs"));
+        var service = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Customers", "CustomerService.cs"));
+        var bytes = CustomerExportFormatter.ToCsv([
+            new CustomerExportRow("=HYPERLINK(\"https://invalid.example\")", "138****1234", "Active", 1,
+                new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.FromHours(8))),
+        ]);
+        var csv = System.Text.Encoding.UTF8.GetString(bytes);
+
+        Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes[..3]);
+        Assert.Contains("\"'=HYPERLINK(\"\"https://invalid.example\"\")\"", csv, StringComparison.Ordinal);
+        Assert.Contains("138****1234", csv, StringComparison.Ordinal);
+        Assert.Contains("MapPost(\"/{customerId:guid}/mobile/reveal\"", endpoints, StringComparison.Ordinal);
+        Assert.Contains("RequireRole(SystemRoles.Owner, SystemRoles.StoreManager)", endpoints,
+            StringComparison.Ordinal);
+        Assert.Contains("current.Roles.Contains(SystemRoles.Owner", endpoints, StringComparison.Ordinal);
+        Assert.Contains("includeFinancialDetails", endpoints, StringComparison.Ordinal);
+        Assert.Contains("customer.mobile.reveal", service, StringComparison.Ordinal);
+        Assert.Contains("customer.export", service, StringComparison.Ordinal);
+        Assert.Contains("includesFullMobile", service, StringComparison.Ordinal);
+        Assert.Contains("includeFinancialDetails", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("MobileCiphertext =", csv, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");

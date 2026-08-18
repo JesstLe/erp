@@ -31,6 +31,8 @@ internal sealed partial class CustomerPrivacyService
 
     public string MaskProtectedMobile(string ciphertext) => MaskMobile(protector.Unprotect(ciphertext));
 
+    public string RevealProtectedMobile(string ciphertext) => Normalize(protector.Unprotect(ciphertext));
+
     public static string Normalize(string input)
     {
         var normalized = new string(input.Where(char.IsDigit).ToArray());
