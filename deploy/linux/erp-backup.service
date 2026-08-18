@@ -1,0 +1,18 @@
+[Unit]
+Description=Create encrypted ERP database and file backup
+After=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/erp-backup
+User=root
+Group=root
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/erp/backups
+ReadOnlyPaths=/srv/erp/data /etc/erp
