@@ -32,8 +32,42 @@ public static class CustomerEndpoints
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
-            return EndpointResults.From(await customers.GetAsync(current.TenantId, storeId, customerId, cancellationToken));
+            var includeFinancialDetails = current.Roles.Any(role => role is SystemRoles.Owner or
+                SystemRoles.StoreManager or SystemRoles.Cashier);
+            return EndpointResults.From(await customers.GetAsync(current.TenantId, storeId, customerId,
+                includeFinancialDetails, cancellationToken));
         }).RequireAuthorization(policy => policy.RequireRole(CustomerOperators));
+
+        group.MapPost("/{customerId:guid}/mobile/reveal", async (Guid customerId,
+            RevealCustomerMobileRequest request, IIdentityService identity, ICustomerService customers,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await customers.RevealMobileAsync(current.TenantId,
+                new RevealCustomerMobileCommand(request.StoreId, customerId, request.Purpose ?? string.Empty,
+                    request.CommandId, current.Id), cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(CustomerOperators))
+            .RequireRateLimiting("customer-search");
+
+        group.MapPost("/export", async (ExportCustomersRequest request, HttpResponse response,
+            IIdentityService identity, ICustomerService customers, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            var canExportFullMobile = current.Roles.Contains(SystemRoles.Owner,
+                StringComparer.OrdinalIgnoreCase);
+            var result = await customers.ExportAsync(current.TenantId,
+                new ExportCustomersCommand(request.StoreId, request.Query, request.IncludeFullMobile,
+                    canExportFullMobile, request.Purpose ?? string.Empty, request.CommandId, current.Id),
+                cancellationToken);
+            response.Headers.CacheControl = "private, no-store";
+            return EndpointResults.From(result, value => Results.File(value.Content,
+                "text/csv; charset=utf-8", value.FileName, enableRangeProcessing: false));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager))
+            .RequireRateLimiting("customer-search");
 
         group.MapPost("", async (CreateCustomerRequest request, IIdentityService identity, ICustomerService customers,
             CancellationToken cancellationToken) =>
@@ -160,4 +194,7 @@ public static class CustomerEndpoints
         DateOnly? BirthDate, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent, Guid CommandId);
     private sealed record CreateCardTypeRequest(string? Code, string? Name, int? ValidityDays, Guid CommandId);
     private sealed record OpenMembershipRequest(Guid StoreId, Guid CardTypeId, string? CardNo, string? Note, Guid CommandId);
+    private sealed record RevealCustomerMobileRequest(Guid StoreId, string? Purpose, Guid CommandId);
+    private sealed record ExportCustomersRequest(Guid StoreId, string? Query, bool IncludeFullMobile,
+        string? Purpose, Guid CommandId);
 }

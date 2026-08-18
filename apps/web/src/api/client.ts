@@ -53,3 +53,24 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   if (response.status === 204) return undefined as T
   return (await response.json()) as T
 }
+
+export async function apiDownload(path: string, init: RequestInit = {}): Promise<{ blob: Blob; filename: string }> {
+  const method = (init.method ?? 'GET').toUpperCase()
+  const unsafe = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
+  const headers = new Headers(init.headers)
+  headers.set('Accept', 'text/csv, application/octet-stream')
+  if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
+  if (unsafe) headers.set('X-CSRF-TOKEN', await getCsrfToken())
+  const response = await fetch(path, { ...init, headers, credentials: 'include' })
+  if (!response.ok) {
+    const payload = await safeJson(response)
+    if (payload.error?.code === 'INVALID_ANTIFORGERY_TOKEN') csrfToken = undefined
+    throw new ApiError(response.status, payload)
+  }
+  const disposition = response.headers.get('Content-Disposition') ?? ''
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  const quoted = disposition.match(/filename="([^"]+)"/i)?.[1]
+  const raw = encoded ? decodeURIComponent(encoded) : quoted ?? 'download.csv'
+  const filename = raw.split(/[\\/]/).pop() || 'download.csv'
+  return { blob: await response.blob(), filename }
+}

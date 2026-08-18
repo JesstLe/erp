@@ -25,11 +25,21 @@ const baseMenuItems: NonNullable<MenuProps['items']> = [
 export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
   const auth = useAuth(); const navigate = useNavigate(); const location = useLocation()
+  const roles = auth.user?.roles ?? []
   const canConfigureFacilities = auth.user?.roles.some((role) => role === 'OWNER' || role === 'STORE_MANAGER')
   const isOwner = auth.user?.roles.includes('OWNER') ?? false
+  const isManager = auth.user?.roles.includes('STORE_MANAGER') ?? false
+  const visibleBaseKeys = isOwner || isManager ? undefined : new Set(roles.includes('FRONT_DESK')
+    ? ['/', '/facilities', '/customers', '/cashier', '/catalog/items', '/catalog/products', '/catalog/prices']
+    : roles.includes('CASHIER')
+      ? ['/', '/customers', '/cashier', '/inventory', '/catalog/items', '/catalog/products', '/catalog/prices']
+      : ['/', '/catalog/items', '/catalog/products', '/catalog/prices'])
+  const visibleBaseItems = visibleBaseKeys
+    ? baseMenuItems.filter((item) => item?.type === 'divider' || typeof item?.key === 'string' && visibleBaseKeys.has(item.key))
+    : baseMenuItems
   const notifications = useQuery({ queryKey: ['notifications', auth.store?.id], enabled: Boolean(auth.store?.id), queryFn: () => apiRequest<NotificationInbox>(`/api/v1/notifications?storeId=${auth.store?.id}`), refetchInterval: 30_000 })
   const menuItems: MenuProps['items'] = [
-    ...baseMenuItems,
+    ...visibleBaseItems,
     ...(canConfigureFacilities ? [{ key: '/settings/facilities', icon: <SettingOutlined />, label: '门店设施配置' }] : []),
     ...(isOwner ? [{ key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }, { key: '/settings/payment-channels', icon: <CloudServerOutlined />, label: '支付渠道配置' }] : []),
   ]

@@ -12,6 +12,8 @@ public sealed record MemberCardDto(Guid Id, string CardTypeName, string MaskedCa
 public sealed record CustomerDetailDto(Guid Id, string DisplayName, string MaskedMobile, string Gender,
     string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent,
     string Status, Guid HomeStoreId, uint Version, IReadOnlyList<MemberCardDto> Cards);
+public sealed record CustomerMobileRevealDto(Guid CustomerId, string Mobile, DateTimeOffset RevealedAtUtc);
+public sealed record CustomerExportDto(byte[] Content, string FileName, int RowCount, bool IncludesFullMobile);
 
 public sealed record CreateCustomerCommand(Guid StoreId, string Name, string Mobile, string? Gender,
     DateOnly? BirthDate, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent,
@@ -22,13 +24,22 @@ public sealed record CreateMemberCardTypeCommand(string Code, string Name, int? 
 
 public sealed record OpenMembershipCommand(Guid StoreId, Guid CustomerId, Guid CardTypeId,
     string? CardNo, string? Note, Guid CommandId, Guid OperatorId);
+public sealed record RevealCustomerMobileCommand(Guid StoreId, Guid CustomerId, string Purpose,
+    Guid CommandId, Guid OperatorId);
+public sealed record ExportCustomersCommand(Guid StoreId, string? Query, bool IncludeFullMobile,
+    bool CanExportFullMobile, string Purpose, Guid CommandId, Guid OperatorId);
 
 public interface ICustomerService
 {
     Task<IReadOnlyList<CustomerSummaryDto>> SearchAsync(Guid tenantId, Guid storeId, string? query, CancellationToken cancellationToken);
-    Task<Result<CustomerDetailDto>> GetAsync(Guid tenantId, Guid storeId, Guid customerId, CancellationToken cancellationToken);
+    Task<Result<CustomerDetailDto>> GetAsync(Guid tenantId, Guid storeId, Guid customerId,
+        bool includeFinancialDetails, CancellationToken cancellationToken);
     Task<Result<CustomerDetailDto>> CreateAsync(Guid tenantId, CreateCustomerCommand command, CancellationToken cancellationToken);
     Task<IReadOnlyList<MemberCardTypeDto>> ListCardTypesAsync(Guid tenantId, CancellationToken cancellationToken);
     Task<Result<MemberCardTypeDto>> CreateCardTypeAsync(Guid tenantId, CreateMemberCardTypeCommand command, CancellationToken cancellationToken);
     Task<Result<CustomerDetailDto>> OpenMembershipAsync(Guid tenantId, OpenMembershipCommand command, CancellationToken cancellationToken);
+    Task<Result<CustomerMobileRevealDto>> RevealMobileAsync(Guid tenantId, RevealCustomerMobileCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<CustomerExportDto>> ExportAsync(Guid tenantId, ExportCustomersCommand command,
+        CancellationToken cancellationToken);
 }
