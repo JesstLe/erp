@@ -20,14 +20,26 @@ namespace Erp.Infrastructure.Cashier;
 internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService privacy, TimeProvider clock,
     IHttpContextAccessor httpContextAccessor) : IPaymentService
 {
-    public async Task<IReadOnlyList<PaymentMethodDto>> ListMethodsAsync(Guid tenantId, CancellationToken cancellationToken) =>
-        await db.PaymentMethods.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsEnabled)
+    public async Task<IReadOnlyList<PaymentMethodDto>> ListMethodsAsync(Guid tenantId, Guid? storeId,
+        CancellationToken cancellationToken)
+    {
+        var enabledProviders = storeId.HasValue
+            ? await db.PaymentChannelConfigurations.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                    x.StoreId == storeId.Value && x.IsEnabled).Select(x => x.Provider)
+                .ToListAsync(cancellationToken)
+            : [];
+        return await db.PaymentMethods.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsEnabled &&
+                (x.Category != PaymentMethodCategory.ChannelExternal ||
+                 (storeId.HasValue && x.ChannelProvider.HasValue && enabledProviders.Contains(x.ChannelProvider.Value))))
             .OrderBy(x => x.Category == PaymentMethodCategory.Cash ? 0 :
                 x.Category == PaymentMethodCategory.ManualExternal ? 1 :
-                x.InternalAccountType == MemberAccountType.Principal ? 2 : 3)
+                x.Category == PaymentMethodCategory.ChannelExternal ? 2 :
+                x.InternalAccountType == MemberAccountType.Principal ? 3 : 4)
             .ThenBy(x => x.Code).Select(x => new PaymentMethodDto(x.Id, x.Code, x.Name, x.Category.ToString(),
-                x.RequiresOpenShift, x.InternalAccountType == null ? null : x.InternalAccountType.ToString()))
+                x.RequiresOpenShift, x.InternalAccountType == null ? null : x.InternalAccountType.ToString(),
+                x.ChannelProvider == null ? null : x.ChannelProvider.ToString()))
             .ToListAsync(cancellationToken);
+    }
 
     public async Task<IReadOnlyList<PaymentDto>> ListPaymentsAsync(Guid tenantId, Guid storeId,
         CancellationToken cancellationToken)
@@ -211,6 +223,9 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                 .ToDictionaryAsync(x => x.Id, cancellationToken);
             if (methods.Count != methodIds.Count)
                 return await FailureAndRollback<PaymentDto>(transaction, "PAYMENT_METHOD_NOT_FOUND", "支付方式不存在或已停用", cancellationToken);
+            if (methods.Values.Any(x => x.Category == PaymentMethodCategory.ChannelExternal))
+                return await FailureAndRollback<PaymentDto>(transaction, "CHANNEL_PAYMENT_REQUIRES_INITIATION",
+                    "微信或支付宝必须先发起渠道订单并等待验签结果，不能直接登记为已付款", cancellationToken);
             var memberLines = command.Allocations.Where(x =>
                 methods[x.MethodId].Category == PaymentMethodCategory.InternalAccount).ToList();
             Dictionary<Guid, MemberAccount> memberAccounts = [];
@@ -300,7 +315,8 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                 var method = methods[line.MethodId];
                 return new PaymentAllocationDraft(method.Id, method.Code, method.Name, method.Category, line.AmountMinor,
                     line.ExternalReference, method.RequiresOpenShift ? shift?.Id : null,
-                    method.Category == PaymentMethodCategory.InternalAccount ? line.MemberAccountId : null);
+                    method.Category == PaymentMethodCategory.InternalAccount ? line.MemberAccountId : null,
+                    method.ChannelProvider);
             }).ToList();
             order.BeginCheckout();
             var payment = new Payment(tenantId, command.StoreId, order.Id, CreatePaymentNo(localTime.Value),
@@ -409,7 +425,7 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
         payment.Allocations.OrderBy(x => x.CreatedAtUtc).Select(x => new PaymentAllocationDto(x.Id, x.MethodId,
             x.MethodCodeSnapshot, x.MethodNameSnapshot, x.Category.ToString(), x.AmountMinor, x.ExternalReference,
             x.ConfirmationStatus.ToString(), x.ReconciliationStatus.ToString(), x.ShiftId,
-            x.MemberAccountId)).ToList());
+            x.MemberAccountId, x.ChannelProvider?.ToString())).ToList());
 
     private static CashierShiftDto ToDto(CashierShift shift) => new(shift.Id, shift.ShiftNo, shift.OperatorId,
         shift.Status.ToString(), shift.OpeningCashMinor, shift.ExpectedCashMinor, shift.SubmittedCashMinor,

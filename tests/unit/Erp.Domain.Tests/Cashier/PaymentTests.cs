@@ -146,6 +146,47 @@ public sealed class PaymentTests
             new byte[31], now));
     }
 
+    [Fact]
+    public void ChannelPaymentStaysProcessingUntilVerifiedTradeNumberConfirmsIt()
+    {
+        var shiftId = Guid.CreateVersion7();
+        var payment = CreatePayment(12_300,
+            [new(Guid.CreateVersion7(), "WECHAT_NATIVE", "微信支付 Native",
+                PaymentMethodCategory.ChannelExternal, 12_300, null, shiftId, null,
+                PaymentChannelProvider.WeChatPay)]);
+        var allocation = payment.Allocations.Single();
+
+        Assert.Equal(PaymentStatus.Processing, payment.Status);
+        Assert.Equal(0, payment.PaidMinor);
+        Assert.Equal(PaymentConfirmationStatus.ChannelPending, allocation.ConfirmationStatus);
+        Assert.Null(allocation.ConfirmedAtUtc);
+
+        payment.ConfirmChannelAllocation(allocation.Id, "42000000000000000001", DateTimeOffset.UtcNow);
+
+        Assert.Equal(PaymentStatus.Paid, payment.Status);
+        Assert.Equal(12_300, payment.PaidMinor);
+        Assert.Equal(PaymentConfirmationStatus.ChannelConfirmed, allocation.ConfirmationStatus);
+        Assert.Equal("42000000000000000001", allocation.ExternalReference);
+    }
+
+    [Fact]
+    public void PendingChannelPaymentCanCloseWithoutPretendingItWasPaid()
+    {
+        var payment = CreatePayment(5_000,
+            [new(Guid.CreateVersion7(), "ALIPAY_QR", "支付宝订单码",
+                PaymentMethodCategory.ChannelExternal, 5_000, null, Guid.CreateVersion7(), null,
+                PaymentChannelProvider.Alipay)]);
+
+        payment.CancelPendingChannelPayment();
+
+        Assert.Equal(PaymentStatus.Cancelled, payment.Status);
+        Assert.Equal(0, payment.PaidMinor);
+        Assert.Equal(PaymentConfirmationStatus.Cancelled,
+            payment.Allocations.Single().ConfirmationStatus);
+        payment.MarkReversalRequired();
+        Assert.Equal(PaymentStatus.ReversalRequired, payment.Status);
+    }
+
     private static Payment CreatePayment(long receivable, IEnumerable<PaymentAllocationDraft> allocations) =>
         new(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "PAY202608180001", receivable,
             allocations, new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero));

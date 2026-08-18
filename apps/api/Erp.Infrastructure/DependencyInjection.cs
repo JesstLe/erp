@@ -90,7 +90,18 @@ public static class DependencyInjection
         services.AddScoped<IMemberVerificationService, MemberVerificationService>();
         services.AddScoped<ICashierService, CashierService>();
         services.AddScoped<IPaymentService, PaymentService>();
+        services.AddSingleton<PaymentChannelCredentialResolver>();
+        services.AddHttpClient<WechatPayGateway>(client =>
+        {
+            client.BaseAddress = new Uri("https://api.mch.weixin.qq.com");
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
+        services.AddScoped<AlipayGateway>();
+        services.AddScoped<IPaymentChannelGateway>(provider => provider.GetRequiredService<WechatPayGateway>());
+        services.AddScoped<IPaymentChannelGateway>(provider => provider.GetRequiredService<AlipayGateway>());
+        services.AddScoped<PaymentChannelGatewayRegistry>();
         services.AddScoped<IPaymentChannelConfigurationService, PaymentChannelConfigurationService>();
+        services.AddScoped<IPaymentChannelPaymentService, PaymentChannelPaymentService>();
         services.AddScoped<IRefundService, RefundService>();
         services.AddScoped<IAuditQueryService, AuditQueryService>();
         services.AddScoped<IReportService, ReportService>();

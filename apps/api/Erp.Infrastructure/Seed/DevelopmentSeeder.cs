@@ -132,6 +132,22 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
             dbContext.PaymentMethods.Add(new PaymentMethod(tenant.Id, "MEMBER_BONUS", "会员奖励金",
                 PaymentMethodCategory.InternalAccount, false, MemberAccountType.Bonus));
         }
+        if (!await dbContext.PaymentMethods.AnyAsync(x => x.TenantId == tenant.Id &&
+            x.Code == "WECHAT_NATIVE", cancellationToken))
+        {
+            var method = new PaymentMethod(tenant.Id, "WECHAT_NATIVE", "微信支付 Native",
+                PaymentMethodCategory.ChannelExternal, true, channelProvider: PaymentChannelProvider.WeChatPay);
+            method.SetEnabled(false);
+            dbContext.PaymentMethods.Add(method);
+        }
+        if (!await dbContext.PaymentMethods.AnyAsync(x => x.TenantId == tenant.Id &&
+            x.Code == "ALIPAY_QR", cancellationToken))
+        {
+            var method = new PaymentMethod(tenant.Id, "ALIPAY_QR", "支付宝订单码",
+                PaymentMethodCategory.ChannelExternal, true, channelProvider: PaymentChannelProvider.Alipay);
+            method.SetEnabled(false);
+            dbContext.PaymentMethods.Add(method);
+        }
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }

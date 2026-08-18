@@ -91,8 +91,8 @@ public sealed partial class RepositoryArtifactIntegrationTests
     {
         var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
             "V202608180011__payment_channel_foundation.sql"));
-        var service = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
-            "Cashier", "PaymentChannelConfigurationService.cs"));
+        var resolver = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Cashier", "PaymentChannelCredentials.cs"));
 
         Assert.Contains("credential_profile varchar(40) NOT NULL", migration, StringComparison.Ordinal);
         Assert.Contains("payload_sha256 bytea NOT NULL", migration, StringComparison.Ordinal);
@@ -100,8 +100,28 @@ public sealed partial class RepositoryArtifactIntegrationTests
         Assert.Contains("uq_payment_channel_order_active_allocation", migration, StringComparison.Ordinal);
         Assert.DoesNotContain("private_key varchar", migration, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("api_v3_key", migration, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("PaymentChannels:Profiles:{profile}", service, StringComparison.Ordinal);
-        Assert.Contains("File.Exists(path)", service, StringComparison.Ordinal);
+        Assert.Contains("PaymentChannels:Profiles:{profile}", resolver, StringComparison.Ordinal);
+        Assert.Contains("File.Exists(path)", resolver, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AsyncChannelMigrationAndServiceRequireVerifiedResultsBeforeSettlement()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180012__async_channel_payments.sql"));
+        var service = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Cashier", "PaymentChannelPaymentService.cs"));
+
+        Assert.Contains("ChannelPending", migration, StringComparison.Ordinal);
+        Assert.Contains("confirmed_at_utc DROP NOT NULL", migration, StringComparison.Ordinal);
+        Assert.Contains("status IN ('Processing', 'Paid', 'PartiallyRefunded', 'Refunded')", migration,
+            StringComparison.Ordinal);
+        Assert.Contains("VerifyNotification", service, StringComparison.Ordinal);
+        Assert.Contains("ApplyPaidInsideTransactionAsync", service, StringComparison.Ordinal);
+        Assert.Contains("CHANNEL_AMOUNT_OR_TRADE_CONFLICT", service, StringComparison.Ordinal);
+        Assert.Contains("CHANNEL_LATE_PAYMENT_REQUIRES_REVERSAL", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("PaymentStatus.Paid", service[..service.IndexOf("CreateQrAsync", StringComparison.Ordinal)],
+            StringComparison.Ordinal);
     }
 
     [Fact]

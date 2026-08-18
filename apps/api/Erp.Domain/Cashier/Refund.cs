@@ -84,8 +84,8 @@ public sealed class RefundLine : Entity
     {
         if (amountMinor <= 0 || amountMinor > 10_000_000_000)
             throw new DomainRuleException("VALIDATION_FAILED", "退款金额必须大于0且不超过允许范围");
-        if (category == PaymentMethodCategory.ManualExternal)
-            throw new DomainRuleException("REFUND_ROUTE_UNAVAILABLE", "人工外部登记尚不能伪装为原路退款");
+        if (category is PaymentMethodCategory.ManualExternal or PaymentMethodCategory.ChannelExternal)
+            throw new DomainRuleException("REFUND_ROUTE_UNAVAILABLE", "外部渠道退款必须由独立的原路退款流程处理");
         if ((category == PaymentMethodCategory.InternalAccount) != memberAccountId.HasValue)
             throw new DomainRuleException("VALIDATION_FAILED", "会员退款必须且只能关联原会员账户");
         RefundId = refundId;

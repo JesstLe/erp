@@ -3,10 +3,10 @@ using Erp.Application.Common;
 namespace Erp.Application.Cashier;
 
 public sealed record PaymentMethodDto(Guid Id, string Code, string Name, string Category, bool RequiresOpenShift,
-    string? InternalAccountType);
+    string? InternalAccountType, string? ChannelProvider);
 public sealed record PaymentAllocationDto(Guid Id, Guid MethodId, string MethodCode, string MethodName,
     string Category, long AmountMinor, string? ExternalReference, string ConfirmationStatus,
-    string ReconciliationStatus, Guid? ShiftId, Guid? MemberAccountId);
+    string ReconciliationStatus, Guid? ShiftId, Guid? MemberAccountId, string? ChannelProvider);
 public sealed record PaymentDto(Guid Id, string PaymentNo, Guid? OrderId, string BusinessType, Guid BusinessId,
     string Status, string Currency,
     long ReceivableMinor, long PaidMinor, long RefundedMinor, DateTimeOffset? PaidAtUtc, uint Version,
@@ -29,7 +29,8 @@ public sealed record ReviewShiftCommand(Guid StoreId, Guid ShiftId, uint Expecte
 
 public interface IPaymentService
 {
-    Task<IReadOnlyList<PaymentMethodDto>> ListMethodsAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<PaymentMethodDto>> ListMethodsAsync(Guid tenantId, Guid? storeId,
+        CancellationToken cancellationToken);
     Task<IReadOnlyList<PaymentDto>> ListPaymentsAsync(Guid tenantId, Guid storeId, CancellationToken cancellationToken);
     Task<Result<PaymentDto>> SettleOrderAsync(Guid tenantId, SettleOrderCommand command, CancellationToken cancellationToken);
     Task<CashierShiftDto?> GetCurrentShiftAsync(Guid tenantId, Guid storeId, Guid operatorId, CancellationToken cancellationToken);
