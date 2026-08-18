@@ -16,7 +16,8 @@ using Npgsql;
 namespace Erp.Infrastructure.Cashier;
 
 internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
-    IHttpContextAccessor httpContextAccessor) : IRefundService
+    IHttpContextAccessor httpContextAccessor, PaymentChannelCredentialResolver credentialResolver,
+    PaymentChannelGatewayRegistry gatewayRegistry) : IRefundService
 {
     public async Task<IReadOnlyList<RefundDto>> ListAsync(Guid tenantId, Guid storeId, Guid? paymentId,
         CancellationToken cancellationToken)
@@ -27,10 +28,13 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
         var refunds = await query.OrderByDescending(x => x.RequestedAtUtc).Take(100)
             .ToListAsync(cancellationToken);
         var paymentIds = refunds.Select(x => x.PaymentId).Distinct().ToList();
+        var refundIds = refunds.Select(x => x.Id).ToList();
         var payments = await db.Payments.AsNoTracking().Where(x => paymentIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, cancellationToken);
+        var channelRefunds = await db.PaymentChannelRefunds.AsNoTracking()
+            .Where(x => refundIds.Contains(x.RefundId)).ToDictionaryAsync(x => x.RefundId, cancellationToken);
         return refunds.Where(x => payments.ContainsKey(x.PaymentId))
-            .Select(x => ToDto(x, payments[x.PaymentId])).ToList();
+            .Select(x => ToDto(x, payments[x.PaymentId], channelRefunds.GetValueOrDefault(x.Id))).ToList();
     }
 
     public async Task<Result<RefundDto>> RequestAsync(Guid tenantId, RequestRefundCommand command,
@@ -73,6 +77,7 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
                                   join parent in db.Refunds on line.RefundId equals parent.Id
                                   where requested.Keys.Contains(line.OriginalAllocationId) &&
                                       (parent.Status == RefundStatus.PendingApproval ||
+                                       parent.Status == RefundStatus.Processing ||
                                        parent.Status == RefundStatus.Completed)
                                   group line by line.OriginalAllocationId into item
                                   select new { Id = item.Key, Amount = item.Sum(x => x.AmountMinor) })
@@ -156,6 +161,59 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
             else
                 return await Fail(transaction, "REFUND_SOURCE_NOT_SUPPORTED",
                     "当前仅支持消费退款和会员储值全额冲正", cancellationToken);
+            if (refund.Lines.Any(x => x.Category == PaymentMethodCategory.ChannelExternal))
+            {
+                if (refund.Lines.Count != 1 ||
+                    refund.Lines.Any(x => x.Category != PaymentMethodCategory.ChannelExternal) || order is null)
+                    return await Fail(transaction, "CHANNEL_REFUND_MIX_NOT_ALLOWED",
+                        "真实渠道退款必须来自一笔消费渠道分摊，不能与其他退款方式混合", cancellationToken);
+                var line = refund.Lines.Single();
+                var allocation = payment.Allocations.SingleOrDefault(x => x.Id == line.OriginalAllocationId);
+                if (allocation is null || allocation.ChannelProvider is null ||
+                    allocation.ConfirmationStatus != PaymentConfirmationStatus.ChannelConfirmed ||
+                    string.IsNullOrWhiteSpace(allocation.ExternalReference))
+                    return await Fail(transaction, "CHANNEL_REFUND_SOURCE_INVALID",
+                        "原渠道支付尚未确认或交易号不完整", cancellationToken);
+                var originalChannelOrder = await db.PaymentChannelOrders.SingleOrDefaultAsync(x =>
+                    x.PaymentAllocationId == allocation.Id && x.Status == PaymentChannelOrderStatus.Paid,
+                    cancellationToken);
+                if (originalChannelOrder is null)
+                    return await Fail(transaction, "CHANNEL_ORDER_NOT_FOUND",
+                        "原渠道支付订单不存在", cancellationToken);
+                var configuration = await db.PaymentChannelConfigurations.SingleOrDefaultAsync(x =>
+                    x.Id == originalChannelOrder.ConfigurationId && x.TenantId == tenantId,
+                    cancellationToken);
+                if (configuration is null)
+                    return await Fail(transaction, "PAYMENT_CHANNEL_NOT_FOUND",
+                        "原支付渠道配置不存在", cancellationToken);
+                if (!credentialResolver.TryResolve(configuration.Provider, configuration.CredentialProfile,
+                        out var profile, out var missing) || profile is null)
+                    return await Fail(transaction, "PAYMENT_CHANNEL_CREDENTIALS_INCOMPLETE",
+                        $"渠道退款凭据不完整：{string.Join('、', missing)}", cancellationToken);
+                if (!PaymentChannelCredentialResolver.IsEnvironmentCompatible(configuration.Environment,
+                        profile, out var environmentMessage))
+                    return await Fail(transaction, "PAYMENT_CHANNEL_ENVIRONMENT_MISMATCH",
+                        environmentMessage, cancellationToken);
+
+                var channelStartedAt = clock.GetUtcNow();
+                refund.BeginChannelProcessing(command.ApproverId);
+                var channelRefund = new PaymentChannelRefund(tenantId, configuration.Id, refund.Id,
+                    originalChannelOrder.Id, configuration.Provider, refund.RefundNo,
+                    originalChannelOrder.OutTradeNo, allocation.ExternalReference, refund.AmountMinor);
+                db.PaymentChannelRefunds.Add(channelRefund);
+                AddReceipt(tenantId, command.CommandId, command.ApproverId, requestHash, refund.Id,
+                    channelStartedAt);
+                AddAudit(tenantId, command.StoreId, command.ApproverId, "refund.channel.processing", refund.Id,
+                    RefundStatus.PendingApproval.ToString(), refund.Status.ToString(), command.CommandId,
+                    refund.Reason, channelStartedAt);
+                await db.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                db.ChangeTracker.Clear();
+                await transaction.DisposeAsync();
+                return await ExecuteChannelRefundAsync(tenantId,
+                    new OperateChannelRefundCommand(command.StoreId, refund.Id, command.ApproverId), false,
+                    cancellationToken);
+            }
             CashierShift? cashShift = null;
             if (refund.Lines.Any(x => x.Category == PaymentMethodCategory.Cash))
             {
@@ -280,6 +338,122 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
         }
     }
 
+    public Task<Result<RefundDto>> QueryChannelAsync(Guid tenantId, OperateChannelRefundCommand command,
+        CancellationToken cancellationToken) =>
+        ExecuteChannelRefundAsync(tenantId, command, true, cancellationToken);
+
+    public Task<Result<RefundDto>> RetryChannelAsync(Guid tenantId, OperateChannelRefundCommand command,
+        CancellationToken cancellationToken) =>
+        ExecuteChannelRefundAsync(tenantId, command, false, cancellationToken);
+
+    private async Task<Result<RefundDto>> ExecuteChannelRefundAsync(Guid tenantId,
+        OperateChannelRefundCommand command, bool queryOnly, CancellationToken cancellationToken)
+    {
+        var channelRefund = await db.PaymentChannelRefunds.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.RefundId == command.RefundId && x.TenantId == tenantId, cancellationToken);
+        var refund = await db.Refunds.AsNoTracking().Include(x => x.Lines).SingleOrDefaultAsync(x =>
+            x.Id == command.RefundId && x.TenantId == tenantId && x.StoreId == command.StoreId,
+            cancellationToken);
+        if (channelRefund is null || refund is null)
+            return ResultFactory.Failure<RefundDto>("CHANNEL_REFUND_NOT_FOUND", "渠道退款单不存在");
+        if (refund.Status == RefundStatus.Completed &&
+            channelRefund.Status == PaymentChannelRefundStatus.Succeeded)
+        {
+            var completedPayment = await db.Payments.AsNoTracking().SingleAsync(x =>
+                x.Id == refund.PaymentId, cancellationToken);
+            return ResultFactory.Success(ToDto(refund, completedPayment, channelRefund));
+        }
+        if (refund.Status != RefundStatus.Processing)
+            return ResultFactory.Failure<RefundDto>("STATE_TRANSITION_NOT_ALLOWED", "当前退款单不在渠道处理中");
+
+        var configuration = await db.PaymentChannelConfigurations.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.Id == channelRefund.ConfigurationId && x.TenantId == tenantId, cancellationToken);
+        if (configuration is null)
+            return ResultFactory.Failure<RefundDto>("PAYMENT_CHANNEL_NOT_FOUND", "原支付渠道配置不存在");
+        if (!credentialResolver.TryResolve(channelRefund.Provider, configuration.CredentialProfile,
+                out var profile, out var missing) || profile is null)
+            return ResultFactory.Failure<RefundDto>("PAYMENT_CHANNEL_CREDENTIALS_INCOMPLETE",
+                $"渠道退款凭据不完整：{string.Join('、', missing)}");
+        if (!PaymentChannelCredentialResolver.IsEnvironmentCompatible(configuration.Environment, profile,
+                out var environmentMessage))
+            return ResultFactory.Failure<RefundDto>("PAYMENT_CHANNEL_ENVIRONMENT_MISMATCH",
+                environmentMessage);
+        var payment = await db.Payments.AsNoTracking().SingleAsync(x => x.Id == refund.PaymentId,
+            cancellationToken);
+        var gatewayRequest = new PaymentChannelRefundRequest(channelRefund.OutTradeNo,
+            channelRefund.ProviderTradeNo, channelRefund.OutRefundNo, channelRefund.AmountMinor,
+            payment.ReceivableMinor, refund.Reason);
+        var gateway = gatewayRegistry.Get(channelRefund.Provider);
+        var result = queryOnly
+            ? await gateway.QueryRefundAsync(profile, gatewayRequest, cancellationToken)
+            : await gateway.RefundAsync(profile, gatewayRequest, cancellationToken);
+
+        if (!result.IsSuccess && !IsExplicitChannelRejection(result.ErrorCode))
+            return ResultFactory.Failure<RefundDto>(result.ErrorCode ?? "CHANNEL_REFUND_UNAVAILABLE",
+                result.ErrorMessage ?? "渠道退款状态暂时不可确认");
+
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable,
+            cancellationToken);
+        try
+        {
+            var currentChannel = await db.PaymentChannelRefunds.SingleAsync(x =>
+                x.Id == channelRefund.Id && x.TenantId == tenantId, cancellationToken);
+            var currentRefund = await db.Refunds.Include(x => x.Lines).SingleAsync(x =>
+                x.Id == refund.Id && x.TenantId == tenantId, cancellationToken);
+            var currentPayment = await db.Payments.Include(x => x.Allocations).SingleAsync(x =>
+                x.Id == currentRefund.PaymentId && x.TenantId == tenantId, cancellationToken);
+            if (queryOnly) currentChannel.RecordQuery(clock.GetUtcNow());
+
+            if (!result.IsSuccess || result.State == PaymentChannelRefundState.Failed)
+            {
+                currentChannel.MarkFailed(result.ErrorCode ?? "CHANNEL_REFUND_FAILED");
+            }
+            else if (result.RefundAmountMinor != currentChannel.AmountMinor)
+            {
+                currentChannel.MarkFailed("CHANNEL_REFUND_AMOUNT_CONFLICT");
+            }
+            else if (result.State == PaymentChannelRefundState.Succeeded)
+            {
+                currentChannel.MarkSucceeded(result.ProviderRefundNo, clock.GetUtcNow());
+                if (currentRefund.Status == RefundStatus.Processing)
+                {
+                    currentPayment.ApplyRefund(currentRefund.AmountMinor);
+                    var order = await db.ServiceOrders.SingleAsync(x =>
+                        x.Id == currentPayment.BusinessId && x.TenantId == tenantId, cancellationToken);
+                    order.ApplyRefund(currentRefund.AmountMinor);
+                    currentRefund.CompleteChannel(clock.GetUtcNow());
+                    AddAudit(tenantId, command.StoreId, command.OperatorId, "refund.channel.complete",
+                        currentRefund.Id, RefundStatus.Processing.ToString(), currentRefund.Status.ToString(),
+                        null, currentRefund.Reason, clock.GetUtcNow());
+                }
+            }
+            else if (result.State == PaymentChannelRefundState.Pending)
+            {
+                currentChannel.MarkProcessing(result.ProviderRefundNo);
+            }
+            else
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return ResultFactory.Failure<RefundDto>("CHANNEL_REFUND_STATE_UNKNOWN",
+                    "渠道退款状态不明确，本地账务未变更");
+            }
+
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ResultFactory.Success(ToDto(currentRefund, currentPayment, currentChannel));
+        }
+        catch (DomainRuleException exception)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<RefundDto>(exception.Code, exception.Message);
+        }
+        catch (Exception exception) when (IsConflict(exception))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<RefundDto>("VERSION_CONFLICT", "渠道退款状态已变化，请重新查询");
+        }
+    }
+
     private async Task<Result<RefundDto>?> ReplayAsync(Guid tenantId, Guid commandId, byte[] hash,
         CancellationToken cancellationToken)
     {
@@ -294,16 +468,22 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
             x.Id == receipt.EntityId && x.TenantId == tenantId, cancellationToken);
         var payment = await db.Payments.AsNoTracking().SingleAsync(x => x.Id == refund.PaymentId &&
             x.TenantId == tenantId, cancellationToken);
-        return ResultFactory.Success(ToDto(refund, payment));
+        var channelRefund = await db.PaymentChannelRefunds.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.RefundId == refund.Id, cancellationToken);
+        return ResultFactory.Success(ToDto(refund, payment, channelRefund));
     }
 
-    private static RefundDto ToDto(Refund refund, Payment payment) => new(refund.Id, refund.PaymentId,
+    private static RefundDto ToDto(Refund refund, Payment payment, PaymentChannelRefund? channelRefund = null) =>
+        new(refund.Id, refund.PaymentId,
         payment.BusinessType.ToString(), payment.BusinessId, refund.RefundNo,
         refund.Status.ToString(), refund.AmountMinor, refund.Reason, refund.RequestedBy,
         refund.RequestedAtUtc, refund.ApprovedBy, refund.CompletedAtUtc, refund.RejectionReason,
         refund.Version, refund.Lines.Select(x => new RefundLineDto(x.Id, x.OriginalAllocationId,
             x.AmountMinor, x.Category.ToString(), x.MemberAccountId, x.Route.ToString(), x.CashShiftId,
-            x.CompletedAtUtc)).ToList());
+            x.CompletedAtUtc)).ToList(), channelRefund is null ? null : new ChannelRefundDto(channelRefund.Id,
+            channelRefund.Provider.ToString(), channelRefund.OutRefundNo, channelRefund.ProviderRefundNo,
+            channelRefund.AmountMinor, channelRefund.Status.ToString(), channelRefund.FailureCode,
+            channelRefund.LastQueriedAtUtc, channelRefund.SucceededAtUtc, channelRefund.Version));
     private async Task<DateTimeOffset?> StoreLocalTime(Guid storeId, Guid tenantId, DateTimeOffset now,
         CancellationToken cancellationToken)
     {
@@ -322,7 +502,7 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
             CreatedAtUtc = now, CompletedAtUtc = now
         });
     private void AddAudit(Guid tenantId, Guid storeId, Guid operatorId, string action, Guid id,
-        string? previous, string? current, Guid commandId, string? reason, DateTimeOffset now) =>
+        string? previous, string? current, Guid? commandId, string? reason, DateTimeOffset now) =>
         db.AuditEvents.Add(new AuditEventRecord
         {
             TenantId = tenantId, StoreId = storeId, OperatorId = operatorId, Action = action,
@@ -345,5 +525,8 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
                 return true;
         return false;
     }
+    private static bool IsExplicitChannelRejection(string? errorCode) => errorCode is not null &&
+        (errorCode.StartsWith("WECHAT_", StringComparison.Ordinal) ||
+         errorCode.StartsWith("ALIPAY_", StringComparison.Ordinal));
     private sealed record Receipt(Guid EntityId);
 }

@@ -99,6 +99,76 @@ internal sealed class AlipayGateway : IPaymentChannelGateway
         }
     }
 
+    public async Task<PaymentChannelRefundResult> RefundAsync(PaymentChannelCredentialProfile credentials,
+        PaymentChannelRefundRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var client = await CreateClient(credentials, cancellationToken);
+            var sdkRequest = new AlipayTradeRefundRequest();
+            sdkRequest.SetBizModel(new AlipayTradeRefundModel
+            {
+                OutTradeNo = request.OutTradeNo,
+                OutRequestNo = request.OutRefundNo,
+                RefundAmount = ToYuan(request.RefundAmountMinor),
+                RefundReason = request.Reason.Length <= 200 ? request.Reason : request.Reason[..200],
+            });
+            var response = await Task.Run(() => client.Execute(sdkRequest), cancellationToken);
+            if (response.Code != "10000")
+                return new PaymentChannelRefundResult(false, PaymentChannelRefundState.Unknown, null, null,
+                    AlipayError(response.SubCode, response.Code), response.SubMsg ?? response.Msg ?? "支付宝退款失败");
+            if (!string.Equals(response.OutTradeNo, request.OutTradeNo, StringComparison.Ordinal) ||
+                !TryMinor(response.RefundFee, out var refundAmount) || refundAmount != request.RefundAmountMinor)
+                return new PaymentChannelRefundResult(false, PaymentChannelRefundState.Unknown, null, null,
+                    "CHANNEL_RESULT_CONFLICT", "支付宝退款结果与本地退款单或金额不一致");
+            var state = response.FundChange == "Y"
+                ? PaymentChannelRefundState.Succeeded : PaymentChannelRefundState.Pending;
+            return new PaymentChannelRefundResult(true, state, response.RefundSettlementId,
+                refundAmount, null, null);
+        }
+        catch (Exception exception) when (IsChannelException(exception))
+        {
+            return new PaymentChannelRefundResult(false, PaymentChannelRefundState.Unknown, null, null,
+                "CHANNEL_UNAVAILABLE", "支付宝退款暂时不可用");
+        }
+    }
+
+    public async Task<PaymentChannelRefundResult> QueryRefundAsync(
+        PaymentChannelCredentialProfile credentials, PaymentChannelRefundRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var client = await CreateClient(credentials, cancellationToken);
+            var sdkRequest = new AlipayTradeFastpayRefundQueryRequest();
+            sdkRequest.SetBizModel(new AlipayTradeFastpayRefundQueryModel
+            {
+                OutTradeNo = request.OutTradeNo,
+                OutRequestNo = request.OutRefundNo,
+            });
+            var response = await Task.Run(() => client.Execute(sdkRequest), cancellationToken);
+            if (response.Code != "10000")
+                return new PaymentChannelRefundResult(false, PaymentChannelRefundState.Unknown, null, null,
+                    AlipayError(response.SubCode, response.Code), response.SubMsg ?? response.Msg ?? "支付宝退款查询失败");
+            if (!string.Equals(response.OutTradeNo, request.OutTradeNo, StringComparison.Ordinal) ||
+                !string.Equals(response.OutRequestNo, request.OutRefundNo, StringComparison.Ordinal) ||
+                !TryMinor(response.RefundAmount, out var refundAmount) ||
+                refundAmount != request.RefundAmountMinor)
+                return new PaymentChannelRefundResult(false, PaymentChannelRefundState.Unknown, null, null,
+                    "CHANNEL_RESULT_CONFLICT", "支付宝退款查询结果与本地退款单或金额不一致");
+            var succeeded = response.RefundStatus == "REFUND_SUCCESS" ||
+                !string.IsNullOrWhiteSpace(response.GmtRefundPay);
+            return new PaymentChannelRefundResult(true,
+                succeeded ? PaymentChannelRefundState.Succeeded : PaymentChannelRefundState.Pending,
+                response.RefundSettlementId, refundAmount, null, null);
+        }
+        catch (Exception exception) when (IsChannelException(exception))
+        {
+            return new PaymentChannelRefundResult(false, PaymentChannelRefundState.Unknown, null, null,
+                "CHANNEL_UNAVAILABLE", "支付宝退款查询暂时不可用");
+        }
+    }
+
     public PaymentChannelNotification VerifyNotification(PaymentChannelCredentialProfile credentials,
         PaymentChannelNotificationEnvelope notification)
     {

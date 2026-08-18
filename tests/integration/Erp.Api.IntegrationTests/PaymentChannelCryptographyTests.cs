@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Erp.Domain.Cashier;
 using Erp.Infrastructure.Cashier;
 
@@ -98,6 +99,58 @@ public sealed class PaymentChannelCryptographyTests
         }
     }
 
+    [Fact]
+    public async Task WechatRefundUsesStableMerchantRefundNumberAndRequiresSignedMatchingResponse()
+    {
+        using var merchantRsa = RSA.Create(2048);
+        using var platformRsa = RSA.Create(2048);
+        var merchantKeyPath = Path.GetTempFileName();
+        var platformKeyPath = Path.GetTempFileName();
+        var now = new DateTimeOffset(2026, 8, 18, 9, 30, 0, TimeSpan.Zero);
+        const string platformKeyId = "PLATFORM_KEY_20260818";
+        const string responseNonce = "refund-response-nonce";
+        try
+        {
+            await File.WriteAllTextAsync(merchantKeyPath, merchantRsa.ExportRSAPrivateKeyPem());
+            await File.WriteAllTextAsync(platformKeyPath, platformRsa.ExportSubjectPublicKeyInfoPem());
+            var responseBody = """
+                {"refund_id":"503001202608180001","out_refund_no":"RF202608180006","status":"SUCCESS","amount":{"total":12300,"refund":2300,"currency":"CNY"}}
+                """;
+            var handler = new SignedWechatResponseHandler(platformRsa, platformKeyId, now, responseNonce,
+                responseBody);
+            using var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.mch.weixin.qq.com") };
+            var gateway = new WechatPayGateway(http, new FixedTimeProvider(now));
+            var credentials = new PaymentChannelCredentialProfile(PaymentChannelProvider.WeChatPay,
+                "TEST_WECHAT", "wx2026000000000001", "1900000001", "MERCHANT_CERT_20260818",
+                "12345678901234567890123456789012", merchantKeyPath, platformKeyPath, platformKeyId,
+                "https://erp.example.test/api/integrations/payment-notifications/wechat", null);
+            var request = new PaymentChannelRefundRequest("PAY202608180001-A1",
+                "4200002026081800000001", "RF202608180006", 2_300, 12_300,
+                string.Concat(Enumerable.Repeat("退", 26)) + "🙂");
+
+            var result = await gateway.RefundAsync(credentials, request, CancellationToken.None);
+
+            Assert.True(result.IsSuccess);
+            Assert.Equal(PaymentChannelRefundState.Succeeded, result.State);
+            Assert.Equal("503001202608180001", result.ProviderRefundNo);
+            Assert.Equal(2_300, result.RefundAmountMinor);
+            Assert.Equal(HttpMethod.Post, handler.RequestMethod);
+            Assert.Equal("/v3/refund/domestic/refunds", handler.RequestPath);
+            Assert.Contains("\"out_refund_no\":\"RF202608180006\"", handler.RequestBody,
+                StringComparison.Ordinal);
+            Assert.Contains("\"refund\":2300", handler.RequestBody, StringComparison.Ordinal);
+            Assert.Contains("WECHATPAY2-SHA256-RSA2048", handler.Authorization, StringComparison.Ordinal);
+            using var sentBody = JsonDocument.Parse(handler.RequestBody);
+            Assert.Equal(string.Concat(Enumerable.Repeat("退", 26)),
+                sentBody.RootElement.GetProperty("reason").GetString());
+        }
+        finally
+        {
+            File.Delete(merchantKeyPath);
+            File.Delete(platformKeyPath);
+        }
+    }
+
     private static string Extract(string authorization, string key)
     {
         var prefix = $"{key}=\"";
@@ -107,5 +160,42 @@ public sealed class PaymentChannelCryptographyTests
         var end = authorization.IndexOf('"', start);
         Assert.True(end > start);
         return authorization[start..end];
+    }
+
+    private sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    private sealed class SignedWechatResponseHandler(RSA platformRsa, string keyId, DateTimeOffset now,
+        string nonce, string responseBody) : HttpMessageHandler
+    {
+        public HttpMethod? RequestMethod { get; private set; }
+        public string? RequestPath { get; private set; }
+        public string RequestBody { get; private set; } = string.Empty;
+        public string Authorization { get; private set; } = string.Empty;
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestMethod = request.Method;
+            RequestPath = request.RequestUri?.PathAndQuery;
+            RequestBody = request.Content is null ? string.Empty :
+                await request.Content.ReadAsStringAsync(cancellationToken);
+            Authorization = request.Headers.Authorization?.ToString() ?? string.Empty;
+            var timestamp = now.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+            var message = $"{timestamp}\n{nonce}\n{responseBody}\n";
+            var signature = Convert.ToBase64String(platformRsa.SignData(Encoding.UTF8.GetBytes(message),
+                HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1));
+            var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(responseBody, Encoding.UTF8, "application/json"),
+            };
+            response.Headers.TryAddWithoutValidation("Wechatpay-Timestamp", timestamp);
+            response.Headers.TryAddWithoutValidation("Wechatpay-Nonce", nonce);
+            response.Headers.TryAddWithoutValidation("Wechatpay-Signature", signature);
+            response.Headers.TryAddWithoutValidation("Wechatpay-Serial", keyId);
+            return response;
+        }
     }
 }
