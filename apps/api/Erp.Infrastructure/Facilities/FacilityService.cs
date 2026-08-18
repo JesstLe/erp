@@ -39,9 +39,8 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
         var visitIds = sessions.Select(x => x.VisitId).Distinct().ToList();
         var visits = await db.Visits.AsNoTracking().Where(x => visitIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var customerIds = visits.Values.Where(x => x.CustomerId.HasValue).Select(x => x.CustomerId!.Value).Distinct().ToList();
-        var rawCustomerNames = await db.Customers.AsNoTracking().Where(x => customerIds.Contains(x.Id) && x.TenantId == tenantId)
+        var customerNames = await db.Customers.AsNoTracking().Where(x => customerIds.Contains(x.Id) && x.TenantId == tenantId)
             .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
-        var customerNames = rawCustomerNames.ToDictionary(x => x.Key, x => CustomerPrivacyService.MaskName(x.Value));
         var plannedServiceIds = visits.Values.Where(x => x.PlannedServiceItemId.HasValue)
             .Select(x => x.PlannedServiceItemId!.Value).Distinct().ToList();
         var plannedServiceNames = await db.ServiceItems.AsNoTracking()

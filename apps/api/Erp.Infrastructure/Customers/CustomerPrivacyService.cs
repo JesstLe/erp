@@ -29,6 +29,8 @@ internal sealed partial class CustomerPrivacyService
 
     public byte[] Hash(string normalizedMobile) => HMACSHA256.HashData(lookupKey, Encoding.UTF8.GetBytes(Normalize(normalizedMobile)));
 
+    public string MaskProtectedMobile(string ciphertext) => MaskMobile(protector.Unprotect(ciphertext));
+
     public static string Normalize(string input)
     {
         var normalized = new string(input.Where(char.IsDigit).ToArray());
@@ -36,18 +38,10 @@ internal sealed partial class CustomerPrivacyService
         return normalized;
     }
 
-    public static string MaskMobile(string lastFour) => $"*******{lastFour}";
-
-    public static string MaskName(string name)
+    public static string MaskMobile(string mobile)
     {
-        var value = name.Trim();
-        return value.Length switch
-        {
-            0 => "匿名顾客",
-            1 => $"{value}*",
-            2 => $"{value[0]}*",
-            _ => $"{value[0]}{new string('*', Math.Min(3, value.Length - 2))}{value[^1]}",
-        };
+        var normalized = Normalize(mobile);
+        return $"{normalized[..3]}****{normalized[^4..]}";
     }
 
     public static string MaskCardNo(string cardNo) => cardNo.Length <= 4 ? "****" : $"****{cardNo[^4..]}";

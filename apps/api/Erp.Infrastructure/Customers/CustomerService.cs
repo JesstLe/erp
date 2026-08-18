@@ -50,8 +50,8 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         var rows = await customers.OrderByDescending(x => x.CreatedAtUtc).Take(100)
             .Select(x => new { Customer = x, ActiveCards = db.MemberCards.Count(card => card.CustomerId == x.Id && card.Status == MemberCardStatus.Active) })
             .ToListAsync(cancellationToken);
-        return rows.Select(x => new CustomerSummaryDto(x.Customer.Id, CustomerPrivacyService.MaskName(x.Customer.Name),
-            CustomerPrivacyService.MaskMobile(x.Customer.MobileLastFour), x.Customer.Status.ToString(), x.Customer.HomeStoreId,
+        return rows.Select(x => new CustomerSummaryDto(x.Customer.Id, x.Customer.Name,
+            privacy.MaskProtectedMobile(x.Customer.MobileCiphertext), x.Customer.Status.ToString(), x.Customer.HomeStoreId,
             x.ActiveCards, x.Customer.CreatedAtUtc)).ToList();
     }
 
@@ -253,8 +253,8 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             CustomerPrivacyService.MaskCardNo(card.CardNo), card.Status.ToString(), card.ValidFrom, card.ValidTo,
             accounts.Where(x => x.CardId == card.Id).OrderBy(x => AccountOrder(x.AccountType)).Select(x => new MemberAccountDto(x.Id, x.AccountType.ToString(),
                 x.BalanceUnits, x.Status.ToString())).ToList())).ToList();
-        return new CustomerDetailDto(customer.Id, CustomerPrivacyService.MaskName(customer.Name),
-            CustomerPrivacyService.MaskMobile(customer.MobileLastFour), customer.Gender.ToString(), customer.SourceCode,
+        return new CustomerDetailDto(customer.Id, customer.Name,
+            privacy.MaskProtectedMobile(customer.MobileCiphertext), customer.Gender.ToString(), customer.SourceCode,
             customer.ServiceNotificationConsent, customer.MarketingConsent, customer.Status.ToString(),
             customer.HomeStoreId, customer.Version, cardDtos);
     }

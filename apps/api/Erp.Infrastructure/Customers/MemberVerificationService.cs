@@ -111,7 +111,7 @@ internal sealed class MemberVerificationService(ErpDbContext db, CustomerPrivacy
                 challenge.Id, null, challenge.Status.ToString(), now);
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return ResultFactory.Success(ToDto(challenge, code));
+            return ResultFactory.Success(ToDto(challenge, privacy.MaskProtectedMobile(customer.MobileCiphertext), code));
         }
         catch (DomainRuleException exception)
         {
@@ -144,8 +144,12 @@ internal sealed class MemberVerificationService(ErpDbContext db, CustomerPrivacy
                 matched ? "membership.verification.success" : "membership.verification.failure",
                 challenge.Id, MemberVerificationStatus.Active.ToString(), challenge.Status.ToString(), now);
             await db.SaveChangesAsync(cancellationToken);
+            var maskedMobile = matched
+                ? await db.Customers.AsNoTracking().Where(x => x.Id == challenge.CustomerId && x.TenantId == tenantId)
+                    .Select(x => x.MobileCiphertext).SingleAsync(cancellationToken)
+                : null;
             return matched
-                ? ResultFactory.Success(ToDto(challenge, null))
+                ? ResultFactory.Success(ToDto(challenge, privacy.MaskProtectedMobile(maskedMobile!), null))
                 : ResultFactory.Failure<MemberVerificationChallengeDto>("MEMBER_VERIFICATION_CODE_INVALID",
                     $"验证码错误，还可尝试 {challenge.AttemptsRemaining} 次");
         }
@@ -156,9 +160,9 @@ internal sealed class MemberVerificationService(ErpDbContext db, CustomerPrivacy
         }
     }
 
-    private static MemberVerificationChallengeDto ToDto(MemberVerificationChallenge challenge,
+    private static MemberVerificationChallengeDto ToDto(MemberVerificationChallenge challenge, string maskedMobile,
         string? developmentCode) => new(challenge.Id, challenge.OrderId, challenge.CustomerId,
-        challenge.AuthorizedAmountMinor, $"*******{challenge.MobileLastFour}", challenge.Status.ToString(),
+        challenge.AuthorizedAmountMinor, maskedMobile, challenge.Status.ToString(),
         challenge.AttemptsRemaining, challenge.ExpiresAtUtc, developmentCode);
 
     private void AddAudit(Guid tenantId, Guid storeId, Guid operatorId, string action, Guid entityId,
