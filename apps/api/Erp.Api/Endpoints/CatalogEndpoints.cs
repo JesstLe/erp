@@ -2,6 +2,7 @@ using Erp.Application.Catalog;
 using Erp.Application.Common;
 using Erp.Application.Identity;
 using Erp.Application.Security;
+using Erp.Domain.Catalog;
 
 namespace Erp.Api.Endpoints;
 
@@ -11,10 +12,15 @@ public static class CatalogEndpoints
     {
         var group = endpoints.MapGroup("/api/v1/catalog").WithTags("Catalog").RequireAuthorization();
 
-        group.MapGet("/service-items", async (IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        group.MapGet("/service-items", async (string? query, string? status, IIdentityService identity,
+            ICatalogService catalog, CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
-            return current is null ? Results.Unauthorized() : Results.Ok(await catalog.ListServiceItemsAsync(current.TenantId, cancellationToken));
+            if (current is null) return Results.Unauthorized();
+            if (query?.Trim().Length > 100) return InvalidQuery();
+            if (!TryParseStatus(status, out var parsedStatus)) return InvalidStatus();
+            return Results.Ok(await catalog.ListServiceItemsAsync(current.TenantId, query, parsedStatus,
+                cancellationToken));
         });
 
         group.MapPost("/service-items", async (CreateServiceItemRequest request, IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -31,10 +37,36 @@ public static class CatalogEndpoints
                 value => Results.Created($"/api/v1/catalog/service-items/{value.Id}", value));
         }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
 
-        group.MapGet("/products", async (IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        group.MapPut("/service-items/{id:guid}", async (Guid id, UpdateServiceItemRequest request,
+            IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
-            return current is null ? Results.Unauthorized() : Results.Ok(await catalog.ListProductItemsAsync(current.TenantId, cancellationToken));
+            if (current is null) return Results.Unauthorized();
+            if (!TryParseRequiredStatus(request.Status, out var parsedStatus)) return InvalidStatus();
+            return EndpointResults.From(await catalog.UpdateServiceItemAsync(current.TenantId,
+                new UpdateServiceItemCommand(id, request.Name ?? string.Empty, request.StandardDurationMinutes,
+                    parsedStatus, request.ExpectedVersion, current.Id, DefaultStoreId(current)), cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
+        group.MapDelete("/service-items/{id:guid}", async (Guid id, uint expectedVersion,
+            IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            return EndpointResults.From(await catalog.DeleteServiceItemAsync(current.TenantId,
+                new DeleteCatalogItemCommand(id, expectedVersion, current.Id, DefaultStoreId(current)),
+                cancellationToken), _ => Results.NoContent());
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
+        group.MapGet("/products", async (string? query, string? status, IIdentityService identity,
+            ICatalogService catalog, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (query?.Trim().Length > 100) return InvalidQuery();
+            if (!TryParseStatus(status, out var parsedStatus)) return InvalidStatus();
+            return Results.Ok(await catalog.ListProductItemsAsync(current.TenantId, query, parsedStatus,
+                cancellationToken));
         });
 
         group.MapPost("/products", async (CreateProductItemRequest request, IIdentityService identity, ICatalogService catalog,
@@ -46,6 +78,28 @@ public static class CatalogEndpoints
                 new CreateProductItemCommand(request.Code ?? string.Empty, request.Name ?? string.Empty,
                     request.UnitName ?? string.Empty, request.TrackInventory, current.Id, DefaultStoreId(current)), cancellationToken),
                 value => Results.Created($"/api/v1/catalog/products/{value.Id}", value));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
+        group.MapPut("/products/{id:guid}", async (Guid id, UpdateProductItemRequest request,
+            IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!TryParseRequiredStatus(request.Status, out var parsedStatus)) return InvalidStatus();
+            return EndpointResults.From(await catalog.UpdateProductItemAsync(current.TenantId,
+                new UpdateProductItemCommand(id, request.Name ?? string.Empty, request.UnitName ?? string.Empty,
+                    request.TrackInventory, parsedStatus, request.ExpectedVersion, current.Id, DefaultStoreId(current)),
+                cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
+        group.MapDelete("/products/{id:guid}", async (Guid id, uint expectedVersion,
+            IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            return EndpointResults.From(await catalog.DeleteProductItemAsync(current.TenantId,
+                new DeleteCatalogItemCommand(id, expectedVersion, current.Id, DefaultStoreId(current)),
+                cancellationToken), _ => Results.NoContent());
         }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
 
         group.MapPost("/products/{id:guid}/image", async (Guid id, HttpRequest request,
@@ -121,8 +175,40 @@ public static class CatalogEndpoints
         return defaultStore?.Id ?? (current.Stores.Count > 0 ? current.Stores[0].Id : null);
     }
 
+    private static bool TryParseStatus(string? value, out CatalogItemStatus? status)
+    {
+        status = null;
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        if (!TryParseRequiredStatus(value, out var parsed)) return false;
+        status = parsed;
+        return true;
+    }
+
+    private static bool TryParseRequiredStatus(string? value, out CatalogItemStatus status)
+    {
+        status = default;
+        switch (value?.Trim().ToUpperInvariant())
+        {
+            case "ENABLED": status = CatalogItemStatus.Enabled; return true;
+            case "DISABLED": status = CatalogItemStatus.Disabled; return true;
+            default: return false;
+        }
+    }
+
+    private static IResult InvalidStatus() => Results.Json(
+        new { error = new { code = "VALIDATION_FAILED", message = "状态只能是 ENABLED 或 DISABLED" } },
+        statusCode: StatusCodes.Status422UnprocessableEntity);
+
+    private static IResult InvalidQuery() => Results.Json(
+        new { error = new { code = "VALIDATION_FAILED", message = "查询关键字不能超过100个字符" } },
+        statusCode: StatusCodes.Status422UnprocessableEntity);
+
     private sealed record CreateServiceItemRequest(string? Code, string? Name, int StandardDurationMinutes);
+    private sealed record UpdateServiceItemRequest(string? Name, int StandardDurationMinutes, string? Status,
+        uint ExpectedVersion);
     private sealed record CreateProductItemRequest(string? Code, string? Name, string? UnitName, bool TrackInventory);
+    private sealed record UpdateProductItemRequest(string? Name, string? UnitName, bool TrackInventory, string? Status,
+        uint ExpectedVersion);
 
     private sealed record CreatePriceBookRequest(string? Name, DateOnly EffectiveFrom, IReadOnlyList<CreatePriceBookLineRequest>? Lines,
         IReadOnlyList<CreateProductPriceBookLineRequest>? ProductLines);

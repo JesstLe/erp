@@ -30,6 +30,26 @@ public sealed class ProductItem : Entity
 
     public CatalogItemStatus Status { get; private set; }
 
+    public void Update(string name, string unitName, bool trackInventory)
+    {
+        Name = Normalize(name, 120, "产品名称");
+        UnitName = Normalize(unitName, 20, "计量单位");
+        TrackInventory = trackInventory;
+        Touch();
+    }
+
+    public void Enable()
+    {
+        Status = CatalogItemStatus.Enabled;
+        Touch();
+    }
+
+    public void Disable()
+    {
+        Status = CatalogItemStatus.Disabled;
+        Touch();
+    }
+
     public void SetImage(Guid fileId)
     {
         if (fileId == Guid.Empty)

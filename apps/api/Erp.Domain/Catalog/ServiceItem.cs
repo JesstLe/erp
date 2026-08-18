@@ -38,6 +38,12 @@ public sealed class ServiceItem : Entity
         Touch();
     }
 
+    public void Enable()
+    {
+        Status = CatalogItemStatus.Enabled;
+        Touch();
+    }
+
     private void SetStandardDuration(int minutes)
     {
         if (minutes is < 0 or > 1440)
@@ -65,4 +71,3 @@ public enum CatalogItemStatus
     Enabled = 1,
     Disabled = 2,
 }
-

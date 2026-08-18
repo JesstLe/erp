@@ -50,4 +50,22 @@ public sealed class ProductItemTests
 
         Assert.Equal(fileId, product.ImageFileId);
     }
+
+    [Fact]
+    public void ProductCanBeUpdatedDisabledAndRestoredWithoutChangingCode()
+    {
+        var product = new ProductItem(TenantId, "PD001", "护理套装", "套", false);
+
+        product.Update("护理用品", "盒", true);
+        product.Disable();
+
+        Assert.Equal("PD001", product.Code);
+        Assert.Equal("护理用品", product.Name);
+        Assert.Equal("盒", product.UnitName);
+        Assert.True(product.TrackInventory);
+        Assert.Equal(CatalogItemStatus.Disabled, product.Status);
+
+        product.Enable();
+        Assert.Equal(CatalogItemStatus.Enabled, product.Status);
+    }
 }
