@@ -63,7 +63,7 @@ internal sealed class MemberTopupService(ErpDbContext db, TimeProvider clock,
         try
         {
             var customerExists = await db.Customers.AnyAsync(x => x.Id == command.CustomerId &&
-                x.TenantId == tenantId && x.HomeStoreId == command.StoreId && x.Status == CustomerStatus.Active,
+                x.TenantId == tenantId && x.Status == CustomerStatus.Active,
                 cancellationToken);
             if (!customerExists)
                 return await FailureAndRollback(transaction, "CUSTOMER_NOT_FOUND", "顾客不存在或当前不可储值", cancellationToken);
@@ -72,7 +72,7 @@ internal sealed class MemberTopupService(ErpDbContext db, TimeProvider clock,
                     (x.Id == command.CustomerId || x.MergedIntoCustomerId == command.CustomerId))
                 .Select(x => x.Id).ToListAsync(cancellationToken);
             var card = await db.MemberCards.SingleOrDefaultAsync(x => x.Id == command.CardId &&
-                x.TenantId == tenantId && customerIds.Contains(x.CustomerId) && x.StoreId == command.StoreId &&
+                x.TenantId == tenantId && customerIds.Contains(x.CustomerId) &&
                 x.Status == MemberCardStatus.Active, cancellationToken);
             if (card is null)
                 return await FailureAndRollback(transaction, "MEMBER_CARD_NOT_FOUND", "会员卡不存在或当前不可储值", cancellationToken);

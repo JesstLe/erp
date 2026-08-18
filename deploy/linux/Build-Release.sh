@@ -67,7 +67,7 @@ cp -R "$repository_root/apps/web/dist/." "$app_directory/wwwroot/"
 cp -R "$repository_root/db" "$staging_directory/db"
 mkdir -p "$staging_directory/deploy"
 mkdir -p "$staging_directory/deploy/linux"
-for deployment_file in common.sh Initialize-Host.sh Deploy-Release.sh backup.sh bootstrap.sh rollback.sh README.md; do
+for deployment_file in common.sh Initialize-Host.sh Deploy-Release.sh backup.sh bootstrap.sh platform-bootstrap.sh rollback.sh README.md; do
   cp "$script_directory/$deployment_file" "$staging_directory/deploy/linux/$deployment_file"
 done
 

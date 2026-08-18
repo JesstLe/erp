@@ -5,7 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { apiRequest, ApiError } from '../api/client'
 import type { PageResult, ServiceRecord, ServiceRecordOrderOption } from '../api/types'
-import { useAuth } from '../auth/useAuth'
+import { Permission } from '../security/permissions'
+import { useAuthorization } from '../security/useAuthorization'
 
 interface ServiceRecordForm { serviceOccurredAt: string; serviceOrderId?: string; conditionNotes?: string; serviceContent?: string; followUpNotes?: string }
 interface CorrectionForm { reason: string; conditionNotes?: string; serviceContent?: string; followUpNotes?: string }
@@ -16,7 +17,7 @@ function localDateTimeValue() {
 }
 
 export function ServiceRecordsSection({ customerId, storeId }: { customerId: string; storeId: string }) {
-  const auth = useAuth(); const canManage = auth.user?.roles.some((role) => role === 'OWNER' || role === 'STORE_MANAGER') ?? false
+  const { can } = useAuthorization(); const canManage = can(Permission.ServiceRecordManage)
   const [open, setOpen] = useState(false); const [correcting, setCorrecting] = useState<ServiceRecord>()
   const [page, setPage] = useState(1); const pageSize = 5; const [form] = Form.useForm<ServiceRecordForm>()
   const [correctionForm] = Form.useForm<CorrectionForm>(); const [images, setImages] = useState<UploadFile[]>([])

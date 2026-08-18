@@ -9,7 +9,7 @@ public static class AuditEndpoints
     public static IEndpointRouteBuilder MapAuditEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/audit").WithTags("Audit")
-            .RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager));
+            .RequireAuthorization(SystemPermissions.AuditRead);
 
         group.MapGet("/events", async (Guid storeId, string? action, string? entityType, DateOnly? fromDate,
             DateOnly? toDate, int? page, int? pageSize, IIdentityService identity, IAuditQueryService audit,

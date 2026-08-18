@@ -25,6 +25,22 @@ describe('apiRequest', () => {
     expect(requestInit.credentials).toBe('include')
   })
 
+  it('uses the isolated platform CSRF endpoint after platform login', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ token: 'platform-token' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await apiRequest<void>('/api/v1/platform/auth/logout', { method: 'POST' })
+
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/platform/auth/csrf')
+    const requestInit = fetchMock.mock.calls[1][1] as RequestInit
+    expect((requestInit.headers as Headers).get('X-CSRF-TOKEN')).toBe('platform-token')
+  })
+
   it('surfaces structured API errors without exposing response internals', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       error: { code: 'AUTHENTICATION_FAILED', message: '账号或密码错误' },

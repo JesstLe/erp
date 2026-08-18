@@ -7,13 +7,10 @@ namespace Erp.Api.Endpoints;
 
 public static class PaymentEndpoints
 {
-    private static readonly string[] CashierRoles = [SystemRoles.Owner, SystemRoles.StoreManager, SystemRoles.Cashier];
-    private static readonly string[] ReviewerRoles = [SystemRoles.Owner, SystemRoles.StoreManager];
-
     public static IEndpointRouteBuilder MapPaymentEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/payments").WithTags("Payments")
-            .RequireAuthorization(policy => policy.RequireRole(CashierRoles));
+            .RequireAuthorization(SystemPermissions.CashierCheckout);
 
         group.MapGet("/methods", async (Guid? storeId, IIdentityService identity, IPaymentService payments,
             CancellationToken cancellationToken) =>
@@ -83,7 +80,7 @@ public static class PaymentEndpoints
                 return EndpointResults.InvalidPagination();
             return Results.Ok(await payments.ListShiftsAsync(current.TenantId, storeId, normalizedPage,
                 normalizedPageSize, cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ReviewerRoles));
+        }).RequireAuthorization(SystemPermissions.ShiftReview);
 
         group.MapPost("/shifts/open", async (OpenShiftRequest request, IIdentityService identity,
             IPaymentService payments, CancellationToken cancellationToken) =>
@@ -115,7 +112,7 @@ public static class PaymentEndpoints
             return EndpointResults.From(await payments.ReviewShiftAsync(current.TenantId,
                 new ReviewShiftCommand(request.StoreId, shiftId, request.ExpectedVersion, request.Reason,
                     request.CommandId, current.Id, current.Roles.Contains(SystemRoles.Owner)), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ReviewerRoles));
+        }).RequireAuthorization(SystemPermissions.ShiftReview);
 
         return endpoints;
     }

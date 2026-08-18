@@ -1,6 +1,6 @@
 export interface PageResult<T> { items: T[]; total: number; page: number; pageSize: number }
 export interface AuthorizedStore { id: string; code: string; name: string; isDefault: boolean }
-export interface CurrentUser { id: string; tenantId: string; displayName: string; account: string; mustChangePassword: boolean; roles: string[]; stores: AuthorizedStore[] }
+export interface CurrentUser { id: string; tenantId: string; displayName: string; account: string; mustChangePassword: boolean; roles: string[]; permissions: string[]; stores: AuthorizedStore[] }
 export interface EmployeeStore { id: string; code: string; name: string; isPrimary: boolean }
 export interface Employee { id: string; employeeNo: string; displayName: string; positionCode: string; status: string; userId?: string; account?: string; accountEnabled?: boolean; mustChangePassword?: boolean; roles: string[]; stores: EmployeeStore[]; createdAtUtc: string; version: number }
 export interface EmployeeRole { id: string; code: string; name: string }
@@ -34,12 +34,12 @@ export interface Appointment { id: string; appointmentNo: string; storeId: strin
 export interface EmployeeShift { id: string; storeId: string; employeeId: string; employeeNo: string; employeeName: string; startsAtUtc: string; endsAtUtc: string; note?: string; status: string; cancellationReason?: string; version: number }
 export interface SchedulingResource { id: string; code: string; name: string }
 
-export interface CustomerSummary { id: string; displayName: string; maskedMobile: string; status: string; homeStoreId: string; activeCardCount: number; createdAtUtc: string }
+export interface CustomerSummary { id: string; displayName: string; maskedMobile: string; status: string; homeStoreId: string; homeStoreName: string; activeCardCount: number; createdAtUtc: string }
 export interface MemberCardType { id: string; code: string; name: string; validityDays?: number; status: string }
 export interface MemberAccount { id: string; accountType: string; balanceUnits: number; status: string }
 export interface MemberCard { id: string; cardTypeName: string; maskedCardNo: string; status: string; validFrom: string; validTo?: string; accounts: MemberAccount[] }
 export interface MergedCustomerAlias { id: string; displayName: string; maskedMobile: string; mergedAtUtc?: string }
-export interface CustomerDetail { id: string; displayName: string; maskedMobile: string; gender: string; birthDate?: string; sourceCode?: string; serviceNotificationConsent: boolean; marketingConsent: boolean; status: string; homeStoreId: string; version: number; cards: MemberCard[]; mergedAliases: MergedCustomerAlias[] }
+export interface CustomerDetail { id: string; displayName: string; maskedMobile: string; gender: string; birthDate?: string; sourceCode?: string; serviceNotificationConsent: boolean; marketingConsent: boolean; status: string; homeStoreId: string; homeStoreName: string; version: number; cards: MemberCard[]; mergedAliases: MergedCustomerAlias[] }
 export interface CustomerMergePreview { sourceCustomerId: string; sourceDisplayName: string; sourceMaskedMobile: string; sourceVersion: number; targetCustomerId: string; targetDisplayName: string; targetMaskedMobile: string; targetVersion: number; sourceCardCount: number; sourcePrincipalBalanceMinor: number; sourceBonusBalanceMinor: number; sourcePointsBalance: number; sourceOrderCount: number; sourceServiceRecordCount: number; blockers: string[]; canMerge: boolean }
 export interface ServiceRecordAttachment { fileId: string; fileName: string; contentType: string; sizeBytes: number }
 export interface ServiceRecordCorrection { id: string; reason: string; conditionNotes?: string; serviceContent?: string; followUpNotes?: string; correctedBy: string; correctedByName: string; createdAtUtc: string }
@@ -65,7 +65,7 @@ export interface ChannelRefund { id: string; provider: string; outRefundNo: stri
 export interface Refund { id: string; paymentId: string; businessType: string; businessId: string; refundNo: string; status: string; amountMinor: number; reason: string; requestedBy: string; requestedAtUtc: string; approvedBy?: string; completedAtUtc?: string; rejectionReason?: string; version: number; lines: RefundLine[]; channelRefund?: ChannelRefund }
 export interface MemberVerification { id: string; orderId: string; customerId: string; authorizedAmountMinor: number; maskedMobile: string; status: string; attemptsRemaining: number; expiresAtUtc: string; developmentCode?: string }
 export interface MemberTopup { id: string; topupNo: string; storeId: string; customerId: string; cardId: string; principalMinor: number; bonusMinor: number; receivableMinor: number; status: string; note?: string; refundedPrincipalMinor: number; revokedBonusMinor: number; remainingPrincipalMinor: number; paidAtUtc: string; paymentId: string; paymentNo: string; paymentStatus: string; paymentRefundedMinor: number; paymentVersion: number; allocations: PaymentAllocation[] }
-export interface ServicePassLedger { id: string; action: string; purchasedUsesDelta: number; bonusUsesDelta: number; purchasedUsesAfter: number; bonusUsesAfter: number; serviceOrderId?: string; reversedLedgerId?: string; reason: string; occurredAtUtc: string }
+export interface ServicePassLedger { id: string; storeId: string; action: string; purchasedUsesDelta: number; bonusUsesDelta: number; purchasedUsesAfter: number; bonusUsesAfter: number; serviceOrderId?: string; reversedLedgerId?: string; reason: string; occurredAtUtc: string }
 export interface ServicePass { id: string; storeId: string; customerId: string; cardId: string; serviceItemId: string; serviceItemName: string; passName: string; purchasedUses: number; bonusUses: number; remainingPurchasedUses: number; remainingBonusUses: number; remainingUses: number; validFrom: string; validTo?: string; status: string; version: number; ledgers: ServicePassLedger[] }
 export interface PointGrant { id: string; originalUnits: number; remainingUnits: number; expiresOn?: string; sourceType: string; status: string }
 export interface PointLedger { id: string; businessType: string; businessId: string; direction: string; units: number; balanceBefore: number; balanceAfter: number; occurredAtUtc: string }
@@ -97,3 +97,10 @@ export interface StocktakeLine { id: string; productItemId: string; productCode:
 export interface Stocktake { id: string; storeId: string; stocktakeNo: string; reason: string; requestedBy: string; frozenAtUtc: string; status: string; approvedBy?: string; postedAtUtc?: string; decisionReason?: string; version: number; lines: StocktakeLine[] }
 export interface InventoryTransferLine { id: string; productItemId: string; productCode: string; productName: string; unitName: string; quantity: number }
 export interface InventoryTransfer { id: string; sourceStoreId: string; destinationStoreId: string; transferNo: string; reason: string; requestedBy: string; requestedAtUtc: string; status: string; shippedBy?: string; shippedAtUtc?: string; receivedBy?: string; receivedAtUtc?: string; decisionReason?: string; version: number; lines: InventoryTransferLine[] }
+
+export interface PlatformCurrentUser { id: string; account: string; displayName: string; mustChangePassword: boolean }
+export interface MerchantRegistrationReceipt { id: string; applicationNo: string; status: string; createdAtUtc: string }
+export interface MerchantRegistrationApplication { id: string; applicationNo: string; merchantName: string; storeName: string; contactName: string; maskedMobile: string; maskedEmail?: string; desiredOwnerAccount: string; note?: string; sourceIp: string; status: string; tenantId?: string; reviewReason?: string; createdAtUtc: string; reviewedAtUtc?: string; version: number }
+export interface PlatformMerchant { id: string; code: string; name: string; status: string; storeCount: number; employeeCount: number; loginAccountCount: number; createdAtUtc: string; version: number }
+export interface LoginSecurityEvent { id: string; scope: string; eventType: string; resultCode: string; tenantId?: string; tenantName?: string; account: string; ipAddress: string; userAgentSummary: string; traceId: string; occurredAtUtc: string }
+export interface PlatformPage<T> { items: T[]; total: number; page: number; pageSize: number }

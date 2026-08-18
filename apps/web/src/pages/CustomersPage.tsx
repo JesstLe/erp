@@ -53,6 +53,8 @@ import { ServiceRecordsSection } from "./ServiceRecordsSection";
 import { MembershipBenefitsSection } from "./MembershipBenefitsSection";
 import { buildRemainingRefundLines } from "./membershipRules";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { Permission } from "../security/permissions";
+import { useAuthorization } from "../security/useAuthorization";
 
 function commandId() {
   return crypto.randomUUID();
@@ -114,6 +116,7 @@ interface CustomerMobileReveal {
 
 export function CustomersPage() {
   const auth = useAuth();
+  const { can } = useAuthorization();
   const storeId = auth.store?.id;
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
@@ -147,33 +150,18 @@ export function CustomersPage() {
   const [topupRefundForm] = Form.useForm<TopupRefundValues>();
   const [revealForm] = Form.useForm<SensitivePurposeValues>();
   const [exportForm] = Form.useForm<SensitivePurposeValues>();
-  const canOpenMembership = auth.user?.roles.some(
-    (role) => role === "OWNER" || role === "STORE_MANAGER",
-  );
-  const canTopup = auth.user?.roles.some(
-    (role) =>
-      role === "OWNER" || role === "STORE_MANAGER" || role === "CASHIER",
-  );
-  const canGrantBonus = auth.user?.roles.includes("OWNER") ?? false;
-  const canRequestTopupRefund =
-    auth.user?.roles.some(
-      (role) => role === "OWNER" || role === "STORE_MANAGER",
-    ) ?? false;
-  const canExportCustomers =
-    auth.user?.roles.some(
-      (role) => role === "OWNER" || role === "STORE_MANAGER",
-    ) ?? false;
-  const canExportFullMobile = auth.user?.roles.includes("OWNER") ?? false;
-  const canViewFinancialDetails =
-    auth.user?.roles.some(
-      (role) =>
-        role === "OWNER" || role === "STORE_MANAGER" || role === "CASHIER",
-    ) ?? false;
-  const canViewServiceRecords =
-    auth.user?.roles.some(
-      (role) => role === "OWNER" || role === "STORE_MANAGER",
-    ) ?? false;
-  const canManageCustomers = canViewServiceRecords;
+  const canOpenMembership = can(Permission.MembershipOpen);
+  const canTopup = can(Permission.MembershipTopup);
+  const canGrantBonus = can(Permission.MembershipGrantBonus);
+  const canRequestTopupRefund = can(Permission.RefundRequest);
+  const canExportCustomers = can(Permission.CustomerExport);
+  const canExportFullMobile = can(Permission.CustomerExportFullMobile);
+  const canViewFinancialDetails = can(Permission.MembershipManage);
+  const canViewServiceRecords = can(Permission.ServiceRecordManage);
+  const canManageCustomers = can(Permission.CustomerManage);
+  const canMergeCustomers = can(Permission.CustomerMerge);
+  const canManageCardTypes = can(Permission.MembershipCardTypeManage);
+  const canCreateCustomer = can(Permission.CustomerWrite);
   useEffect(() => setPage(1), [storeId, submittedQuery]);
   useEffect(() => setTopupPage(1), [storeId, selectedId]);
   const customers = useQuery({
@@ -231,7 +219,7 @@ export function CustomersPage() {
   const mergeTargets = useQuery({
     queryKey: ["customer-merge-targets", storeId, mergeTargetTerm],
     enabled: Boolean(
-      storeId && mergeOpen && auth.user?.roles.includes("OWNER"),
+      storeId && mergeOpen && canMergeCustomers,
     ),
     queryFn: ({ signal }) =>
       apiRequest<PageResult<CustomerSummary>>("/api/v1/customers/search", {
@@ -556,6 +544,7 @@ export function CustomersPage() {
       ),
     },
     { title: "手机号", dataIndex: "maskedMobile" },
+    { title: "建档门店", dataIndex: "homeStoreName" },
     {
       title: "有效会员卡",
       dataIndex: "activeCardCount",
@@ -617,7 +606,7 @@ export function CustomersPage() {
               导出名单
             </Button>
           )}
-          {auth.user?.roles.includes("OWNER") && (
+          {canManageCardTypes && (
             <Button
               icon={<SettingOutlined />}
               onClick={() => setCardTypeOpen(true)}
@@ -625,13 +614,13 @@ export function CustomersPage() {
               卡类配置
             </Button>
           )}
-          <Button
+          {canCreateCustomer && <Button
             type="primary"
             icon={<PlusOutlined />}
             onClick={() => setCreateOpen(true)}
           >
             新建顾客
-          </Button>
+          </Button>}
         </Space>
       </div>
       <Alert
@@ -721,7 +710,7 @@ export function CustomersPage() {
                 </Button>
               </>
             )}
-            {auth.user?.roles.includes("OWNER") && detail.data && (
+            {canMergeCustomers && detail.data && (
               <Button
                 onClick={() => {
                   mergeForm.resetFields();
@@ -808,6 +797,11 @@ export function CustomersPage() {
                   key: "source",
                   label: "来源",
                   children: detail.data.sourceCode ?? "未填写",
+                },
+                {
+                  key: "homeStore",
+                  label: "建档门店",
+                  children: detail.data.homeStoreName,
                 },
                 {
                   key: "status",

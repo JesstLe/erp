@@ -7,6 +7,8 @@ import { useEffect, useState } from 'react'
 import { ApiError, apiRequest } from '../api/client'
 import type { PageResult, PaymentChannelConfiguration, PaymentChannelReconciliationItem, PaymentChannelReconciliationRun } from '../api/types'
 import { useAuth } from '../auth/useAuth'
+import { Permission } from '../security/permissions'
+import { useAuthorization } from '../security/useAuthorization'
 
 interface ChannelValues { environment: string; displayName: string; credentialProfile: string; isEnabled: boolean }
 interface ResolutionValues { reason: string }
@@ -29,7 +31,7 @@ export function PaymentChannelsPage() {
   const auth = useAuth(); const queryClient = useQueryClient(); const [form] = Form.useForm<ChannelValues>(); const [resolutionForm] = Form.useForm<ResolutionValues>()
   const [editing, setEditing] = useState<(typeof providers)[number]>(); const [businessDate, setBusinessDate] = useState<Dayjs>(dayjs().subtract(1, 'day')); const [resolving, setResolving] = useState<PaymentChannelReconciliationItem>()
   const [page, setPage] = useState(1); const pageSize = 10
-  const storeId = auth.store?.id; const canManage = auth.user?.roles.includes('OWNER') ?? false; const dateText = businessDate.format('YYYY-MM-DD')
+  const { can } = useAuthorization(); const storeId = auth.store?.id; const canManage = can(Permission.PaymentChannelManage); const dateText = businessDate.format('YYYY-MM-DD')
   const configurations = useQuery({ queryKey: ['payment-channel-configurations', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<PaymentChannelConfiguration[]>(`/api/v1/payment-channels/configurations?storeId=${storeId}`) })
   useEffect(() => setPage(1), [storeId, dateText])
   const reconciliations = useQuery({ queryKey: ['payment-channel-reconciliations', storeId, dateText, page], enabled: Boolean(storeId), queryFn: () => apiRequest<PageResult<PaymentChannelReconciliationRun>>(`/api/v1/payment-channels/reconciliations?storeId=${storeId}&fromDate=${dateText}&toDate=${dateText}&page=${page}&pageSize=${pageSize}`), refetchInterval: (query) => query.state.data?.items.some((run) => run.status === 'Running') ? 5_000 : false })

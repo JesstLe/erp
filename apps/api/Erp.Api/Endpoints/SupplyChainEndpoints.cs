@@ -7,12 +7,10 @@ namespace Erp.Api.Endpoints;
 
 public static class SupplyChainEndpoints
 {
-    private static readonly string[] Readers = [SystemRoles.Owner, SystemRoles.StoreManager];
-
     public static IEndpointRouteBuilder MapSupplyChainEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/supply-chain").WithTags("SupplyChain")
-            .RequireAuthorization(policy => policy.RequireRole(Readers));
+            .RequireAuthorization(SystemPermissions.SupplyChainRead);
 
         group.MapGet("/suppliers", async (string? keyword, bool? includeDisabled, int? page,
             int? pageSize, IIdentityService identity, ISupplyChainService service,
@@ -36,7 +34,7 @@ public static class SupplyChainEndpoints
                 new SaveSupplierCommand(null, request.Code, request.Name, request.ContactName,
                     request.Mobile, request.SettlementTerms, null, current.Id), cancellationToken),
                 value => Results.Created($"/api/v1/supply-chain/suppliers/{value.Id}", value));
-        });
+        }).RequireAuthorization(SystemPermissions.SupplyChainManage);
 
         group.MapPut("/suppliers/{supplierId:guid}", async (Guid supplierId, SaveSupplierRequest request,
             IIdentityService identity, ISupplyChainService service, CancellationToken cancellationToken) =>
@@ -48,7 +46,7 @@ public static class SupplyChainEndpoints
                 new SaveSupplierCommand(supplierId, request.Code, request.Name, request.ContactName,
                     request.Mobile, request.SettlementTerms, request.ExpectedVersion, current.Id),
                 cancellationToken));
-        });
+        }).RequireAuthorization(SystemPermissions.SupplyChainManage);
 
         group.MapPatch("/suppliers/{supplierId:guid}/status", async (Guid supplierId,
             SupplierStatusRequest request, IIdentityService identity, ISupplyChainService service,
@@ -60,7 +58,7 @@ public static class SupplyChainEndpoints
             return EndpointResults.From(await service.ChangeSupplierStatusAsync(current.TenantId,
                 new ChangeSupplierStatusCommand(supplierId, request.Enable, request.ExpectedVersion,
                     current.Id), cancellationToken));
-        });
+        }).RequireAuthorization(SystemPermissions.SupplyChainManage);
 
         group.MapGet("/lots", async (Guid storeId, Guid? productItemId, bool? expiringOnly,
             int? page, int? pageSize, IIdentityService identity, ISupplyChainService service,
@@ -90,7 +88,7 @@ public static class SupplyChainEndpoints
                 return EndpointResults.InvalidPagination();
             return Results.Ok(await service.ListPurchaseReceiptsAsync(current.TenantId, storeId,
                 normalizedPage, normalizedPageSize, cancellationToken));
-        });
+        }).RequireAuthorization(SystemPermissions.SupplyChainManage);
 
         group.MapPost("/purchase-receipts", async (PostPurchaseReceiptRequest request,
             IIdentityService identity, ISupplyChainService service, CancellationToken cancellationToken) =>
@@ -104,7 +102,7 @@ public static class SupplyChainEndpoints
                         x.ProductItemId, x.Quantity, x.UnitCostMinor, x.BatchNo, x.ExpiresOn)).ToList(),
                     request.CommandId, current.Id), cancellationToken), value => Results.Created(
                         $"/api/v1/supply-chain/purchase-receipts/{value.Id}", value));
-        });
+        }).RequireAuthorization(SystemPermissions.SupplyChainManage);
 
         group.MapGet("/stocktakes", async (Guid storeId, string? status, int? page, int? pageSize,
             IIdentityService identity, ISupplyChainService service, CancellationToken cancellationToken) =>
@@ -129,7 +127,7 @@ public static class SupplyChainEndpoints
                     (request.Lines ?? []).Select(x => new CreateStocktakeLineCommand(x.ProductItemId,
                         x.CountedQuantity)).ToList(), request.CommandId, current.Id), cancellationToken),
                 value => Results.Created($"/api/v1/supply-chain/stocktakes/{value.Id}", value));
-        });
+        }).RequireAuthorization(SystemPermissions.SupplyChainOperate);
 
         group.MapPost("/stocktakes/{stocktakeId:guid}/approve", async (Guid stocktakeId,
             StocktakeDecisionRequest request, IIdentityService identity, ISupplyChainService service,
@@ -141,7 +139,7 @@ public static class SupplyChainEndpoints
             return EndpointResults.From(await service.ApproveStocktakeAsync(current.TenantId,
                 new DecideStocktakeCommand(stocktakeId, request.StoreId, request.Reason, request.ExpectedVersion,
                     request.CommandId, current.Id), cancellationToken));
-        });
+        }).RequireAuthorization(SystemPermissions.SupplyChainManage);
 
         group.MapPost("/stocktakes/{stocktakeId:guid}/cancel", async (Guid stocktakeId,
             StocktakeDecisionRequest request, IIdentityService identity, ISupplyChainService service,
@@ -153,7 +151,7 @@ public static class SupplyChainEndpoints
             return EndpointResults.From(await service.CancelStocktakeAsync(current.TenantId,
                 new DecideStocktakeCommand(stocktakeId, request.StoreId, request.Reason, request.ExpectedVersion,
                     request.CommandId, current.Id), cancellationToken));
-        });
+        }).RequireAuthorization(SystemPermissions.SupplyChainOperate);
 
         group.MapGet("/transfers", async (Guid? storeId, string? status, int? page, int? pageSize,
             IIdentityService identity, ISupplyChainService service, CancellationToken cancellationToken) =>
@@ -181,7 +179,7 @@ public static class SupplyChainEndpoints
                         new CreateInventoryTransferLineCommand(x.ProductItemId, x.Quantity)).ToList(),
                     request.CommandId, current.Id), cancellationToken), value => Results.Created(
                         $"/api/v1/supply-chain/transfers/{value.Id}", value));
-        });
+        }).RequireAuthorization(SystemPermissions.SupplyChainManage);
 
         MapTransferTransition(group, "ship", (service, tenantId, command, cancellationToken) =>
             service.ShipTransferAsync(tenantId, command, cancellationToken));
@@ -205,9 +203,10 @@ public static class SupplyChainEndpoints
             return EndpointResults.From(await transition(service, current.TenantId,
                 new TransitionInventoryTransferCommand(transferId, request.Reason,
                     request.ExpectedVersion, request.CommandId, current.Id), cancellationToken));
-        });
+        }).RequireAuthorization(SystemPermissions.SupplyChainManage);
 
-    private static bool IsOwner(CurrentUserDto user) => user.Roles.Contains(SystemRoles.Owner);
+    private static bool IsOwner(CurrentUserDto user) =>
+        user.Permissions.Contains(SystemPermissions.SupplyChainManage);
     private static bool HasStore(CurrentUserDto user, Guid storeId) => user.Stores.Any(x => x.Id == storeId);
     private sealed record SaveSupplierRequest(string Code, string Name, string? ContactName,
         string? Mobile, string? SettlementTerms, uint? ExpectedVersion);

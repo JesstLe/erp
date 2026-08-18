@@ -22,6 +22,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
 .login-alert, .modal-alert { margin-bottom: 20px; }
 .login-card .ant-btn-primary { height: 48px; font-weight: 600; box-shadow: 0 8px 22px rgba(15,112,105,.22); }
 .login-security-note { text-align: center; margin: 22px 0 0 !important; font-size: 12px; }
+.public-footer { text-align: center; margin-top: 16px !important; }
+.public-shell, .platform-login-shell { min-height: 100vh; padding: 48px 20px; background: linear-gradient(145deg,#edf7f6,#f5f7fb 55%,#eef3fa); display: grid; place-items: center; }
+.public-card { width: min(680px,100%); box-shadow: 0 24px 70px rgba(15,56,72,.12); }
+.public-icon { color: #138f84; font-size: 28px; }
+.registration-success { padding: 36px 8px; text-align: center; }
+.registration-success > .anticon { color: #33a56f; font-size: 52px; }
+.platform-login-shell .login-card { background: #fff; padding: 20px; border-radius: 16px; box-shadow: 0 24px 70px rgba(15,56,72,.12); }
+.platform-shell { min-height: 100vh; background: #f2f5f8; }
+.platform-header { height: 66px; padding-inline: 28px; background: #102f3a; display: flex; justify-content: space-between; align-items: center; }
+.platform-header h4.ant-typography, .platform-header .ant-typography, .platform-header .anticon { color: #fff; margin: 0; }
+.platform-content { padding: 24px 28px 48px; overflow: auto; }
 .app-shell { min-height: 100vh; }
 .app-sider { position: sticky !important; top: 0; height: 100vh; background: #102b3f !important; box-shadow: 8px 0 30px rgba(7,32,51,.08); }
 .app-logo { height: 72px; display: flex; align-items: center; gap: 12px; padding: 0 20px; color: #fff; font-size: 18px; }

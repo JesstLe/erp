@@ -8,20 +8,24 @@ public sealed class MembershipBenefitTests
     [Fact]
     public void ServicePassRedeemsPurchasedUsesBeforeBonusAndCanReverse()
     {
-        var pass = new ServicePass(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+        var issueStoreId = Guid.NewGuid();
+        var operationStoreId = Guid.NewGuid();
+        var pass = new ServicePass(Guid.NewGuid(), issueStoreId, Guid.NewGuid(), Guid.NewGuid(),
             Guid.NewGuid(), "护理十次卡", 2, 1, new DateOnly(2026, 8, 1),
             new DateOnly(2026, 12, 31), "购卡发放");
         var operatorId = Guid.NewGuid();
-        var redeemed = pass.Redeem(2, null, "本次护理核销", Guid.NewGuid(), operatorId,
+        var redeemed = pass.Redeem(operationStoreId, 2, null, "本次护理核销", Guid.NewGuid(), operatorId,
             new DateOnly(2026, 8, 18), DateTimeOffset.UtcNow);
 
+        Assert.Equal(operationStoreId, redeemed.StoreId);
         Assert.Equal(-2, redeemed.PurchasedUsesDelta);
         Assert.Equal(0, redeemed.BonusUsesDelta);
         Assert.Equal(1, pass.RemainingUses);
         Assert.Equal(ServicePassStatus.Active, pass.Status);
 
-        var reversed = pass.Reverse(redeemed, "误操作撤销", Guid.NewGuid(), operatorId,
+        var reversed = pass.Reverse(issueStoreId, redeemed, "误操作撤销", Guid.NewGuid(), operatorId,
             new DateOnly(2026, 8, 18), DateTimeOffset.UtcNow);
+        Assert.Equal(issueStoreId, reversed.StoreId);
         Assert.Equal(2, reversed.PurchasedUsesDelta);
         Assert.Equal(3, pass.RemainingUses);
     }
@@ -33,7 +37,7 @@ public sealed class MembershipBenefitTests
             Guid.NewGuid(), "护理卡", 1, 0, new DateOnly(2026, 1, 1),
             new DateOnly(2026, 8, 17), "购卡发放");
 
-        var error = Assert.Throws<DomainRuleException>(() => pass.Redeem(1, null, "核销",
+        var error = Assert.Throws<DomainRuleException>(() => pass.Redeem(Guid.NewGuid(), 1, null, "核销",
             Guid.NewGuid(), Guid.NewGuid(), new DateOnly(2026, 8, 18), DateTimeOffset.UtcNow));
         Assert.Equal("SERVICE_PASS_NOT_ACTIVE", error.Code);
     }

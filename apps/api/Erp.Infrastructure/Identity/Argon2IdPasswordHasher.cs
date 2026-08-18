@@ -7,25 +7,37 @@ namespace Erp.Infrastructure.Identity;
 
 public sealed class Argon2IdPasswordHasher : IPasswordHasher<ApplicationUser>
 {
+    public string HashPassword(ApplicationUser user, string password)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        return Argon2IdPasswordCodec.Hash(password);
+    }
+
+    public PasswordVerificationResult VerifyHashedPassword(ApplicationUser user, string hashedPassword, string providedPassword)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        return Argon2IdPasswordCodec.Verify(hashedPassword, providedPassword);
+    }
+}
+
+internal static class Argon2IdPasswordCodec
+{
     private const int MemorySizeKb = 65_536;
     private const int Iterations = 3;
     private const int Parallelism = 2;
     private const int SaltSize = 16;
     private const int HashSize = 32;
 
-    public string HashPassword(ApplicationUser user, string password)
+    public static string Hash(string password)
     {
-        ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(password);
-
         var salt = RandomNumberGenerator.GetBytes(SaltSize);
         var hash = Derive(password, salt, MemorySizeKb, Iterations, Parallelism, HashSize);
         return $"argon2id$v=19$m={MemorySizeKb},t={Iterations},p={Parallelism}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
     }
 
-    public PasswordVerificationResult VerifyHashedPassword(ApplicationUser user, string hashedPassword, string providedPassword)
+    public static PasswordVerificationResult Verify(string hashedPassword, string providedPassword)
     {
-        ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(hashedPassword);
         ArgumentNullException.ThrowIfNull(providedPassword);
 
@@ -66,7 +78,8 @@ public sealed class Argon2IdPasswordHasher : IPasswordHasher<ApplicationUser>
         }
     }
 
-    private static byte[] Derive(string password, byte[] salt, int memorySize, int iterations, int parallelism, int length)
+    private static byte[] Derive(string password, byte[] salt, int memorySize, int iterations, int parallelism,
+        int length)
     {
         using var argon2 = new Argon2id(Encoding.UTF8.GetBytes(password))
         {
@@ -79,4 +92,3 @@ public sealed class Argon2IdPasswordHasher : IPasswordHasher<ApplicationUser>
         return argon2.GetBytes(length);
     }
 }
-

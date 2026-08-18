@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { ApiError, apiRequest } from '../api/client'
 import type { Appointment, CustomerSummary, EmployeeShift, PageResult, SchedulingResource, ServiceItem } from '../api/types'
 import { useAuth } from '../auth/useAuth'
+import { Permission } from '../security/permissions'
+import { useAuthorization } from '../security/useAuthorization'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { isValidPeriod, toLocalDateTimeValue, toUtcIso } from './schedulingRules'
 
@@ -25,8 +27,9 @@ function queryRange() { const from = new Date(); from.setHours(0, 0, 0, 0); cons
 
 export function SchedulingPage() {
   const auth = useAuth(); const storeId = auth.store?.id; const queryClient = useQueryClient()
-  const isManager = auth.user?.roles.some((role) => role === 'OWNER' || role === 'STORE_MANAGER') ?? false
-  const canOperate = isManager || (auth.user?.roles.includes('FRONT_DESK') ?? false)
+  const { can } = useAuthorization()
+  const isManager = can(Permission.SchedulingShiftManage)
+  const canOperate = can(Permission.SchedulingOperate)
   const [activeTab, setActiveTab] = useState('appointments'); const [query, setQuery] = useState(''); const search = useDebouncedValue(query.trim())
   const [status, setStatus] = useState<string>(); const [appointmentPage, setAppointmentPage] = useState(1); const [shiftPage, setShiftPage] = useState(1)
   const [editingAppointment, setEditingAppointment] = useState<Appointment | 'new'>(); const [editingShift, setEditingShift] = useState<EmployeeShift | 'new'>()

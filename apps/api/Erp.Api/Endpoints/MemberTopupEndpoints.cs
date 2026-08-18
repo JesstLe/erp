@@ -8,13 +8,10 @@ namespace Erp.Api.Endpoints;
 
 public static class MemberTopupEndpoints
 {
-    private static readonly string[] Operators =
-        [SystemRoles.Owner, SystemRoles.StoreManager, SystemRoles.Cashier];
-
     public static IEndpointRouteBuilder MapMemberTopupEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/member-topups").WithTags("Member top-ups")
-            .RequireAuthorization(policy => policy.RequireRole(Operators));
+            .RequireAuthorization(SystemPermissions.MembershipTopup);
 
         group.MapGet("", async (Guid storeId, Guid? customerId, int? page, int? pageSize,
             IIdentityService identity,
@@ -40,7 +37,7 @@ public static class MemberTopupEndpoints
                     request.PrincipalMinor, request.BonusMinor, request.Note,
                     (request.Allocations ?? []).Select(x => new SettleAllocationCommand(x.MethodId,
                         x.AmountMinor, x.ExternalReference)).ToList(), request.CommandId, current.Id,
-                    current.Roles.Contains(SystemRoles.Owner)),
+                    current.Permissions.Contains(SystemPermissions.MembershipGrantBonus)),
                 cancellationToken));
         });
 

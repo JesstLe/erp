@@ -13,7 +13,7 @@ using Microsoft.Extensions.Configuration;
 namespace Erp.Infrastructure.Seed;
 
 public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<ApplicationUser> userManager,
-    RoleManager<ApplicationRole> roleManager, IConfiguration configuration)
+    IConfiguration configuration)
 {
     public async Task SeedAsync(CancellationToken cancellationToken)
     {
@@ -44,20 +44,35 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
         }
 
         var roleNames = new[] { SystemRoles.Owner, SystemRoles.StoreManager, SystemRoles.FrontDesk, SystemRoles.Cashier, SystemRoles.Technician };
+        var tenantRoles = await dbContext.Roles.Where(role => role.TenantId == tenant.Id && role.Name != null)
+            .ToListAsync(cancellationToken);
         foreach (var roleName in roleNames)
         {
-            if (await roleManager.FindByNameAsync(roleName) is null)
+            if (!tenantRoles.Any(role => string.Equals(role.Name, roleName, StringComparison.OrdinalIgnoreCase)))
             {
-                EnsureSucceeded(await roleManager.CreateAsync(new ApplicationRole { Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = roleName }), $"创建角色 {roleName}");
+                var role = new ApplicationRole
+                {
+                    Id = Guid.CreateVersion7(), TenantId = tenant.Id, Name = roleName,
+                    NormalizedName = roleName.ToUpperInvariant(),
+                };
+                dbContext.Roles.Add(role);
+                tenantRoles.Add(role);
             }
         }
+        await dbContext.SaveChangesAsync(cancellationToken);
 
         var owner = await userManager.FindByNameAsync("owner01");
         if (owner is null)
         {
             owner = new ApplicationUser { Id = Guid.CreateVersion7(), TenantId = tenant.Id, UserName = "owner01", DisplayName = "系统负责人", IsEnabled = true, MustChangePassword = false };
             EnsureSucceeded(await userManager.CreateAsync(owner, password), "创建开发种子账号");
-            EnsureSucceeded(await userManager.AddToRoleAsync(owner, SystemRoles.Owner), "分配开发种子角色");
+        }
+        var ownerRole = tenantRoles.Single(role => string.Equals(role.Name, SystemRoles.Owner,
+            StringComparison.OrdinalIgnoreCase));
+        if (!await dbContext.UserRoles.AnyAsync(link => link.UserId == owner.Id && link.RoleId == ownerRole.Id,
+                cancellationToken))
+        {
+            dbContext.UserRoles.Add(new IdentityUserRole<Guid> { UserId = owner.Id, RoleId = ownerRole.Id });
         }
 
         if (!await dbContext.UserStores.AnyAsync(x => x.UserId == owner.Id && x.StoreId == store.Id, cancellationToken))
@@ -73,15 +88,13 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
             dbContext.EmployeeStores.Add(new EmployeeStore(tenant.Id, ownerEmployee.Id, store.Id, true));
         }
 
-        var ownerRole = await roleManager.FindByNameAsync(SystemRoles.Owner) ?? throw new InvalidOperationException("OWNER角色不存在");
-        var ownerActions = new[] { SystemActions.CatalogRead, SystemActions.CatalogWrite, SystemActions.PricePublish,
-            SystemActions.FacilityOperate, SystemActions.CustomerRead, SystemActions.CustomerWrite,
-            SystemActions.MembershipOpen, SystemActions.CashierCheckout, SystemActions.AuditRead };
-        foreach (var action in ownerActions)
+        foreach (var role in tenantRoles.Where(role => role.Name is not null))
         {
-            if (!await dbContext.RoleActionGrants.AnyAsync(x => x.RoleId == ownerRole.Id && x.Action == action, cancellationToken))
+            foreach (var action in SystemPermissions.ForRole(role.Name!))
             {
-                dbContext.RoleActionGrants.Add(new RoleActionGrant(tenant.Id, ownerRole.Id, action));
+                if (!await dbContext.RoleActionGrants.AnyAsync(x => x.RoleId == role.Id && x.Action == action,
+                        cancellationToken))
+                    dbContext.RoleActionGrants.Add(new RoleActionGrant(tenant.Id, role.Id, action));
             }
         }
 

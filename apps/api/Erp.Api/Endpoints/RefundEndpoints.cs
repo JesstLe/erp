@@ -7,12 +7,10 @@ namespace Erp.Api.Endpoints;
 
 public static class RefundEndpoints
 {
-    private static readonly string[] RequestRoles = [SystemRoles.Owner, SystemRoles.StoreManager];
-
     public static IEndpointRouteBuilder MapRefundEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/refunds").WithTags("Refunds")
-            .RequireAuthorization(policy => policy.RequireRole(RequestRoles));
+            .RequireAuthorization(SystemPermissions.RefundRequest);
 
         group.MapGet("", async (Guid storeId, Guid? paymentId, int? page, int? pageSize,
             IIdentityService identity,
@@ -50,7 +48,7 @@ public static class RefundEndpoints
             return EndpointResults.From(await refunds.ApproveAsync(current.TenantId,
                 new ApproveRefundCommand(request.StoreId, refundId, request.ExpectedVersion,
                     request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.RefundApprove);
 
         group.MapPost("/{refundId:guid}/reject", async (Guid refundId, RejectRequest request,
             IIdentityService identity, IRefundService refunds, CancellationToken cancellationToken) =>
@@ -61,7 +59,7 @@ public static class RefundEndpoints
             return EndpointResults.From(await refunds.RejectAsync(current.TenantId,
                 new RejectRefundCommand(request.StoreId, refundId, request.ExpectedVersion,
                     request.Reason ?? string.Empty, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.RefundApprove);
 
         group.MapPost("/{refundId:guid}/channel/query", async (Guid refundId,
             OperateChannelRequest request, IIdentityService identity, IRefundService refunds,
@@ -83,7 +81,7 @@ public static class RefundEndpoints
             if (!HasStore(current, request.StoreId)) return Results.Forbid();
             return EndpointResults.From(await refunds.RetryChannelAsync(current.TenantId,
                 new OperateChannelRefundCommand(request.StoreId, refundId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.RefundApprove);
 
         return endpoints;
     }

@@ -20,7 +20,7 @@ public sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileStora
     {
         var customerIds = await CustomerGroupIdsAsync(tenantId, customerId, cancellationToken);
         var query = dbContext.ServiceRecords.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.StoreId == storeId && customerIds.Contains(x.CustomerId));
+            .Where(x => x.TenantId == tenantId && customerIds.Contains(x.CustomerId));
         var total = await query.CountAsync(cancellationToken);
         var records = await query.AsSplitQuery().Include(x => x.Attachments)
             .OrderByDescending(x => x.ServiceOccurredAtUtc).ThenByDescending(x => x.CreatedAtUtc)
@@ -54,9 +54,9 @@ public sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileStora
             return ResultFactory.Success((await MapAsync([existing], cancellationToken)).Single());
 
         var customerExists = await dbContext.Customers.AsNoTracking().AnyAsync(x => x.TenantId == tenantId &&
-            x.Id == command.CustomerId && x.HomeStoreId == command.StoreId, cancellationToken);
+            x.Id == command.CustomerId && x.Status == CustomerStatus.Active, cancellationToken);
         if (!customerExists)
-            return ResultFactory.Failure<ServiceRecordDto>("CUSTOMER_NOT_FOUND", "顾客档案不存在或不属于当前门店");
+            return ResultFactory.Failure<ServiceRecordDto>("CUSTOMER_NOT_FOUND", "顾客档案不存在或已停用");
 
         if (command.ServiceOrderId.HasValue)
         {
@@ -114,12 +114,12 @@ public sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileStora
         var customerIds = await CustomerGroupIdsAsync(tenantId, customerId, cancellationToken);
         var isAttached = await dbContext.ServiceRecordAttachments.AsNoTracking().AnyAsync(attachment =>
             attachment.FileId == fileId && dbContext.ServiceRecords.Any(record => record.Id == attachment.ServiceRecordId &&
-                record.TenantId == tenantId && record.StoreId == storeId && customerIds.Contains(record.CustomerId)),
+                record.TenantId == tenantId && customerIds.Contains(record.CustomerId)),
             cancellationToken);
         if (!isAttached)
             return ResultFactory.Failure<StoredFileContent>("FILE_NOT_FOUND", "服务记录图片不存在");
         var file = await dbContext.StoredFiles.AsNoTracking().SingleOrDefaultAsync(x => x.Id == fileId &&
-            x.TenantId == tenantId && x.StoreId == storeId && x.Purpose == StoredFilePurposes.ServiceRecordImage,
+            x.TenantId == tenantId && x.Purpose == StoredFilePurposes.ServiceRecordImage,
             cancellationToken);
         if (file is null)
             return ResultFactory.Failure<StoredFileContent>("FILE_NOT_FOUND", "服务记录图片不存在");

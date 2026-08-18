@@ -10,6 +10,7 @@ using Erp.Application.Notifications;
 using Erp.Application.Organization;
 using Erp.Application.Common;
 using Erp.Application.Scheduling;
+using Erp.Application.Platform;
 using Erp.Infrastructure.Catalog;
 using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Cashier;
@@ -23,6 +24,8 @@ using Erp.Infrastructure.Notifications;
 using Erp.Infrastructure.Organization;
 using Erp.Infrastructure.Persistence;
 using Erp.Infrastructure.Scheduling;
+using Erp.Infrastructure.Platform;
+using Erp.Infrastructure.Security;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -37,12 +40,15 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddErpInfrastructure(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
     {
+        services.AddErpPermissionAuthorization();
         var connectionString = configuration.GetConnectionString("ErpDatabase")
             ?? throw new InvalidOperationException("缺少 ConnectionStrings:ErpDatabase 配置");
         var customerLookupPepper = configuration["CustomerPrivacy:LookupPepper"];
         var memberVerificationPepper = configuration["MemberVerification:CodePepper"];
         var fileStorageRoot = configuration["FileStorage:RootPath"];
         var dataProtectionKeyRingPath = configuration["DataProtection:KeyRingPath"];
+        var securityEventPepper = configuration["SecurityEvents:AccountHashPepper"];
+        var registrationContactPepper = configuration["PlatformRegistration:ContactHashPepper"];
         if (!environment.IsDevelopment() && (string.IsNullOrWhiteSpace(customerLookupPepper) || customerLookupPepper.Length < 32 ||
             customerLookupPepper.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("生产环境必须配置至少32字符的 CustomerPrivacy:LookupPepper，且不能使用模板占位值");
@@ -54,6 +60,12 @@ public static class DependencyInjection
             throw new InvalidOperationException("生产环境必须配置独立持久化目录 FileStorage:RootPath");
         if (!environment.IsDevelopment() && string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
             throw new InvalidOperationException("生产环境必须配置持久化 DataProtection:KeyRingPath");
+        if (!environment.IsDevelopment() && (string.IsNullOrWhiteSpace(securityEventPepper) ||
+            securityEventPepper.Length < 32 || securityEventPepper.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("生产环境必须配置至少32字符的 SecurityEvents:AccountHashPepper");
+        if (!environment.IsDevelopment() && (string.IsNullOrWhiteSpace(registrationContactPepper) ||
+            registrationContactPepper.Length < 32 || registrationContactPepper.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException("生产环境必须配置至少32字符的 PlatformRegistration:ContactHashPepper");
 
         services.AddDbContext<ErpDbContext>(options => options.UseNpgsql(connectionString));
         var dataProtection = services.AddDataProtection().SetApplicationName("Erp");
@@ -95,8 +107,40 @@ public static class DependencyInjection
                 return Task.CompletedTask;
             };
         });
+        services.AddAuthentication().AddCookie(PlatformAuthentication.Scheme, options =>
+        {
+            options.Cookie.Name = environment.IsDevelopment()
+                ? "Erp.Platform.Session.Dev" : "__Host-Erp.Platform.Session";
+            options.Cookie.HttpOnly = true;
+            options.Cookie.SecurePolicy = environment.IsDevelopment()
+                ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+            options.Cookie.SameSite = SameSiteMode.Strict;
+            options.Cookie.Path = "/";
+            options.ExpireTimeSpan = TimeSpan.FromHours(4);
+            options.SlidingExpiration = true;
+            options.Events.OnRedirectToLogin = context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return Task.CompletedTask;
+            };
+            options.Events.OnRedirectToAccessDenied = context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                return Task.CompletedTask;
+            };
+        });
+        services.AddAuthorization(options => options.AddPolicy(PlatformAuthentication.Policy, policy =>
+        {
+            policy.AddAuthenticationSchemes(PlatformAuthentication.Scheme);
+            policy.RequireRole(PlatformAuthentication.Role);
+        }));
 
         services.AddScoped<IIdentityService, IdentityService>();
+        services.AddScoped<LoginSecurityEventWriter>();
+        services.AddScoped<PlatformRegistrationPrivacyService>();
+        services.AddScoped<IMerchantRegistrationService, MerchantRegistrationService>();
+        services.AddScoped<IPlatformIdentityService, PlatformIdentityService>();
+        services.AddScoped<IPlatformAdminService, PlatformAdminService>();
         services.AddScoped<IEmployeeService, EmployeeService>();
         services.AddScoped<IOrganizationService, OrganizationService>();
         services.AddSingleton<SecureFileStorage>();
@@ -136,6 +180,7 @@ public static class DependencyInjection
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<Seed.DevelopmentSeeder>();
         services.AddScoped<Seed.ProductionBootstrapper>();
+        services.AddScoped<Seed.PlatformAdminBootstrapper>();
         return services;
     }
 }

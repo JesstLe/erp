@@ -6,13 +6,10 @@ namespace Erp.Api.Endpoints;
 
 public static class MemberVerificationEndpoints
 {
-    private static readonly string[] Operators =
-        [SystemRoles.Owner, SystemRoles.StoreManager, SystemRoles.Cashier];
-
     public static IEndpointRouteBuilder MapMemberVerificationEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/member-verifications").WithTags("Member verification")
-            .RequireAuthorization(policy => policy.RequireRole(Operators))
+            .RequireAuthorization(SystemPermissions.MembershipManage)
             .RequireRateLimiting("member-verification");
 
         group.MapPost("", async (IssueRequest request, IIdentityService identity,

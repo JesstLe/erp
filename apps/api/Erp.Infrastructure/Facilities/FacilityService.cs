@@ -250,10 +250,10 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
                 if (command.CustomerId.HasValue)
                 {
                     customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == command.CustomerId.Value &&
-                        x.TenantId == tenantId && x.HomeStoreId == command.StoreId && x.Status == CustomerStatus.Active,
+                        x.TenantId == tenantId && x.Status == CustomerStatus.Active,
                         cancellationToken);
                     if (customer is null)
-                        return ResultFactory.Failure<Guid>("CUSTOMER_NOT_FOUND", "顾客不存在或不属于当前门店");
+                        return ResultFactory.Failure<Guid>("CUSTOMER_NOT_FOUND", "顾客不存在或已停用");
                 }
                 if (command.PlannedServiceItemId.HasValue)
                 {

@@ -8,13 +8,10 @@ namespace Erp.Api.Endpoints;
 
 public static class SchedulingEndpoints
 {
-    private static readonly string[] AppointmentOperators =
-        [SystemRoles.Owner, SystemRoles.StoreManager, SystemRoles.FrontDesk];
-    private static readonly string[] ShiftOperators = [SystemRoles.Owner, SystemRoles.StoreManager];
-
     public static IEndpointRouteBuilder MapSchedulingEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/scheduling").WithTags("Scheduling").RequireAuthorization();
+        var group = endpoints.MapGroup("/api/v1/scheduling").WithTags("Scheduling")
+            .RequireAuthorization(SystemPermissions.SchedulingOperate);
 
         group.MapGet("/appointments", async (Guid storeId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc,
             string? status, string? query, int? page, int? pageSize, IIdentityService identity,
@@ -34,7 +31,7 @@ public static class SchedulingEndpoints
                 return EndpointResults.InvalidPagination();
             return Results.Ok(await scheduling.ListAppointmentsAsync(current.TenantId, storeId, from, to,
                 status, query, normalizedPage, normalizedSize, cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(AppointmentOperators));
+        }).RequireAuthorization(SystemPermissions.SchedulingOperate);
 
         group.MapGet("/shifts", async (Guid storeId, DateTimeOffset? fromUtc, DateTimeOffset? toUtc,
             int? page, int? pageSize, IIdentityService identity, ISchedulingService scheduling,
@@ -50,7 +47,7 @@ public static class SchedulingEndpoints
                 return EndpointResults.InvalidPagination();
             return Results.Ok(await scheduling.ListShiftsAsync(current.TenantId, storeId, from, to,
                 normalizedPage, normalizedSize, cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ShiftOperators));
+        }).RequireAuthorization(SystemPermissions.SchedulingShiftManage);
 
         group.MapGet("/employees", async (Guid storeId, IIdentityService identity,
             ISchedulingService scheduling, CancellationToken cancellationToken) =>
@@ -60,7 +57,7 @@ public static class SchedulingEndpoints
             return HasStore(current, storeId)
                 ? Results.Ok(await scheduling.ListEmployeesAsync(current.TenantId, storeId, cancellationToken))
                 : Results.Forbid();
-        }).RequireAuthorization(policy => policy.RequireRole(AppointmentOperators));
+        }).RequireAuthorization(SystemPermissions.SchedulingOperate);
 
         group.MapGet("/facilities", async (Guid storeId, IIdentityService identity,
             ISchedulingService scheduling, CancellationToken cancellationToken) =>
@@ -70,7 +67,7 @@ public static class SchedulingEndpoints
             return HasStore(current, storeId)
                 ? Results.Ok(await scheduling.ListFacilitiesAsync(current.TenantId, storeId, cancellationToken))
                 : Results.Forbid();
-        }).RequireAuthorization(policy => policy.RequireRole(AppointmentOperators));
+        }).RequireAuthorization(SystemPermissions.SchedulingOperate);
 
         group.MapPost("/appointments", async (CreateAppointmentRequest request, IIdentityService identity,
             ISchedulingService scheduling, CancellationToken cancellationToken) =>
@@ -82,7 +79,7 @@ public static class SchedulingEndpoints
                 new CreateAppointmentCommand(request.StoreId, request.CustomerId, request.ServiceItemId,
                     request.EmployeeId, request.FacilityId, request.StartsAtUtc, request.EndsAtUtc,
                     request.Note, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(AppointmentOperators));
+        }).RequireAuthorization(SystemPermissions.SchedulingOperate);
 
         group.MapPut("/appointments/{appointmentId:guid}", async (Guid appointmentId,
             UpdateAppointmentRequest request, IIdentityService identity, ISchedulingService scheduling,
@@ -95,25 +92,25 @@ public static class SchedulingEndpoints
                 new UpdateAppointmentCommand(request.StoreId, appointmentId, request.ServiceItemId,
                     request.EmployeeId, request.FacilityId, request.StartsAtUtc, request.EndsAtUtc,
                     request.Note, request.ExpectedVersion, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(AppointmentOperators));
+        }).RequireAuthorization(SystemPermissions.SchedulingOperate);
 
         group.MapPost("/appointments/{appointmentId:guid}/cancel", async (Guid appointmentId,
             TransitionRequest request, IIdentityService identity, ISchedulingService scheduling,
             CancellationToken cancellationToken) => await AppointmentTransition(appointmentId, request, identity,
                 scheduling, (service, tenantId, command, token) => service.CancelAppointmentAsync(tenantId, command, token),
-                cancellationToken)).RequireAuthorization(policy => policy.RequireRole(AppointmentOperators));
+                cancellationToken)).RequireAuthorization(SystemPermissions.SchedulingOperate);
 
         group.MapPost("/appointments/{appointmentId:guid}/no-show", async (Guid appointmentId,
             TransitionRequest request, IIdentityService identity, ISchedulingService scheduling,
             CancellationToken cancellationToken) => await AppointmentTransition(appointmentId, request, identity,
                 scheduling, (service, tenantId, command, token) => service.MarkNoShowAsync(tenantId, command, token),
-                cancellationToken)).RequireAuthorization(policy => policy.RequireRole(AppointmentOperators));
+                cancellationToken)).RequireAuthorization(SystemPermissions.SchedulingOperate);
 
         group.MapPost("/appointments/{appointmentId:guid}/arrive", async (Guid appointmentId,
             TransitionRequest request, IIdentityService identity, ISchedulingService scheduling,
             CancellationToken cancellationToken) => await AppointmentTransition(appointmentId, request, identity,
                 scheduling, (service, tenantId, command, token) => service.ArriveAsync(tenantId, command, token),
-                cancellationToken)).RequireAuthorization(policy => policy.RequireRole(AppointmentOperators));
+                cancellationToken)).RequireAuthorization(SystemPermissions.SchedulingOperate);
 
         group.MapPost("/shifts", async (CreateShiftRequest request, IIdentityService identity,
             ISchedulingService scheduling, CancellationToken cancellationToken) =>
@@ -124,7 +121,7 @@ public static class SchedulingEndpoints
             return EndpointResults.From(await scheduling.CreateShiftAsync(current.TenantId,
                 new CreateEmployeeShiftCommand(request.StoreId, request.EmployeeId, request.StartsAtUtc,
                     request.EndsAtUtc, request.Note, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ShiftOperators));
+        }).RequireAuthorization(SystemPermissions.SchedulingShiftManage);
 
         group.MapPut("/shifts/{shiftId:guid}", async (Guid shiftId, UpdateShiftRequest request,
             IIdentityService identity, ISchedulingService scheduling, CancellationToken cancellationToken) =>
@@ -135,7 +132,7 @@ public static class SchedulingEndpoints
             return EndpointResults.From(await scheduling.UpdateShiftAsync(current.TenantId,
                 new UpdateEmployeeShiftCommand(request.StoreId, shiftId, request.StartsAtUtc, request.EndsAtUtc,
                     request.Note, request.ExpectedVersion, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ShiftOperators));
+        }).RequireAuthorization(SystemPermissions.SchedulingShiftManage);
 
         group.MapPost("/shifts/{shiftId:guid}/cancel", async (Guid shiftId, CancelShiftRequest request,
             IIdentityService identity, ISchedulingService scheduling, CancellationToken cancellationToken) =>
@@ -146,7 +143,7 @@ public static class SchedulingEndpoints
             return EndpointResults.From(await scheduling.CancelShiftAsync(current.TenantId,
                 new CancelEmployeeShiftCommand(request.StoreId, shiftId, request.Reason ?? string.Empty,
                     request.ExpectedVersion, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ShiftOperators));
+        }).RequireAuthorization(SystemPermissions.SchedulingShiftManage);
 
         return endpoints;
     }

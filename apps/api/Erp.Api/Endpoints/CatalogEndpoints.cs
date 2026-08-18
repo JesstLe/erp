@@ -10,7 +10,8 @@ public static class CatalogEndpoints
 {
     public static IEndpointRouteBuilder MapCatalogEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/catalog").WithTags("Catalog").RequireAuthorization();
+        var group = endpoints.MapGroup("/api/v1/catalog").WithTags("Catalog")
+            .RequireAuthorization(SystemPermissions.CatalogRead);
 
         group.MapGet("/service-items", async (string? query, string? status, IIdentityService identity,
             ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -20,7 +21,7 @@ public static class CatalogEndpoints
             if (query?.Trim().Length > 100) return InvalidQuery();
             if (!TryParseStatus(status, out var parsedStatus)) return InvalidStatus();
             return Results.Ok(await catalog.ListServiceItemsAsync(current.TenantId, query, parsedStatus,
-                current.Roles.Contains(SystemRoles.Owner), cancellationToken));
+                current.Permissions.Contains(SystemPermissions.CatalogWrite), cancellationToken));
         });
 
         group.MapPost("/service-items", async (CreateServiceItemRequest request, IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -39,7 +40,7 @@ public static class CatalogEndpoints
                     request.CommissionRateBasisPoints, request.CommissionFixedMinor, current.Id,
                     DefaultStoreId(current)), cancellationToken),
                 value => Results.Created($"/api/v1/catalog/service-items/{value.Id}", value));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.CatalogWrite);
 
         group.MapPut("/service-items/{id:guid}", async (Guid id, UpdateServiceItemRequest request,
             IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -54,7 +55,7 @@ public static class CatalogEndpoints
                     parsedStatus, commissionMode, request.CommissionRateBasisPoints,
                     request.CommissionFixedMinor, request.ExpectedVersion, current.Id, DefaultStoreId(current)),
                 cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.CatalogWrite);
 
         group.MapDelete("/service-items/{id:guid}", async (Guid id, uint expectedVersion,
             IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -64,7 +65,7 @@ public static class CatalogEndpoints
             return EndpointResults.From(await catalog.DeleteServiceItemAsync(current.TenantId,
                 new DeleteCatalogItemCommand(id, expectedVersion, current.Id, DefaultStoreId(current)),
                 cancellationToken), _ => Results.NoContent());
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.CatalogWrite);
 
         group.MapGet("/products", async (string? query, string? status, IIdentityService identity,
             ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -86,7 +87,7 @@ public static class CatalogEndpoints
                 new CreateProductItemCommand(request.Code ?? string.Empty, request.Name ?? string.Empty,
                     request.UnitName ?? string.Empty, request.TrackInventory, current.Id, DefaultStoreId(current)), cancellationToken),
                 value => Results.Created($"/api/v1/catalog/products/{value.Id}", value));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.CatalogWrite);
 
         group.MapPut("/products/{id:guid}", async (Guid id, UpdateProductItemRequest request,
             IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -98,7 +99,7 @@ public static class CatalogEndpoints
                 new UpdateProductItemCommand(id, request.Name ?? string.Empty, request.UnitName ?? string.Empty,
                     request.TrackInventory, parsedStatus, request.ExpectedVersion, current.Id, DefaultStoreId(current)),
                 cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.CatalogWrite);
 
         group.MapDelete("/products/{id:guid}", async (Guid id, uint expectedVersion,
             IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -108,7 +109,7 @@ public static class CatalogEndpoints
             return EndpointResults.From(await catalog.DeleteProductItemAsync(current.TenantId,
                 new DeleteCatalogItemCommand(id, expectedVersion, current.Id, DefaultStoreId(current)),
                 cancellationToken), _ => Results.NoContent());
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.CatalogWrite);
 
         group.MapPost("/products/{id:guid}/image", async (Guid id, HttpRequest request,
             IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -127,7 +128,7 @@ public static class CatalogEndpoints
             return EndpointResults.From(await catalog.SetProductImageAsync(current.TenantId, id, current.Id,
                 DefaultStoreId(current), new FileUploadInput(file.FileName, file.ContentType, file.Length, stream),
                 cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner))
+        }).RequireAuthorization(SystemPermissions.CatalogWrite)
             .RequireRateLimiting("file-upload")
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(6 * 1024 * 1024));
 
@@ -163,7 +164,7 @@ public static class CatalogEndpoints
                 new CreatePriceBookCommand(request.Name ?? string.Empty, request.EffectiveFrom, lines, productLines,
                     current.Id, DefaultStoreId(current)), cancellationToken),
                 value => Results.Created($"/api/v1/catalog/price-books/{value.Id}", value));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.PricePublish);
 
         group.MapPost("/price-books/{id:guid}/publish", async (Guid id, IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
         {
@@ -172,7 +173,7 @@ public static class CatalogEndpoints
                 ? Results.Unauthorized()
                 : EndpointResults.From(await catalog.PublishPriceBookAsync(current.TenantId, id, current.Id,
                     DefaultStoreId(current), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.PricePublish);
 
         group.MapPut("/price-books/{id:guid}", async (Guid id, UpdatePriceBookRequest request,
             IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -186,7 +187,7 @@ public static class CatalogEndpoints
             return EndpointResults.From(await catalog.UpdatePriceBookAsync(current.TenantId,
                 new UpdatePriceBookCommand(id, request.Name ?? string.Empty, request.EffectiveFrom, lines,
                     productLines, request.ExpectedVersion, current.Id, DefaultStoreId(current)), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.PricePublish);
 
         group.MapPost("/price-books/{id:guid}/cancel", async (Guid id, CancelPriceBookRequest request,
             IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -195,7 +196,7 @@ public static class CatalogEndpoints
             return current is null ? Results.Unauthorized() : EndpointResults.From(await catalog.CancelPriceBookAsync(
                 current.TenantId, new CancelPriceBookCommand(id, request.ExpectedVersion, current.Id,
                     DefaultStoreId(current)), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.PricePublish);
 
         return endpoints;
     }

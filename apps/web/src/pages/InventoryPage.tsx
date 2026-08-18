@@ -5,6 +5,8 @@ import { useMemo, useState } from 'react'
 import { ApiError, apiRequest } from '../api/client'
 import type { InventoryBalance, InventoryDocument, InventoryMovement, PageResult } from '../api/types'
 import { useAuth } from '../auth/useAuth'
+import { Permission } from '../security/permissions'
+import { useAuthorization } from '../security/useAuthorization'
 
 interface DocumentValues { documentType: string; reason: string; lines: { productItemId: string; quantity: number }[] }
 const movementLabels: Record<string, string> = { Opening: '期初入库', Receipt: '采购/收货入库', SaleIssue: '销售出库', SalesReturn: '销售退货入库', AdjustmentIn: '盘盈入库', AdjustmentOut: '盘亏出库' }
@@ -12,7 +14,7 @@ const documentTypes = [{ value: 'Opening', label: '期初库存' }, { value: 'Re
 function commandId() { return crypto.randomUUID() }
 
 export function InventoryPage() {
-  const auth = useAuth(); const storeId = auth.store?.id; const owner = auth.user?.roles.includes('OWNER') ?? false
+  const auth = useAuth(); const { can } = useAuthorization(); const storeId = auth.store?.id; const owner = can(Permission.InventoryWrite)
   const queryClient = useQueryClient(); const [open, setOpen] = useState(false); const [form] = Form.useForm<DocumentValues>()
   const [movementPage, setMovementPage] = useState(1); const [documentPage, setDocumentPage] = useState(1)
   const movementPageSize = 10; const documentPageSize = 5

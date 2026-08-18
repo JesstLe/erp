@@ -431,8 +431,8 @@ internal sealed class SchedulingService(ErpDbContext db, TimeProvider clock, Cus
     {
         if (endsAtUtc <= startsAtUtc) return ("VALIDATION_FAILED", "预约结束时间必须晚于开始时间");
         if (!await db.Customers.AnyAsync(x => x.Id == customerId && x.TenantId == tenantId &&
-                x.HomeStoreId == storeId && x.Status == CustomerStatus.Active, cancellationToken))
-            return ("CUSTOMER_NOT_FOUND", "顾客不存在、已停用或不属于当前门店");
+                x.Status == CustomerStatus.Active, cancellationToken))
+            return ("CUSTOMER_NOT_FOUND", "顾客不存在或已停用");
         if (!await db.ServiceItems.AnyAsync(x => x.Id == serviceItemId && x.TenantId == tenantId &&
                 x.Status == CatalogItemStatus.Enabled, cancellationToken))
             return ("SERVICE_ITEM_NOT_FOUND", "服务项目不存在或已停用");

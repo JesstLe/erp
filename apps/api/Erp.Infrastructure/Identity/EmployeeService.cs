@@ -6,14 +6,15 @@ using Erp.Application.Security;
 using Erp.Domain.Common;
 using Erp.Domain.Organization;
 using Erp.Infrastructure.Persistence;
+using Erp.Infrastructure.Platform;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace Erp.Infrastructure.Identity;
 
-public sealed partial class EmployeeService(ErpDbContext db, UserManager<ApplicationUser> userManager,
-    IHttpContextAccessor httpContextAccessor) : IEmployeeService
+internal sealed partial class EmployeeService(ErpDbContext db, UserManager<ApplicationUser> userManager,
+    IHttpContextAccessor httpContextAccessor, LoginSecurityEventWriter securityEvents) : IEmployeeService
 {
     private static readonly Dictionary<string, string> RoleNames = new()
     {
@@ -91,14 +92,16 @@ public sealed partial class EmployeeService(ErpDbContext db, UserManager<Applica
 
         var roles = command.Roles.Select(x => x.Trim().ToUpperInvariant()).Where(x => x.Length > 0).Distinct().ToList();
         var account = command.Account?.Trim();
+        List<ApplicationRole> tenantRoles = [];
         if (command.CreateLoginAccount)
         {
             if (string.IsNullOrWhiteSpace(account) || !AccountPattern().IsMatch(account) || command.InitialPassword is null)
                 return ResultFactory.Failure<EmployeeDto>("VALIDATION_FAILED", "启用登录时，账号和初始密码必填");
             if (roles.Count == 0)
                 return ResultFactory.Failure<EmployeeDto>("VALIDATION_FAILED", "启用登录时至少选择一个角色");
-            var validRoleCount = await db.Roles.CountAsync(x => x.TenantId == tenantId && x.Name != null && roles.Contains(x.Name), cancellationToken);
-            if (validRoleCount != roles.Count)
+            tenantRoles = await db.Roles.Where(x => x.TenantId == tenantId && x.Name != null &&
+                roles.Contains(x.Name)).ToListAsync(cancellationToken);
+            if (tenantRoles.Count != roles.Count)
                 return ResultFactory.Failure<EmployeeDto>("INVALID_ROLE", "所选角色无效");
             if (await userManager.FindByNameAsync(account) is not null)
                 return ResultFactory.Failure<EmployeeDto>("ACCOUNT_EXISTS", "登录账号已存在");
@@ -117,9 +120,11 @@ public sealed partial class EmployeeService(ErpDbContext db, UserManager<Applica
                 var createResult = await userManager.CreateAsync(user, command.InitialPassword!);
                 if (!createResult.Succeeded)
                     return await RollbackFailure(transaction, "INVALID_INITIAL_PASSWORD", "初始密码不符合安全要求", cancellationToken);
-                var roleResult = await userManager.AddToRolesAsync(user, roles);
-                if (!roleResult.Succeeded)
-                    return await RollbackFailure(transaction, "ROLE_ASSIGNMENT_FAILED", "角色分配失败", cancellationToken);
+                db.UserRoles.AddRange(tenantRoles.Select(role => new IdentityUserRole<Guid>
+                {
+                    UserId = user.Id,
+                    RoleId = role.Id,
+                }));
                 db.UserStores.AddRange(stores.Select((store, index) => new UserStore(tenantId, user.Id, store.Id, index == 0)));
             }
 
@@ -159,7 +164,7 @@ public sealed partial class EmployeeService(ErpDbContext db, UserManager<Applica
                 ? await BuildEmployeeDtoWithoutUser(employee, tenantId, cancellationToken)
                 : await BuildEmployeeDto(employee, user, tenantId, cancellationToken));
 
-        if (!command.IsEnabled && await userManager.IsInRoleAsync(user, SystemRoles.Owner))
+        if (!command.IsEnabled && await IsTenantOwnerAsync(tenantId, user.Id, cancellationToken))
         {
             var enabledOwnerCount = await (from candidate in db.Users
                 join link in db.UserRoles on candidate.Id equals link.UserId
@@ -211,7 +216,7 @@ public sealed partial class EmployeeService(ErpDbContext db, UserManager<Applica
             user = await userManager.FindByIdAsync(employee.UserId.Value.ToString());
             if (user is null || user.TenantId != tenantId)
                 return ResultFactory.Failure<EmployeeDto>("EMPLOYEE_ACCOUNT_NOT_FOUND", "员工登录账号不存在");
-            currentRoles = await userManager.GetRolesAsync(user);
+            currentRoles = await GetTenantRoleNamesAsync(tenantId, user.Id, cancellationToken);
             var validRoleCount = await db.Roles.CountAsync(x => x.TenantId == tenantId && x.Name != null &&
                 roles.Contains(x.Name), cancellationToken);
             if (roles.Count == 0 || validRoleCount != roles.Count)
@@ -250,10 +255,25 @@ public sealed partial class EmployeeService(ErpDbContext db, UserManager<Applica
                 user.DisplayName = displayName;
                 var removeRoles = currentRoles.Where(x => !roles.Contains(x, StringComparer.OrdinalIgnoreCase)).ToList();
                 var addRoles = roles.Where(x => !currentRoles.Contains(x, StringComparer.OrdinalIgnoreCase)).ToList();
-                if (removeRoles.Count > 0 && !(await userManager.RemoveFromRolesAsync(user, removeRoles)).Succeeded)
-                    return await RollbackFailure(transaction, "ROLE_ASSIGNMENT_FAILED", "移除旧角色失败", cancellationToken);
-                if (addRoles.Count > 0 && !(await userManager.AddToRolesAsync(user, addRoles)).Succeeded)
-                    return await RollbackFailure(transaction, "ROLE_ASSIGNMENT_FAILED", "分配新角色失败", cancellationToken);
+                if (removeRoles.Count > 0)
+                {
+                    var removeLinks = await (from link in db.UserRoles
+                        join role in db.Roles on link.RoleId equals role.Id
+                        where link.UserId == user.Id && role.TenantId == tenantId && role.Name != null &&
+                            removeRoles.Contains(role.Name)
+                        select link).ToListAsync(cancellationToken);
+                    db.UserRoles.RemoveRange(removeLinks);
+                }
+                if (addRoles.Count > 0)
+                {
+                    var addRoleIds = await db.Roles.Where(role => role.TenantId == tenantId && role.Name != null &&
+                            addRoles.Contains(role.Name)).Select(role => role.Id).ToListAsync(cancellationToken);
+                    db.UserRoles.AddRange(addRoleIds.Select(roleId => new IdentityUserRole<Guid>
+                    {
+                        UserId = user.Id,
+                        RoleId = roleId,
+                    }));
+                }
                 var oldUserStores = await db.UserStores.Where(x => x.TenantId == tenantId && x.UserId == user.Id)
                     .ToListAsync(cancellationToken);
                 db.RemoveRange(oldUserStores);
@@ -303,7 +323,8 @@ public sealed partial class EmployeeService(ErpDbContext db, UserManager<Applica
             return ResultFactory.Failure<EmployeeDto>("CANNOT_DISABLE_SELF", "不能在当前登录会话中变更自己的在职状态");
         var user = employee.UserId.HasValue
             ? await userManager.FindByIdAsync(employee.UserId.Value.ToString()) : null;
-        if (!command.Reactivate && user is not null && await userManager.IsInRoleAsync(user, SystemRoles.Owner) &&
+        if (!command.Reactivate && user is not null &&
+            await IsTenantOwnerAsync(tenantId, user.Id, cancellationToken) &&
             !await HasAnotherEnabledOwnerAsync(tenantId, user.Id, cancellationToken))
             return ResultFactory.Failure<EmployeeDto>("LAST_OWNER_REQUIRED", "系统必须保留至少一个有效的最高权限账号");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -378,6 +399,8 @@ public sealed partial class EmployeeService(ErpDbContext db, UserManager<Applica
                 passwordMaterialLogged = false,
             }));
         await db.SaveChangesAsync(cancellationToken);
+        await securityEvents.RecordAsync("Merchant", user.UserName ?? string.Empty, "PasswordResetByAdmin",
+            "SUCCESS", tenantId, user.Id, cancellationToken: cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return ResultFactory.Success(await BuildEmployeeDto(employee, user, tenantId, cancellationToken));
     }
@@ -389,6 +412,19 @@ public sealed partial class EmployeeService(ErpDbContext db, UserManager<Applica
         where candidate.TenantId == tenantId && candidate.Id != excludedUserId && candidate.IsEnabled &&
             role.Name == SystemRoles.Owner
         select candidate.Id).Distinct().AnyAsync(cancellationToken);
+
+    private async Task<bool> IsTenantOwnerAsync(Guid tenantId, Guid userId,
+        CancellationToken cancellationToken) => await (from link in db.UserRoles
+        join role in db.Roles on link.RoleId equals role.Id
+        where link.UserId == userId && role.TenantId == tenantId && role.Name == SystemRoles.Owner
+        select link.UserId).AnyAsync(cancellationToken);
+
+    private async Task<IList<string>> GetTenantRoleNamesAsync(Guid tenantId, Guid userId,
+        CancellationToken cancellationToken) => await (from link in db.UserRoles.AsNoTracking()
+        join role in db.Roles.AsNoTracking() on link.RoleId equals role.Id
+        where link.UserId == userId && role.TenantId == tenantId && role.Name != null
+        orderby role.Name
+        select role.Name!).ToListAsync(cancellationToken);
 
     private async Task<Guid?> PrimaryStoreIdAsync(Guid employeeId, CancellationToken cancellationToken) =>
         await db.Set<EmployeeStore>().Where(x => x.EmployeeId == employeeId).OrderByDescending(x => x.IsPrimary)
@@ -408,7 +444,7 @@ public sealed partial class EmployeeService(ErpDbContext db, UserManager<Applica
     private async Task<EmployeeDto> BuildEmployeeDto(Employee employee, ApplicationUser user, Guid tenantId,
         CancellationToken cancellationToken)
     {
-        var roles = await userManager.GetRolesAsync(user);
+        var roles = await GetTenantRoleNamesAsync(tenantId, user.Id, cancellationToken);
         var stores = await db.Set<EmployeeStore>().AsNoTracking().Where(x => x.EmployeeId == employee.Id && x.TenantId == tenantId)
             .Join(db.Stores.AsNoTracking(), x => x.StoreId, x => x.Id, (assignment, store) =>
                 new { Store = store, assignment.IsPrimary })

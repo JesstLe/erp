@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Erp.Application.Security;
 using Erp.Infrastructure.Customers;
 
 namespace Erp.Api.IntegrationTests;
@@ -8,6 +9,31 @@ public sealed partial class RepositoryArtifactIntegrationTests
     private static readonly string RepositoryRoot = FindRepositoryRoot();
     private static readonly string[] RealtimeSearchPages =
         ["CustomersPage.tsx", "EmployeesPage.tsx", "ServiceItemsPage.tsx", "ProductsPage.tsx"];
+
+    [Fact]
+    public void RolePermissionCatalogSeedsEveryDefaultGrantAndEnforcesDatabaseAuthorization()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608190030__role_permission_catalog.sql"));
+        var handler = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Security", "PermissionAuthorization.cs"));
+        var identity = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Identity", "IdentityService.cs"));
+
+        foreach (var permission in SystemPermissions.ForRole(SystemRoles.Owner))
+            Assert.Contains($"('{permission}')", migration, StringComparison.Ordinal);
+        foreach (var role in new[]
+                 {
+                     SystemRoles.StoreManager, SystemRoles.FrontDesk, SystemRoles.Cashier,
+                     SystemRoles.Technician,
+                 })
+        foreach (var permission in SystemPermissions.ForRole(role))
+            Assert.Contains($"('{role}', '{permission}')", migration, StringComparison.Ordinal);
+
+        Assert.Contains("join grant in db.RoleActionGrants", handler, StringComparison.Ordinal);
+        Assert.Contains("grant.TenantId == user.TenantId", handler, StringComparison.Ordinal);
+        Assert.Contains("permissions = await dbContext.RoleActionGrants", identity, StringComparison.Ordinal);
+    }
 
     [Fact]
     public void DatabaseMigrationsAreUniquelyVersionedAndNonDestructive()
@@ -201,7 +227,7 @@ public sealed partial class RepositoryArtifactIntegrationTests
         Assert.Contains("protector.Protect(content)", storage, StringComparison.Ordinal);
         Assert.Contains("DetectContentType(content)", storage, StringComparison.Ordinal);
         Assert.Contains("Path.GetFullPath", storage, StringComparison.Ordinal);
-        Assert.Contains("ServiceRecordOperators = [SystemRoles.Owner, SystemRoles.StoreManager]", endpoints,
+        Assert.Contains("RequireAuthorization(SystemPermissions.ServiceRecordManage)", endpoints,
             StringComparison.Ordinal);
     }
 
@@ -217,9 +243,10 @@ public sealed partial class RepositoryArtifactIntegrationTests
 
         Assert.Contains("reference_price_minor bigint", migration, StringComparison.Ordinal);
         Assert.Contains("reference_price_minor IS NULL", migration, StringComparison.Ordinal);
-        Assert.Contains("ConfigurationOperators = [SystemRoles.Owner, SystemRoles.StoreManager]", endpoints,
+        Assert.Contains("RequireAuthorization(SystemPermissions.FacilityConfigure)", endpoints,
             StringComparison.Ordinal);
-        Assert.Contains("RequireRole(SystemRoles.Owner)", endpoints, StringComparison.Ordinal);
+        Assert.Contains("RequireAuthorization(SystemPermissions.FacilityConfigureAllStores)", endpoints,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("facility.ReferencePriceMinor", cashier, StringComparison.Ordinal);
     }
 
@@ -236,7 +263,9 @@ public sealed partial class RepositoryArtifactIntegrationTests
         Assert.Contains("planned_service_item_id uuid", migration, StringComparison.Ordinal);
         Assert.Contains("ON DELETE RESTRICT", migration, StringComparison.Ordinal);
         Assert.Contains("never creates a charge", migration, StringComparison.Ordinal);
-        Assert.Contains("x.HomeStoreId == command.StoreId", facilityService, StringComparison.Ordinal);
+        Assert.DoesNotContain("x.HomeStoreId == command.StoreId", facilityService, StringComparison.Ordinal);
+        Assert.Contains("x.TenantId == tenantId && x.Status == CustomerStatus.Active", facilityService,
+            StringComparison.Ordinal);
         Assert.DoesNotContain("CustomerPrivacyService.MaskName", facilityService, StringComparison.Ordinal);
         Assert.Contains("ToDictionaryAsync(x => x.Id, x => x.Name", facilityService, StringComparison.Ordinal);
         Assert.Contains("带入预计服务", cashierPage, StringComparison.Ordinal);
@@ -277,7 +306,8 @@ public sealed partial class RepositoryArtifactIntegrationTests
         Assert.Contains("MapDelete(\"/service-items/{id:guid}\"", endpoints, StringComparison.Ordinal);
         Assert.Contains("MapPut(\"/products/{id:guid}\"", endpoints, StringComparison.Ordinal);
         Assert.Contains("MapDelete(\"/products/{id:guid}\"", endpoints, StringComparison.Ordinal);
-        Assert.Contains("RequireRole(SystemRoles.Owner)", endpoints, StringComparison.Ordinal);
+        Assert.Contains("RequireAuthorization(SystemPermissions.CatalogWrite)", endpoints,
+            StringComparison.Ordinal);
         Assert.Contains("x.Code.Contains(normalizedQuery) || x.Name.Contains(normalizedQuery)", service,
             StringComparison.Ordinal);
         Assert.Contains("RESOURCE_IN_USE", service, StringComparison.Ordinal);
@@ -306,7 +336,8 @@ public sealed partial class RepositoryArtifactIntegrationTests
         Assert.Contains("REFERENCES organization_employees(id) ON DELETE RESTRICT", migration,
             StringComparison.Ordinal);
         Assert.Contains("Immutable gross commission snapshot", migration, StringComparison.Ordinal);
-        Assert.Contains("RequireRole(SystemRoles.Owner)", catalogEndpoints, StringComparison.Ordinal);
+        Assert.Contains("RequireAuthorization(SystemPermissions.CatalogWrite)", catalogEndpoints,
+            StringComparison.Ordinal);
         Assert.Contains("employee.Status == EmployeeStatus.Active", cashierService, StringComparison.Ordinal);
         Assert.Contains("assignment.StoreId == command.StoreId", cashierService, StringComparison.Ordinal);
         Assert.Contains("AllocateRefundDeduction", reportService, StringComparison.Ordinal);
@@ -330,7 +361,8 @@ public sealed partial class RepositoryArtifactIntegrationTests
         Assert.Contains("manager_line_discount_basis_points BETWEEN 0 AND 10000", migration,
             StringComparison.Ordinal);
         Assert.Contains("current.Roles", endpoints, StringComparison.Ordinal);
-        Assert.Contains("RequireRole(SystemRoles.Owner)", endpoints, StringComparison.Ordinal);
+        Assert.Contains("RequireAuthorization(SystemPermissions.CashierApprovePrice)", endpoints,
+            StringComparison.Ordinal);
         Assert.Contains("ResolvePriceRole(command.OperatorRoles)", service, StringComparison.Ordinal);
         Assert.Contains("service_order.price.approval_requested", service, StringComparison.Ordinal);
         Assert.Contains("PRICE_APPROVAL_REQUIRED", order, StringComparison.Ordinal);
@@ -356,9 +388,10 @@ public sealed partial class RepositoryArtifactIntegrationTests
         Assert.Contains("\"'=HYPERLINK(\"\"https://invalid.example\"\")\"", csv, StringComparison.Ordinal);
         Assert.Contains("138****1234", csv, StringComparison.Ordinal);
         Assert.Contains("MapPost(\"/{customerId:guid}/mobile/reveal\"", endpoints, StringComparison.Ordinal);
-        Assert.Contains("RequireRole(SystemRoles.Owner, SystemRoles.StoreManager)", endpoints,
+        Assert.Contains("RequireAuthorization(SystemPermissions.CustomerExport)", endpoints,
             StringComparison.Ordinal);
-        Assert.Contains("current.Roles.Contains(SystemRoles.Owner", endpoints, StringComparison.Ordinal);
+        Assert.Contains("current.Permissions.Contains(SystemPermissions.CustomerExportFullMobile)", endpoints,
+            StringComparison.Ordinal);
         Assert.Contains("includeFinancialDetails", endpoints, StringComparison.Ordinal);
         Assert.Contains("customer.mobile.reveal", service, StringComparison.Ordinal);
         Assert.Contains("customer.export", service, StringComparison.Ordinal);
@@ -487,6 +520,27 @@ public sealed partial class RepositoryArtifactIntegrationTests
         Assert.Contains("trg_inventory_transfer_lots_immutable", migration, StringComparison.Ordinal);
         Assert.Contains("IsolationLevel.Serializable", service, StringComparison.Ordinal);
         Assert.Contains("INVENTORY_LOT_INSUFFICIENT", service, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PlatformControlPlaneUsesSeparateIdentityAndImmutableSecurityEvents()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608190029__platform_control_plane_and_login_security.sql"));
+        var dependencyInjection = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api",
+            "Erp.Infrastructure", "DependencyInjection.cs"));
+        var platformEndpoints = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Api",
+            "Endpoints", "PlatformEndpoints.cs"));
+
+        Assert.Contains("CREATE TABLE platform_admin_users", migration, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE merchant_registration_applications", migration, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE login_security_events", migration, StringComparison.Ordinal);
+        Assert.Contains("trg_login_security_events_immutable", migration, StringComparison.Ordinal);
+        Assert.Contains("trg_platform_audit_events_immutable", migration, StringComparison.Ordinal);
+        Assert.DoesNotContain("password varchar", migration, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Erp.Platform.Session", dependencyInjection, StringComparison.Ordinal);
+        Assert.Contains("PlatformAuthentication.Policy", platformEndpoints, StringComparison.Ordinal);
+        Assert.Contains("merchant-registration", platformEndpoints, StringComparison.Ordinal);
     }
 
     [Fact]

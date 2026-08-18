@@ -5,8 +5,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { apiRequest, ApiError } from '../api/client'
 import type { ProductItem } from '../api/types'
-import { useAuth } from '../auth/useAuth'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { Permission } from '../security/permissions'
+import { useAuthorization } from '../security/useAuthorization'
 
 interface ProductForm { code?: string; name: string; unitName: string; trackInventory: boolean; status: string }
 
@@ -15,7 +16,7 @@ function requestError(error: unknown): string {
 }
 
 export function ProductsPage() {
-  const auth = useAuth(); const canManage = auth.user?.roles.includes('OWNER') ?? false
+  const { can } = useAuthorization(); const canManage = can(Permission.CatalogWrite)
   const [open, setOpen] = useState(false); const [editing, setEditing] = useState<ProductItem>()
   const [queryText, setQueryText] = useState(''); const [status, setStatus] = useState<string>()
   const normalizedQuery = queryText.trim(); const appliedQuery = useDebouncedValue(normalizedQuery)

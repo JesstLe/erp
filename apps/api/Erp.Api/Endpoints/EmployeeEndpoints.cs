@@ -9,7 +9,7 @@ public static class EmployeeEndpoints
     public static IEndpointRouteBuilder MapEmployeeEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/employees").WithTags("Employees")
-            .RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+            .RequireAuthorization(SystemPermissions.EmployeeManage);
 
         group.MapGet("", async (string? query, int? page, int? pageSize, IIdentityService identity,
             IEmployeeService employees,
