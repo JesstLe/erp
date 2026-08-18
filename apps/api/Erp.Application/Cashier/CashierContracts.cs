@@ -3,7 +3,9 @@ using Erp.Application.Common;
 namespace Erp.Application.Cashier;
 
 public sealed record CashierVisitDto(Guid Id, string VisitNo, string Status, Guid? CustomerId,
-    DateTimeOffset ArrivedAtUtc, DateTimeOffset? ServiceEndedAtUtc, long FacilitySeconds, string? Note);
+    string CustomerDisplayName, Guid? PlannedServiceItemId, string? PlannedServiceItemName,
+    string FacilityNames, DateTimeOffset ArrivedAtUtc, DateTimeOffset? ServiceEndedAtUtc,
+    long FacilitySeconds, string? Note);
 public sealed record ServiceOrderLineDto(Guid Id, string LineType, Guid? ServiceItemId, Guid? ProductItemId,
     string ItemCode, string ItemName, string? UnitName, int Quantity, int ReturnedQuantity,
     int? ActualSeconds, long ReferencePriceMinor, long EnteredPriceMinor,

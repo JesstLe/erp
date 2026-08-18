@@ -5,8 +5,11 @@ using System.Text.Json;
 using Erp.Application.Common;
 using Erp.Application.Facilities;
 using Erp.Application.Security;
+using Erp.Domain.Catalog;
 using Erp.Domain.Common;
+using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
+using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +38,15 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
         var sessionByFacility = sessions.ToDictionary(x => x.FacilityId);
         var visitIds = sessions.Select(x => x.VisitId).Distinct().ToList();
         var visits = await db.Visits.AsNoTracking().Where(x => visitIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        var customerIds = visits.Values.Where(x => x.CustomerId.HasValue).Select(x => x.CustomerId!.Value).Distinct().ToList();
+        var rawCustomerNames = await db.Customers.AsNoTracking().Where(x => customerIds.Contains(x.Id) && x.TenantId == tenantId)
+            .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
+        var customerNames = rawCustomerNames.ToDictionary(x => x.Key, x => CustomerPrivacyService.MaskName(x.Value));
+        var plannedServiceIds = visits.Values.Where(x => x.PlannedServiceItemId.HasValue)
+            .Select(x => x.PlannedServiceItemId!.Value).Distinct().ToList();
+        var plannedServiceNames = await db.ServiceItems.AsNoTracking()
+            .Where(x => plannedServiceIds.Contains(x.Id) && x.TenantId == tenantId)
+            .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
         var cleaningIds = await db.FacilityCleaningTasks.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.StoreId == storeId && x.Status == CleaningTaskStatus.Pending)
             .Select(x => x.FacilityId).ToHashSetAsync(cancellationToken);
@@ -46,7 +58,9 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
                 Visit? visit = null;
                 if (session is not null) visits.TryGetValue(session.VisitId, out visit);
                 return ToItem(facility, typeNames.GetValueOrDefault(facility.FacilityTypeId, "未分类"), session, visit,
-                    cleaningIds.Contains(facility.Id), now);
+                    cleaningIds.Contains(facility.Id), now,
+                    visit?.CustomerId is Guid customerId ? customerNames.GetValueOrDefault(customerId) : null,
+                    visit?.PlannedServiceItemId is Guid serviceItemId ? plannedServiceNames.GetValueOrDefault(serviceItemId) : null);
             }).ToList())).ToList();
 
         return ResultFactory.Success(new FacilityBoardDto(now, projected));
@@ -223,7 +237,7 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
 
     public Task<Result<FacilityBoardItemDto>> StartAsync(Guid tenantId, StartFacilitySessionCommand command, CancellationToken cancellationToken) =>
         ExecuteAsync(tenantId, command.StoreId, command.CommandId, command.OperatorId,
-            $"START|{command.StoreId}|{command.FacilityId}|{command.ExpectedDurationMinutes}|{command.Note}", command.FacilityId,
+            $"START|{command.StoreId}|{command.FacilityId}|{command.CustomerId}|{command.PlannedServiceItemId}|{command.ExpectedDurationMinutes}|{command.Note}", command.FacilityId,
             async now =>
             {
                 var facility = await db.Facilities.SingleOrDefaultAsync(x => x.Id == command.FacilityId && x.TenantId == tenantId && x.StoreId == command.StoreId, cancellationToken);
@@ -233,7 +247,26 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
                     await db.FacilityCleaningTasks.AnyAsync(x => x.FacilityId == facility.Id && x.Status == CleaningTaskStatus.Pending, cancellationToken))
                     return ResultFactory.Failure<Guid>("FACILITY_NOT_AVAILABLE", "设施当前不可用，请刷新看板");
 
-                var visit = new Visit(tenantId, command.StoreId, CreateVisitNo(now), command.ExpectedDurationMinutes, command.Note, now);
+                Customer? customer = null;
+                if (command.CustomerId.HasValue)
+                {
+                    customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == command.CustomerId.Value &&
+                        x.TenantId == tenantId && x.HomeStoreId == command.StoreId && x.Status == CustomerStatus.Active,
+                        cancellationToken);
+                    if (customer is null)
+                        return ResultFactory.Failure<Guid>("CUSTOMER_NOT_FOUND", "顾客不存在或不属于当前门店");
+                }
+                if (command.PlannedServiceItemId.HasValue)
+                {
+                    var serviceExists = await db.ServiceItems.AnyAsync(x => x.Id == command.PlannedServiceItemId.Value &&
+                        x.TenantId == tenantId && x.Status == CatalogItemStatus.Enabled, cancellationToken);
+                    if (!serviceExists)
+                        return ResultFactory.Failure<Guid>("SERVICE_ITEM_NOT_FOUND", "预计服务项目不存在或已停用");
+                }
+
+                var visit = new Visit(tenantId, command.StoreId, CreateVisitNo(now), command.ExpectedDurationMinutes,
+                    command.Note, now, command.PlannedServiceItemId);
+                if (customer is not null) visit.LinkCustomer(customer.Id);
                 var session = new FacilitySession(tenantId, command.StoreId, facility.Id, visit.Id, now, command.OperatorId, command.CommandId);
                 db.Visits.Add(visit);
                 // The session stores only the aggregate identifier, so persist the visit first inside the same transaction
@@ -241,7 +274,8 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
                 await db.SaveChangesAsync(cancellationToken);
                 db.FacilitySessions.Add(session);
                 AddAudit(tenantId, command.StoreId, command.OperatorId, "facility.session.start", "FacilitySession", session.Id,
-                    null, session.Status.ToString(), command.CommandId, null, now);
+                    null, session.Status.ToString(), command.CommandId, null, now,
+                    JsonSerializer.Serialize(new { VisitId = visit.Id, visit.CustomerId, visit.PlannedServiceItemId }));
                 return ResultFactory.Success(facility.Id);
             }, cancellationToken);
 
@@ -400,7 +434,8 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
     }
 
     private static FacilityBoardItemDto ToItem(Facility facility, string typeName, FacilitySession? session, Visit? visit,
-        bool cleaningRequired, DateTimeOffset now)
+        bool cleaningRequired, DateTimeOffset now, string? customerDisplayName = null,
+        string? plannedServiceItemName = null)
     {
         var status = facility.LifecycleStatus switch
         {
@@ -414,7 +449,8 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
         return new FacilityBoardItemDto(facility.Id, facility.Code, facility.DisplayName, typeName, status, facility.Version,
             session?.Id, session?.VisitId, visit?.VisitNo, session?.Status.ToString().ToUpperInvariant(), session?.StartedAtUtc,
             session?.GetActiveSeconds(now) ?? 0, session?.GetPausedSeconds(now) ?? 0, visit?.ExpectedDurationMinutes, visit?.Note,
-            facility.ServiceName, facility.EquipmentName, facility.ReferencePriceMinor);
+            facility.ServiceName, facility.EquipmentName, facility.ReferencePriceMinor, visit?.CustomerId,
+            customerDisplayName, visit?.PlannedServiceItemId, plannedServiceItemName);
     }
 
     private static FacilityConfigurationItemDto ToConfigurationItem(Facility facility, string typeName,

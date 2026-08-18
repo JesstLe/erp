@@ -36,7 +36,11 @@ public sealed record FacilityBoardItemDto(
     string? Note,
     string? ServiceName,
     string? EquipmentName,
-    long? ReferencePriceMinor);
+    long? ReferencePriceMinor,
+    Guid? CustomerId,
+    string? CustomerDisplayName,
+    Guid? PlannedServiceItemId,
+    string? PlannedServiceItemName);
 
 public sealed record CreateFacilityGroupCommand(Guid StoreId, string DisplayName, int SortOrder, Guid OperatorId);
 public sealed record UpdateFacilityGroupCommand(Guid StoreId, Guid GroupId, string DisplayName, int SortOrder,
@@ -49,8 +53,8 @@ public sealed record UpdateFacilityCommand(Guid StoreId, Guid FacilityId, Guid G
     string? Code, string DisplayName, string? ServiceName, string? EquipmentName, long? ReferencePriceMinor,
     int SortOrder, int DefaultCleaningMinutes, bool AllowReservation, FacilityLifecycleStatus LifecycleStatus,
     uint ExpectedVersion, Guid OperatorId);
-public sealed record StartFacilitySessionCommand(Guid StoreId, Guid FacilityId, int? ExpectedDurationMinutes, string? Note,
-    Guid CommandId, Guid OperatorId);
+public sealed record StartFacilitySessionCommand(Guid StoreId, Guid FacilityId, Guid? CustomerId,
+    Guid? PlannedServiceItemId, int? ExpectedDurationMinutes, string? Note, Guid CommandId, Guid OperatorId);
 public sealed record OperateFacilitySessionCommand(Guid StoreId, Guid SessionId, Guid CommandId, Guid OperatorId);
 public sealed record SwitchFacilityCommand(Guid StoreId, Guid SessionId, Guid TargetFacilityId, string? Reason,
     Guid CommandId, Guid OperatorId);
