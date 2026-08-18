@@ -57,6 +57,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<MemberVerificationChallenge> MemberVerificationChallenges => Set<MemberVerificationChallenge>();
     public DbSet<ServiceOrder> ServiceOrders => Set<ServiceOrder>();
     public DbSet<ServiceOrderLine> ServiceOrderLines => Set<ServiceOrderLine>();
+    public DbSet<PriceOverridePolicy> PriceOverridePolicies => Set<PriceOverridePolicy>();
+    public DbSet<PriceOverrideApproval> PriceOverrideApprovals => Set<PriceOverrideApproval>();
     public DbSet<PaymentMethod> PaymentMethods => Set<PaymentMethod>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
@@ -550,6 +552,12 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.RefundedMinor).HasColumnName("refunded_minor");
             entity.Property(x => x.ConfirmedAtUtc).HasColumnName("confirmed_at_utc");
             entity.Property(x => x.SettledAtUtc).HasColumnName("settled_at_utc");
+            entity.Property(x => x.PriceAuthorizationStatus).HasColumnName("price_authorization_status")
+                .HasConversion<string>().HasMaxLength(32);
+            entity.Property(x => x.PricePolicyId).HasColumnName("price_policy_id");
+            entity.Property(x => x.PricePolicyVersion).HasColumnName("price_policy_version");
+            entity.Property(x => x.PriceAuthorizedBy).HasColumnName("price_authorized_by");
+            entity.Property(x => x.PriceAuthorizedAtUtc).HasColumnName("price_authorized_at_utc");
             entity.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
             entity.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
             entity.HasIndex(x => new { x.TenantId, x.OrderNo }).IsUnique();
@@ -592,6 +600,52 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasOne<ProductItem>().WithMany().HasForeignKey(x => x.ProductItemId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Employee>().WithMany().HasForeignKey(x => x.ServiceEmployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<PriceOverridePolicy>(entity =>
+        {
+            entity.ToTable("price_override_policies");
+            ConfigureBase(entity);
+            entity.Property(x => x.PolicyVersion).HasColumnName("policy_version");
+            entity.Property(x => x.ManagerLineDiscountBasisPoints)
+                .HasColumnName("manager_line_discount_basis_points");
+            entity.Property(x => x.ManagerOrderDiscountMinor).HasColumnName("manager_order_discount_minor");
+            entity.Property(x => x.AllowManagerPriceIncrease).HasColumnName("allow_manager_price_increase");
+            entity.Property(x => x.CreatedBy).HasColumnName("created_by");
+            entity.Property(x => x.EffectiveFromUtc).HasColumnName("effective_from_utc");
+            entity.Property(x => x.IsActive).HasColumnName("is_active");
+            entity.HasIndex(x => new { x.TenantId, x.PolicyVersion }).IsUnique();
+            entity.HasIndex(x => x.TenantId).IsUnique().HasFilter("is_active");
+        });
+        builder.Entity<PriceOverrideApproval>(entity =>
+        {
+            entity.ToTable("price_override_approvals");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.ServiceOrderId).HasColumnName("service_order_id");
+            entity.Property(x => x.RequesterId).HasColumnName("requester_id");
+            entity.Property(x => x.RequesterRoleSnapshot).HasColumnName("requester_role_snapshot").HasMaxLength(64);
+            entity.Property(x => x.PolicyId).HasColumnName("policy_id");
+            entity.Property(x => x.PolicyVersion).HasColumnName("policy_version");
+            entity.Property(x => x.ReferenceAmountMinor).HasColumnName("reference_amount_minor");
+            entity.Property(x => x.ReceivableMinor).HasColumnName("receivable_minor");
+            entity.Property(x => x.DifferenceMinor).HasColumnName("difference_minor");
+            entity.Property(x => x.MaximumLineDiscountBasisPoints)
+                .HasColumnName("maximum_line_discount_basis_points");
+            entity.Property(x => x.ManagerLineDiscountBasisPoints)
+                .HasColumnName("manager_line_discount_basis_points");
+            entity.Property(x => x.ManagerOrderDiscountMinor).HasColumnName("manager_order_discount_minor");
+            entity.Property(x => x.AllowManagerPriceIncrease).HasColumnName("allow_manager_price_increase");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.RequestedAtUtc).HasColumnName("requested_at_utc");
+            entity.Property(x => x.DecidedBy).HasColumnName("decided_by");
+            entity.Property(x => x.DecidedAtUtc).HasColumnName("decided_at_utc");
+            entity.Property(x => x.DecisionNote).HasColumnName("decision_note").HasMaxLength(500);
+            entity.HasIndex(x => x.ServiceOrderId).IsUnique();
+            entity.HasIndex(x => new { x.StoreId, x.Status, x.RequestedAtUtc });
+            entity.HasOne<ServiceOrder>().WithOne().HasForeignKey<PriceOverrideApproval>(x => x.ServiceOrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PriceOverridePolicy>().WithMany().HasForeignKey(x => x.PolicyId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<PaymentMethod>(entity =>

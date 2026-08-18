@@ -14,16 +14,31 @@ public sealed record ServiceOrderLineDto(Guid Id, string LineType, Guid? Service
     string? EmployeeName);
 public sealed record ServiceOrderDto(Guid Id, string OrderNo, Guid VisitId, Guid? CustomerId, string Status,
     Guid PriceBookId, long ReferenceAmountMinor, long ReceivableMinor, long RefundedMinor, string? Note, uint Version,
-    DateTimeOffset CreatedAtUtc, IReadOnlyList<ServiceOrderLineDto> Lines);
+    DateTimeOffset CreatedAtUtc, string PriceAuthorizationStatus, Guid? PricePolicyId, int? PricePolicyVersion,
+    Guid? PriceAuthorizedBy, DateTimeOffset? PriceAuthorizedAtUtc, IReadOnlyList<ServiceOrderLineDto> Lines);
+public sealed record PriceOverridePolicyDto(Guid Id, int PolicyVersion, int ManagerLineDiscountBasisPoints,
+    long ManagerOrderDiscountMinor, bool AllowManagerPriceIncrease, DateTimeOffset EffectiveFromUtc, uint Version);
+public sealed record PriceOverrideApprovalDto(Guid Id, Guid ServiceOrderId, string OrderNo, string Status,
+    Guid RequesterId, string RequesterName, string RequesterRole, Guid PolicyId, int PolicyVersion,
+    long ReferenceAmountMinor, long ReceivableMinor, long DifferenceMinor, int MaximumLineDiscountBasisPoints,
+    int ManagerLineDiscountBasisPoints, long ManagerOrderDiscountMinor, bool AllowManagerPriceIncrease,
+    DateTimeOffset RequestedAtUtc, Guid? DecidedBy, string? DeciderName, DateTimeOffset? DecidedAtUtc,
+    string? DecisionNote, uint Version);
 public sealed record CreateServiceOrderLineCommand(string? LineType, Guid? ServiceItemId, Guid? ProductItemId,
     Guid? ServiceEmployeeId, int Quantity, int? ActualSeconds, long EnteredPriceMinor,
     string? PriceOverrideReason);
 public sealed record CreateServiceOrderCommand(Guid StoreId, Guid? VisitId, Guid? CustomerId, string? Note,
-    IReadOnlyList<CreateServiceOrderLineCommand> Lines, Guid CommandId, Guid OperatorId);
+    IReadOnlyList<CreateServiceOrderLineCommand> Lines, Guid CommandId, Guid OperatorId,
+    IReadOnlyList<string> OperatorRoles);
 public sealed record ConfirmServiceOrderCommand(Guid StoreId, Guid OrderId, uint ExpectedVersion,
     Guid CommandId, Guid OperatorId);
 public sealed record VoidServiceOrderCommand(Guid StoreId, Guid OrderId, uint ExpectedVersion,
     string Reason, Guid CommandId, Guid OperatorId);
+public sealed record UpdatePriceOverridePolicyCommand(Guid StoreId, int ManagerLineDiscountBasisPoints,
+    long ManagerOrderDiscountMinor, bool AllowManagerPriceIncrease, uint ExpectedVersion,
+    Guid CommandId, Guid OperatorId);
+public sealed record DecidePriceOverrideApprovalCommand(Guid StoreId, Guid ApprovalId, uint ExpectedVersion,
+    string? Note, Guid CommandId, Guid ApproverId);
 
 public interface ICashierService
 {
@@ -36,4 +51,14 @@ public interface ICashierService
     Task<Result<ServiceOrderDto>> ConfirmOrderAsync(Guid tenantId, ConfirmServiceOrderCommand command, CancellationToken cancellationToken);
     Task<Result<ServiceOrderDto>> VoidOrderAsync(Guid tenantId, VoidServiceOrderCommand command,
         CancellationToken cancellationToken);
+    Task<PriceOverridePolicyDto> GetPriceOverridePolicyAsync(Guid tenantId, Guid operatorId,
+        CancellationToken cancellationToken);
+    Task<Result<PriceOverridePolicyDto>> UpdatePriceOverridePolicyAsync(Guid tenantId,
+        UpdatePriceOverridePolicyCommand command, CancellationToken cancellationToken);
+    Task<IReadOnlyList<PriceOverrideApprovalDto>> ListPriceOverrideApprovalsAsync(Guid tenantId, Guid storeId,
+        string? status, CancellationToken cancellationToken);
+    Task<Result<PriceOverrideApprovalDto>> ApprovePriceOverrideAsync(Guid tenantId,
+        DecidePriceOverrideApprovalCommand command, CancellationToken cancellationToken);
+    Task<Result<PriceOverrideApprovalDto>> RejectPriceOverrideAsync(Guid tenantId,
+        DecidePriceOverrideApprovalCommand command, CancellationToken cancellationToken);
 }

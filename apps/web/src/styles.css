@@ -46,6 +46,13 @@ button, input { font: inherit; }
 .notification-popover .header-popover-title { text-align: left; }
 .notification-popover .ant-empty { margin-block: 14px; }
 .notification-popover > .ant-typography { display: block; font-size: 12px; line-height: 1.6; }
+.notification-popover { width: 380px; max-width: calc(100vw - 32px); }
+.notification-list { display: grid; gap: 6px; max-height: 430px; overflow: auto; text-align: left; }
+.notification-item { display: grid; gap: 4px; width: 100%; padding: 10px 12px; border: 0; border-radius: 8px; background: #f7f9fc; color: inherit; text-align: left; cursor: pointer; }
+.notification-item:hover { background: #eef3fb; }
+.notification-item > span { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.notification-item small { color: #475467; line-height: 1.5; }
+.notification-item time { color: #98a2b3; font-size: 11px; }
 .header-help-list { display: flex; flex-direction: column; gap: 9px; color: #5f6d80; font-size: 13px; }
 .account-menu-summary { min-width: 170px; display: flex; flex-direction: column; gap: 3px; }
 .account-menu-summary span { color: #8390a3; font-size: 11px; }

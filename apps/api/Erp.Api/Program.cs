@@ -189,6 +189,7 @@ app.MapPaymentChannelEndpoints();
 app.MapRefundEndpoints();
 app.MapAuditEndpoints();
 app.MapReportEndpoints();
+app.MapNotificationEndpoints();
 
 app.Run();
 

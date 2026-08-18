@@ -1,8 +1,11 @@
 import { AppstoreOutlined, AuditOutlined, BarChartOutlined, BellOutlined, ClockCircleOutlined, CloudServerOutlined, DatabaseOutlined, InboxOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, QuestionCircleOutlined, SafetyCertificateOutlined, SettingOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
-import { Avatar, Badge, Button, Dropdown, Empty, Layout, Menu, Popover, Select, Tooltip, Typography, type MenuProps } from 'antd'
+import { Avatar, Badge, Button, Dropdown, Empty, Layout, Menu, Popover, Select, Tag, Tooltip, Typography, type MenuProps } from 'antd'
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useAuth } from '../auth/useAuth'
+import { apiRequest } from '../api/client'
+import type { NotificationInbox } from '../api/types'
 
 const { Header, Sider, Content } = Layout
 const baseMenuItems: NonNullable<MenuProps['items']> = [
@@ -24,6 +27,7 @@ export function AppLayout() {
   const auth = useAuth(); const navigate = useNavigate(); const location = useLocation()
   const canConfigureFacilities = auth.user?.roles.some((role) => role === 'OWNER' || role === 'STORE_MANAGER')
   const isOwner = auth.user?.roles.includes('OWNER') ?? false
+  const notifications = useQuery({ queryKey: ['notifications', auth.store?.id], enabled: Boolean(auth.store?.id), queryFn: () => apiRequest<NotificationInbox>(`/api/v1/notifications?storeId=${auth.store?.id}`), refetchInterval: 30_000 })
   const menuItems: MenuProps['items'] = [
     ...baseMenuItems,
     ...(canConfigureFacilities ? [{ key: '/settings/facilities', icon: <SettingOutlined />, label: '门店设施配置' }] : []),
@@ -54,8 +58,8 @@ export function AppLayout() {
         <Button type="text" className="collapse-button" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed((value) => !value)} />
         <div className="header-context"><Typography.Text type="secondary">当前门店</Typography.Text><Select value={auth.store?.id} options={auth.user?.stores.map((store) => ({ value: store.id, label: `${store.name} · ${store.code}` }))} onChange={(id) => { const store = auth.user?.stores.find((item) => item.id === id); if (store) auth.setStore(store) }} variant="borderless" className="store-select" /></div>
         <div className="header-actions">
-          <Popover trigger="click" placement="bottomRight" content={<div className="header-popover notification-popover"><div className="header-popover-title"><strong>消息通知</strong><Typography.Text type="secondary">0 条未读</Typography.Text></div><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无新消息" /><Typography.Text type="secondary">订单异常、退款审批和系统公告将在这里提醒。</Typography.Text></div>}>
-            <Tooltip title="消息通知"><Badge count={0} size="small"><Button type="text" className="header-icon-button" icon={<BellOutlined />} aria-label="消息通知" /></Badge></Tooltip>
+          <Popover trigger="click" placement="bottomRight" onOpenChange={(open) => { if (open) void notifications.refetch() }} content={<div className="header-popover notification-popover"><div className="header-popover-title"><strong>待办通知</strong><Typography.Text type="secondary">{notifications.data?.pendingCount ?? 0} 条待处理</Typography.Text></div>{notifications.data?.items.length ? <div className="notification-list">{notifications.data.items.map((item) => <button type="button" key={item.id} className="notification-item" onClick={() => navigate(item.targetUrl)}><span><strong>{item.title}</strong><Tag color={item.severity === 'error' ? 'red' : item.severity === 'warning' ? 'gold' : 'blue'}>{item.type === 'PriceOverrideApproval' ? '改价' : item.type === 'RefundApproval' ? '退款' : '交班'}</Tag></span><small>{item.description}</small><time>{new Date(item.occurredAtUtc).toLocaleString('zh-CN', { hour12: false })}</time></button>)}</div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={notifications.isLoading ? '正在加载' : '暂无待办'} />}</div>}>
+            <Tooltip title="待办通知"><Badge count={notifications.data?.pendingCount ?? 0} overflowCount={99} size="small"><Button type="text" className="header-icon-button" icon={<BellOutlined />} aria-label="待办通知" /></Badge></Tooltip>
           </Popover>
           <Popover trigger="click" placement="bottomRight" content={<div className="header-popover"><div className="header-popover-title"><strong>使用帮助</strong></div><div className="header-help-list"><span>① 先选择当前门店</span><span>② 从左侧进入对应业务</span><span>③ 涉及金额的操作会保留审计记录</span></div></div>}>
             <Tooltip title="使用帮助"><Button type="text" className="header-icon-button" icon={<QuestionCircleOutlined />} aria-label="使用帮助" /></Tooltip>

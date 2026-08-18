@@ -33,6 +33,80 @@ public sealed class ServiceOrderTests
     }
 
     [Fact]
+    public void PendingPriceOverrideCannotBeConfirmedUntilIndependentApprovalCompletes()
+    {
+        var now = new DateTimeOffset(2026, 8, 18, 6, 0, 0, TimeSpan.Zero);
+        var requester = Guid.CreateVersion7();
+        var approver = Guid.CreateVersion7();
+        var order = CreateOrder([new(Guid.CreateVersion7(), "S01", "标准服务", 1, null,
+            10_000, 8_000, "顾客活动优惠")]);
+        var policy = PriceOverridePolicy.Default(order.TenantId, approver, now);
+        order.RequestPriceApproval(policy.Id, policy.PolicyVersion);
+        var approval = new PriceOverrideApproval(order.TenantId, order.StoreId, order.Id, requester,
+            "CASHIER", policy.Id, policy.PolicyVersion, order.ReferenceAmountMinor, order.ReceivableMinor,
+            order.MaximumLineDiscountBasisPoints, policy.ManagerLineDiscountBasisPoints,
+            policy.ManagerOrderDiscountMinor, policy.AllowManagerPriceIncrease, now);
+
+        var blocked = Assert.Throws<DomainRuleException>(() => order.Confirm(now));
+        Assert.Equal("PRICE_APPROVAL_REQUIRED", blocked.Code);
+        Assert.Throws<DomainRuleException>(() => approval.Approve(requester, null, now));
+
+        approval.Approve(approver, "已核对优惠依据", now);
+        order.ApprovePriceOverride(approver, now);
+        order.Confirm(now);
+
+        Assert.Equal(PriceOverrideApprovalStatus.Approved, approval.Status);
+        Assert.Equal(PriceAuthorizationState.Approved, order.PriceAuthorizationStatus);
+        Assert.Equal(ServiceOrderStatus.PendingPayment, order.Status);
+    }
+
+    [Fact]
+    public void ManagerPolicyAllowsOnlyBoundedDiscountAndRequiresApprovalForIncrease()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var policy = PriceOverridePolicy.Default(Guid.CreateVersion7(), Guid.CreateVersion7(), now);
+        var withinLimit = CreateOrder([new(Guid.CreateVersion7(), "S01", "标准服务", 1, null,
+            50_000, 45_000, "店长权限内优惠")]);
+        var overLineLimit = CreateOrder([new(Guid.CreateVersion7(), "S02", "标准服务", 1, null,
+            10_000, 8_999, "超过单行十个百分点")]);
+        var increase = CreateOrder([new(Guid.CreateVersion7(), "S03", "加项服务", 1, null,
+            10_000, 11_000, "现场增加服务内容")]);
+
+        Assert.False(policy.ManagerRequiresApproval(withinLimit));
+        Assert.True(policy.ManagerRequiresApproval(overLineLimit));
+        Assert.True(policy.ManagerRequiresApproval(increase));
+        Assert.Equal(1_001, overLineLimit.MaximumLineDiscountBasisPoints);
+    }
+
+    [Fact]
+    public void ManagerOrderDiscountDoesNotLetPriceIncreaseOffsetASeparateDiscount()
+    {
+        var policy = new PriceOverridePolicy(Guid.CreateVersion7(), 2, 2_000, 5_000, true,
+            Guid.CreateVersion7(), DateTimeOffset.UtcNow);
+        var order = CreateOrder([
+            new(Guid.CreateVersion7(), "S01", "优惠服务", 1, null, 100_000, 94_000, "优惠六十元"),
+            new(Guid.CreateVersion7(), "S02", "现场增项", 1, null, 10_000, 16_000, "增加服务内容"),
+        ]);
+
+        Assert.Equal(order.ReferenceAmountMinor, order.ReceivableMinor);
+        Assert.Equal(6_000, order.TotalDiscountMinor);
+        Assert.True(policy.ManagerRequiresApproval(order));
+    }
+
+    [Fact]
+    public void VoidingPendingOverrideCancelsPriceAuthorization()
+    {
+        var order = CreateOrder([new(Guid.CreateVersion7(), "S01", "标准服务", 1, null,
+            10_000, 9_000, "待负责人确认")]);
+        order.RequestPriceApproval(Guid.CreateVersion7(), 3);
+
+        order.Void();
+
+        Assert.Equal(ServiceOrderStatus.Voided, order.Status);
+        Assert.Equal(PriceAuthorizationState.Cancelled, order.PriceAuthorizationStatus);
+    }
+
+    [Fact]
     public void EmptyOrderIsRejected()
     {
         Assert.Throws<DomainRuleException>(() => CreateOrder([]));
