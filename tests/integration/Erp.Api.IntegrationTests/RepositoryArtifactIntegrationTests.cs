@@ -366,6 +366,65 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void WindowsReleaseAutomationIsLockedIntegrityCheckedAndFailClosed()
+    {
+        var migrations = Directory.GetFiles(Path.Combine(RepositoryRoot, "db", "migrations"), "V*.sql")
+            .Select(Path.GetFileName).Order(StringComparer.Ordinal).ToList();
+        var latestVersion = MigrationNamePattern().Match(migrations[^1]!).Groups[1].Value;
+        var readiness = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Persistence", "DatabaseReadinessService.cs"));
+        var program = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Api", "Program.cs"));
+        var build = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows", "Build-Release.ps1"));
+        var common = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows", "Common.ps1"));
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows",
+            "Invoke-DatabaseMigration.ps1"));
+        var deploy = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows", "Deploy-Erp.ps1"));
+        var rollback = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows", "Rollback-Erp.ps1"));
+        var backup = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows", "Backup-Erp.ps1"));
+        var restore = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows", "Test-Restore.ps1"));
+        var workflow = File.ReadAllText(Path.Combine(RepositoryRoot, ".github", "workflows", "release.yml"));
+
+        Assert.Contains($"RequiredSchemaVersion = \"{latestVersion}\"", readiness, StringComparison.Ordinal);
+        Assert.Contains($"SchemaMin = '{latestVersion}'", build, StringComparison.Ordinal);
+        Assert.Contains($"SchemaMax = '{latestVersion}'", build, StringComparison.Ordinal);
+        Assert.Contains("MapGet(\"/health/ready\"", program, StringComparison.Ordinal);
+        Assert.Contains("UseStaticFiles", program, StringComparison.Ordinal);
+        Assert.Contains("MapFallbackToFile(\"index.html\")", program, StringComparison.Ordinal);
+        Assert.Contains("/api/{**path}", program, StringComparison.Ordinal);
+        Assert.Contains("发布清单与实际文件不一致", common, StringComparison.Ordinal);
+        Assert.Contains("StartsWith", common, StringComparison.Ordinal);
+        Assert.Contains("-baselineOnMigrate=false", migration, StringComparison.Ordinal);
+        Assert.Contains("-cleanDisabled=true", migration, StringComparison.Ordinal);
+        Assert.DoesNotContain(" repair", migration, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(" clean", migration, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("$proxySwitched", deploy, StringComparison.Ordinal);
+        Assert.Contains("$previousProxyContent", deploy, StringComparison.Ordinal);
+        Assert.Contains("ExpectedPackageSha256", deploy, StringComparison.Ordinal);
+        Assert.Contains("发布前备份失败", deploy, StringComparison.Ordinal);
+        Assert.DoesNotContain("SkipBackup", deploy, StringComparison.Ordinal);
+        Assert.Contains("current.schemaVersion", rollback, StringComparison.Ordinal);
+        Assert.Contains("$previousProxyContent", rollback, StringComparison.Ordinal);
+        Assert.Contains("目标 IIS 站点未指向受控 releases 版本目录", rollback, StringComparison.Ordinal);
+        Assert.Contains("--no-restore", build, StringComparison.Ordinal);
+        Assert.Contains("--recipient $AgeRecipient", backup, StringComparison.Ordinal);
+        Assert.Contains("Remove-Item -LiteralPath $plainArchive", backup, StringComparison.Ordinal);
+        Assert.Contains("_restore_", restore, StringComparison.Ordinal);
+        Assert.Contains("恢复目标数据库已存在，拒绝覆盖", restore, StringComparison.Ordinal);
+        Assert.Contains("备份清单包含越界路径", restore, StringComparison.Ordinal);
+        Assert.Contains("dotnet restore ERP.slnx --locked-mode", workflow, StringComparison.Ordinal);
+        Assert.Contains("npm audit --audit-level=moderate", workflow, StringComparison.Ordinal);
+        Assert.Contains("actions/upload-artifact@v4", workflow, StringComparison.Ordinal);
+
+        var projects = Directory.GetFiles(RepositoryRoot, "*.csproj", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal))
+            .ToList();
+        Assert.All(projects, project => Assert.True(
+            File.Exists(Path.Combine(Path.GetDirectoryName(project)!, "packages.lock.json")),
+            $"缺少 NuGet 锁文件：{Path.GetRelativePath(RepositoryRoot, project)}"));
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");

@@ -113,12 +113,14 @@ Data Protection 密钥用于解密顾客手机号和上传图片。丢失密钥�
 
 ## 6. 应用发布目录
 
-应用采用版本目录和可切换指针：
+可执行脚本、前置依赖、环境变量和标准操作顺序见 [Windows 测试环境发布手册](../deploy/windows/README.md)。脚本要求 PowerShell 7，并使用两个仅监听回环地址的 IIS 后端站点及公共 ARR/URL Rewrite 代理站点。
+
+应用采用版本目录和可切换 Blue/Green 站点：
 
 ```text
 releases\2026.08.18.1
 releases\2026.08.25.1
-current -> releases\2026.08.25.1
+active-slot.json -> Green
 ```
 
 每个发布包包含：

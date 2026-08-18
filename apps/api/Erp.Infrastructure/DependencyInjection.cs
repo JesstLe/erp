@@ -7,6 +7,7 @@ using Erp.Application.Auditing;
 using Erp.Application.Reports;
 using Erp.Application.Inventory;
 using Erp.Application.Notifications;
+using Erp.Application.Common;
 using Erp.Infrastructure.Catalog;
 using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Cashier;
@@ -99,6 +100,7 @@ public static class DependencyInjection
         services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<CustomerPrivacyService>();
         services.AddScoped<ICustomerService, CustomerService>();
+        services.AddScoped<IDatabaseReadinessService, DatabaseReadinessService>();
         services.AddScoped<IServiceRecordService, ServiceRecordService>();
         services.AddScoped<IMemberTopupService, MemberTopupService>();
         services.AddScoped<MemberVerificationCodeService>();

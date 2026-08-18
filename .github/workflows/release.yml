@@ -1,0 +1,66 @@
+name: release-candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SemVer release version
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-verify:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $version = '${{ inputs.version }}'
+          if ([string]::IsNullOrWhiteSpace($version)) { $version = '${{ github.ref_name }}'.TrimStart('v') }
+          if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$') { throw 'Invalid SemVer' }
+          "value=$version" >> $env:GITHUB_OUTPUT
+      - name: Restore and test backend
+        shell: pwsh
+        run: |
+          dotnet restore ERP.slnx --locked-mode
+          dotnet test ERP.slnx --no-restore -c Release
+          dotnet list ERP.slnx package --vulnerable --include-transitive
+      - name: Verify frontend
+        working-directory: apps/web
+        shell: pwsh
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          npm audit --audit-level=moderate
+      - name: Build immutable Windows package
+        shell: pwsh
+        run: |
+          ./deploy/windows/Build-Release.ps1 -Version '${{ steps.version.outputs.value }}' `
+            -OutputDirectory "$env:GITHUB_WORKSPACE/artifacts" -GitCommit '${{ github.sha }}'
+      - name: Upload release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: erp-${{ steps.version.outputs.value }}-win-x64
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30
