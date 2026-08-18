@@ -1,0 +1,14 @@
+[Unit]
+Description=ERP readiness, backup, disk and certificate health check
+After=network-online.target postgresql.service nginx.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/erp-health-check
+User=root
+Group=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadOnlyPaths=/srv/erp /etc/erp /etc/letsencrypt
