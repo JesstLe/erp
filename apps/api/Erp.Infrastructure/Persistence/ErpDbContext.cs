@@ -6,6 +6,7 @@ using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
 using Erp.Domain.Inventory;
 using Erp.Domain.Organization;
+using Erp.Domain.Platform;
 using Erp.Domain.Scheduling;
 using Erp.Infrastructure.Identity;
 using Erp.Infrastructure.Files;
@@ -100,6 +101,11 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<ServiceRecordAttachment> ServiceRecordAttachments => Set<ServiceRecordAttachment>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<EmployeeShift> EmployeeShifts => Set<EmployeeShift>();
+    public DbSet<PlatformAdminUserRecord> PlatformAdminUsers => Set<PlatformAdminUserRecord>();
+    public DbSet<MerchantRegistrationApplication> MerchantRegistrationApplications =>
+        Set<MerchantRegistrationApplication>();
+    public DbSet<LoginSecurityEventRecord> LoginSecurityEvents => Set<LoginSecurityEventRecord>();
+    public DbSet<PlatformAuditEventRecord> PlatformAuditEvents => Set<PlatformAuditEventRecord>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -1400,6 +1406,96 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.ResponseBody).HasColumnName("response_body").HasColumnType("jsonb");
             entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
             entity.Property(x => x.CompletedAtUtc).HasColumnName("completed_at_utc");
+        });
+        builder.Entity<PlatformAdminUserRecord>(entity =>
+        {
+            entity.ToTable("platform_admin_users");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(x => x.Account).HasColumnName("account").HasMaxLength(100);
+            entity.Property(x => x.NormalizedAccount).HasColumnName("normalized_account").HasMaxLength(100);
+            entity.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(100);
+            entity.Property(x => x.PasswordHash).HasColumnName("password_hash");
+            entity.Property(x => x.IsEnabled).HasColumnName("is_enabled");
+            entity.Property(x => x.MustChangePassword).HasColumnName("must_change_password");
+            entity.Property(x => x.AccessFailedCount).HasColumnName("access_failed_count");
+            entity.Property(x => x.LockoutEndUtc).HasColumnName("lockout_end_utc");
+            entity.Property(x => x.SecurityStamp).HasColumnName("security_stamp").HasMaxLength(64);
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
+            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc");
+            entity.Property(x => x.Version).HasColumnName("version").IsConcurrencyToken();
+            entity.HasIndex(x => x.NormalizedAccount).IsUnique();
+        });
+        builder.Entity<MerchantRegistrationApplication>(entity =>
+        {
+            entity.ToTable("merchant_registration_applications");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(x => x.ApplicationNo).HasColumnName("application_no").HasMaxLength(32);
+            entity.Property(x => x.MerchantName).HasColumnName("merchant_name").HasMaxLength(100);
+            entity.Property(x => x.StoreName).HasColumnName("store_name").HasMaxLength(100);
+            entity.Property(x => x.ContactName).HasColumnName("contact_name").HasMaxLength(60);
+            entity.Property(x => x.ContactMobileCiphertext).HasColumnName("contact_mobile_ciphertext");
+            entity.Property(x => x.ContactMobileHash).HasColumnName("contact_mobile_hash");
+            entity.Property(x => x.ContactMobileLastFour).HasColumnName("contact_mobile_last_four").HasMaxLength(4);
+            entity.Property(x => x.ContactEmailCiphertext).HasColumnName("contact_email_ciphertext");
+            entity.Property(x => x.ContactEmailHash).HasColumnName("contact_email_hash");
+            entity.Property(x => x.DesiredOwnerAccount).HasColumnName("desired_owner_account").HasMaxLength(100);
+            entity.Property(x => x.NormalizedDesiredOwnerAccount).HasColumnName("normalized_desired_owner_account").HasMaxLength(100);
+            entity.Property(x => x.Note).HasColumnName("note").HasMaxLength(500);
+            entity.Property(x => x.SourceIp).HasColumnName("source_ip").HasMaxLength(64);
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.ReviewedByPlatformUserId).HasColumnName("reviewed_by_platform_user_id");
+            entity.Property(x => x.ReviewedAtUtc).HasColumnName("reviewed_at_utc");
+            entity.Property(x => x.ReviewReason).HasColumnName("review_reason").HasMaxLength(500);
+            entity.Property(x => x.TenantId).HasColumnName("tenant_id");
+            entity.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
+            entity.Property(x => x.UpdatedAtUtc).HasColumnName("updated_at_utc");
+            entity.Property(x => x.Version).HasColumnName("version").IsConcurrencyToken();
+            entity.HasIndex(x => x.ApplicationNo).IsUnique();
+            entity.HasOne<PlatformAdminUserRecord>().WithMany().HasForeignKey(x => x.ReviewedByPlatformUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<LoginSecurityEventRecord>(entity =>
+        {
+            entity.ToTable("login_security_events");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(x => x.Scope).HasColumnName("scope").HasMaxLength(16);
+            entity.Property(x => x.TenantId).HasColumnName("tenant_id");
+            entity.Property(x => x.MerchantUserId).HasColumnName("merchant_user_id");
+            entity.Property(x => x.PlatformUserId).HasColumnName("platform_user_id");
+            entity.Property(x => x.EventType).HasColumnName("event_type").HasMaxLength(40);
+            entity.Property(x => x.ResultCode).HasColumnName("result_code").HasMaxLength(64);
+            entity.Property(x => x.AccountHash).HasColumnName("account_hash");
+            entity.Property(x => x.AccountMask).HasColumnName("account_mask").HasMaxLength(100);
+            entity.Property(x => x.IpAddress).HasColumnName("ip_address").HasMaxLength(64);
+            entity.Property(x => x.UserAgentSummary).HasColumnName("user_agent_summary").HasMaxLength(200);
+            entity.Property(x => x.TraceId).HasColumnName("trace_id").HasMaxLength(64);
+            entity.Property(x => x.OccurredAtUtc).HasColumnName("occurred_at_utc");
+            entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.MerchantUserId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<PlatformAdminUserRecord>().WithMany().HasForeignKey(x => x.PlatformUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<PlatformAuditEventRecord>(entity =>
+        {
+            entity.ToTable("platform_audit_events");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            entity.Property(x => x.PlatformUserId).HasColumnName("platform_user_id");
+            entity.Property(x => x.Action).HasColumnName("action").HasMaxLength(128);
+            entity.Property(x => x.EntityType).HasColumnName("entity_type").HasMaxLength(80);
+            entity.Property(x => x.EntityId).HasColumnName("entity_id");
+            entity.Property(x => x.PreviousState).HasColumnName("previous_state").HasMaxLength(40);
+            entity.Property(x => x.CurrentState).HasColumnName("current_state").HasMaxLength(40);
+            entity.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500);
+            entity.Property(x => x.TraceId).HasColumnName("trace_id").HasMaxLength(64);
+            entity.Property(x => x.Metadata).HasColumnName("metadata").HasColumnType("jsonb");
+            entity.Property(x => x.OccurredAtUtc).HasColumnName("occurred_at_utc");
+            entity.HasOne<PlatformAdminUserRecord>().WithMany().HasForeignKey(x => x.PlatformUserId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

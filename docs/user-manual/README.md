@@ -27,5 +27,6 @@
 17. [品牌与门店主数据](17-brand-and-store-management.md)
 18. [预约与员工排班](18-appointments-and-employee-scheduling.md)
 19. [次卡、积分与储值部分退款](19-service-passes-points-and-partial-topup-refunds.md)
+20. [商户注册、平台管理与登录安全日志](20-platform-registration-security-and-administration.md)
 
 截图统一保存在 `docs/user-manual/assets/`，示例数据必须是本地虚构数据，不得包含参考系统里的真实顾客、员工、手机号或资金信息。

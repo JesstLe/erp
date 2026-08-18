@@ -26,7 +26,7 @@ internal sealed class MembershipBenefitService(ErpDbContext db, TimeProvider clo
         if (customerIds.Count == 0)
             return ResultFactory.Failure<MembershipBenefitsDto>("CUSTOMER_NOT_FOUND", "顾客不存在");
         var passes = await db.ServicePasses.AsNoTracking().Where(x => x.TenantId == tenantId &&
-                x.StoreId == storeId && customerIds.Contains(x.CustomerId))
+                customerIds.Contains(x.CustomerId))
             .OrderByDescending(x => x.CreatedAtUtc).Take(200).ToListAsync(cancellationToken);
         var pointAccounts = await db.MemberAccounts.AsNoTracking().Where(x => x.TenantId == tenantId &&
                 customerIds.Contains(x.CustomerId) && x.AccountType == MemberAccountType.Points)
@@ -104,8 +104,8 @@ internal sealed class MembershipBenefitService(ErpDbContext db, TimeProvider clo
                     throw new DomainRuleException("SERVICE_PASS_ORDER_MISMATCH",
                         "关联消费单必须属于同一顾客并包含次卡对应服务项目");
             }
-            return pass.Redeem(command.Uses, command.ServiceOrderId, command.Reason, command.CommandId,
-                command.OperatorId, localDate, now);
+            return pass.Redeem(command.StoreId, command.Uses, command.ServiceOrderId, command.Reason,
+                command.CommandId, command.OperatorId, localDate, now);
         }, command, cancellationToken);
 
     public Task<Result<ServicePassDto>> ReversePassAsync(Guid tenantId, ReverseServicePassCommand command,
@@ -119,15 +119,15 @@ internal sealed class MembershipBenefitService(ErpDbContext db, TimeProvider clo
             if (await db.ServicePassLedgers.AnyAsync(x => x.TenantId == tenantId &&
                     x.ReversedLedgerId == original.Id, cancellationToken))
                 throw new DomainRuleException("SERVICE_PASS_LEDGER_ALREADY_REVERSED", "该核销流水已经撤销");
-            return pass.Reverse(original, command.Reason, command.CommandId, command.OperatorId,
-                localDate, now);
+            return pass.Reverse(command.StoreId, original, command.Reason, command.CommandId,
+                command.OperatorId, localDate, now);
         }, command, cancellationToken);
 
     public Task<Result<ServicePassDto>> ExpirePassAsync(Guid tenantId, ExpireServicePassCommand command,
         CancellationToken cancellationToken) => ChangePassAsync(tenantId, command.StoreId, command.PassId,
         command.ExpectedVersion, command.CommandId, command.OperatorId, command.Reason,
         "membership.service_pass.expired", (pass, localDate, now) =>
-            pass.Expire(command.Reason, command.CommandId, command.OperatorId, localDate, now),
+            pass.Expire(command.StoreId, command.Reason, command.CommandId, command.OperatorId, localDate, now),
         command, cancellationToken);
 
     public async Task<Result<MemberPointSummaryDto>> AdjustPointsAsync(Guid tenantId,
@@ -242,7 +242,7 @@ internal sealed class MembershipBenefitService(ErpDbContext db, TimeProvider clo
             var replay = await ReplayPassAsync(tenantId, storeId, commandId, hash, cancellationToken);
             if (replay is not null) return replay;
             var pass = await db.ServicePasses.SingleOrDefaultAsync(x => x.Id == passId &&
-                x.TenantId == tenantId && x.StoreId == storeId, cancellationToken);
+                x.TenantId == tenantId, cancellationToken);
             if (pass is null) return await PassFailure(transaction, "SERVICE_PASS_NOT_FOUND", "次卡不存在",
                 cancellationToken);
             if (pass.Version != expectedVersion) return await PassFailure(transaction, "VERSION_CONFLICT",
@@ -296,7 +296,7 @@ internal sealed class MembershipBenefitService(ErpDbContext db, TimeProvider clo
             if (account is null) return await PointFailure(transaction, "MEMBER_ACCOUNT_NOT_FOUND",
                 "会员积分账户不存在或当前不可用", cancellationToken);
             var card = await db.MemberCards.AsNoTracking().SingleOrDefaultAsync(x => x.Id == cardId &&
-                x.TenantId == tenantId && x.StoreId == storeId && x.Status == MemberCardStatus.Active,
+                x.TenantId == tenantId && x.Status == MemberCardStatus.Active,
                 cancellationToken);
             if (card is null) return await PointFailure(transaction, "MEMBER_CARD_NOT_FOUND",
                 "会员卡不存在或当前不可用", cancellationToken);
@@ -375,7 +375,7 @@ internal sealed class MembershipBenefitService(ErpDbContext db, TimeProvider clo
                     x.OccurredAtUtc)).ToList())).ToList();
     }
 
-    private static ServicePassLedgerDto ToLedgerDto(ServicePassLedger ledger) => new(ledger.Id,
+    private static ServicePassLedgerDto ToLedgerDto(ServicePassLedger ledger) => new(ledger.Id, ledger.StoreId,
         ledger.Action.ToString(), ledger.PurchasedUsesDelta, ledger.BonusUsesDelta,
         ledger.PurchasedUsesAfter, ledger.BonusUsesAfter, ledger.ServiceOrderId,
         ledger.ReversedLedgerId, ledger.Reason, ledger.OccurredAtUtc);
@@ -385,7 +385,7 @@ internal sealed class MembershipBenefitService(ErpDbContext db, TimeProvider clo
     {
         var customerIds = await CustomerIdsAsync(tenantId, customerId, cancellationToken);
         return await db.MemberCards.SingleOrDefaultAsync(x => x.Id == cardId && x.TenantId == tenantId &&
-            x.StoreId == storeId && customerIds.Contains(x.CustomerId) && x.Status == MemberCardStatus.Active,
+            customerIds.Contains(x.CustomerId) && x.Status == MemberCardStatus.Active,
             cancellationToken);
     }
 
@@ -411,7 +411,7 @@ internal sealed class MembershipBenefitService(ErpDbContext db, TimeProvider clo
         if (receipt.Error is not null) return ResultFactory.Failure<ServicePassDto>(receipt.Error.Value.Code,
             receipt.Error.Value.Message);
         var pass = await db.ServicePasses.AsNoTracking().SingleOrDefaultAsync(x => x.Id == receipt.EntityId &&
-            x.TenantId == tenantId && x.StoreId == storeId, cancellationToken);
+            x.TenantId == tenantId, cancellationToken);
         return pass is null ? ResultFactory.Failure<ServicePassDto>("SERVICE_PASS_NOT_FOUND", "次卡不存在")
             : ResultFactory.Success((await ToPassDtosAsync([pass], cancellationToken)).Single());
     }

@@ -10,12 +10,10 @@ namespace Erp.Api.Endpoints;
 
 public static class PaymentChannelEndpoints
 {
-    private static readonly string[] ConfigurationReaders = [SystemRoles.Owner, SystemRoles.StoreManager];
-
     public static IEndpointRouteBuilder MapPaymentChannelEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/payment-channels").WithTags("Payment Channels")
-            .RequireAuthorization(policy => policy.RequireRole(ConfigurationReaders));
+            .RequireAuthorization();
 
         group.MapGet("/configurations", async (Guid storeId, IIdentityService identity,
             IPaymentChannelConfigurationService channels, CancellationToken cancellationToken) =>
@@ -24,7 +22,7 @@ public static class PaymentChannelEndpoints
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
             return Results.Ok(await channels.ListAsync(current.TenantId, storeId, cancellationToken));
-        });
+        }).RequireAuthorization(SystemPermissions.PaymentChannelRead);
 
         group.MapPut("/configurations/{provider}", async (string provider, ConfigureChannelRequest request,
             IIdentityService identity, IPaymentChannelConfigurationService channels,
@@ -43,7 +41,7 @@ public static class PaymentChannelEndpoints
                 new ConfigurePaymentChannelCommand(request.StoreId, parsedProvider, environment,
                     request.DisplayName ?? string.Empty, request.CredentialProfile ?? string.Empty,
                     request.IsEnabled, request.ExpectedVersion, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.PaymentChannelManage);
 
         group.MapPost("/orders/{orderId:guid}/initiate", async (Guid orderId, InitiateChannelRequest request,
             IIdentityService identity, IPaymentChannelPaymentService payments,
@@ -55,8 +53,7 @@ public static class PaymentChannelEndpoints
             return EndpointResults.From(await payments.InitiateAsync(current.TenantId,
                 new InitiatePaymentChannelCommand(request.StoreId, orderId, request.ExpectedOrderVersion,
                     request.MethodId, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager,
-            SystemRoles.Cashier));
+        }).RequireAuthorization(SystemPermissions.CashierCheckout);
 
         group.MapGet("/orders/by-service-order/{orderId:guid}", async (Guid orderId, Guid storeId,
             IIdentityService identity, IPaymentChannelPaymentService payments,
@@ -67,8 +64,7 @@ public static class PaymentChannelEndpoints
             if (!HasStore(current, storeId)) return Results.Forbid();
             return EndpointResults.From(await payments.GetByServiceOrderAsync(current.TenantId, storeId,
                 orderId, cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager,
-            SystemRoles.Cashier));
+        }).RequireAuthorization(SystemPermissions.CashierCheckout);
 
         group.MapPost("/orders/{channelOrderId:guid}/query", async (Guid channelOrderId,
             OperateChannelRequest request, IIdentityService identity, IPaymentChannelPaymentService payments,
@@ -80,8 +76,7 @@ public static class PaymentChannelEndpoints
             return EndpointResults.From(await payments.QueryAsync(current.TenantId,
                 new OperatePaymentChannelCommand(request.StoreId, channelOrderId, current.Id),
                 cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager,
-            SystemRoles.Cashier));
+        }).RequireAuthorization(SystemPermissions.CashierCheckout);
 
         group.MapPost("/orders/{channelOrderId:guid}/close", async (Guid channelOrderId,
             OperateChannelRequest request, IIdentityService identity, IPaymentChannelPaymentService payments,
@@ -93,8 +88,7 @@ public static class PaymentChannelEndpoints
             return EndpointResults.From(await payments.CloseAsync(current.TenantId,
                 new OperatePaymentChannelCommand(request.StoreId, channelOrderId, current.Id),
                 cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager,
-            SystemRoles.Cashier));
+        }).RequireAuthorization(SystemPermissions.CashierCheckout);
 
         group.MapGet("/reconciliations", async (Guid storeId, DateOnly? fromDate, DateOnly? toDate,
             int? page, int? pageSize,
@@ -108,7 +102,7 @@ public static class PaymentChannelEndpoints
                 return EndpointResults.InvalidPagination();
             return Results.Ok(await reconciliations.ListAsync(current.TenantId, storeId, fromDate, toDate,
                 normalizedPage, normalizedPageSize, cancellationToken));
-        });
+        }).RequireAuthorization(SystemPermissions.PaymentChannelRead);
 
         group.MapPost("/reconciliations/run", async (StartReconciliationRequest request,
             IIdentityService identity, IPaymentChannelReconciliationService reconciliations,
@@ -124,7 +118,7 @@ public static class PaymentChannelEndpoints
             return EndpointResults.From(await reconciliations.StartAsync(current.TenantId,
                 new StartPaymentChannelReconciliationCommand(request.StoreId, provider,
                     request.BusinessDate, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.PaymentChannelManage);
 
         group.MapPost("/reconciliations/items/{itemId:guid}/resolve", async (Guid itemId,
             ResolveReconciliationRequest request, IIdentityService identity,
@@ -136,7 +130,7 @@ public static class PaymentChannelEndpoints
             return EndpointResults.From(await reconciliations.ResolveAsync(current.TenantId,
                 new ResolvePaymentChannelReconciliationItemCommand(request.StoreId, itemId,
                     request.ExpectedVersion, request.Reason ?? string.Empty, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.PaymentChannelManage);
 
         endpoints.MapPost("/api/integrations/payment-notifications/{provider}/{configurationId:guid}",
             ProcessNotification).AllowAnonymous().RequireRateLimiting("payment-notification")

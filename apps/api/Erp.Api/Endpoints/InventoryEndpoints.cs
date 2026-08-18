@@ -7,12 +7,10 @@ namespace Erp.Api.Endpoints;
 
 public static class InventoryEndpoints
 {
-    private static readonly string[] Readers = [SystemRoles.Owner, SystemRoles.StoreManager];
-
     public static IEndpointRouteBuilder MapInventoryEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/inventory").WithTags("Inventory")
-            .RequireAuthorization(policy => policy.RequireRole(Readers));
+            .RequireAuthorization(SystemPermissions.InventoryRead);
 
         group.MapGet("/balances", async (Guid storeId, IIdentityService identity, IInventoryService inventory,
             CancellationToken cancellationToken) =>
@@ -60,7 +58,7 @@ public static class InventoryEndpoints
                 new PostInventoryDocumentCommand(request.StoreId, request.DocumentType, request.Reason,
                     (request.Lines ?? []).Select(x => new PostInventoryDocumentLineCommand(x.ProductItemId,
                         x.Quantity)).ToList(), request.CommandId, current.Id), cancellationToken));
-        });
+        }).RequireAuthorization(SystemPermissions.InventoryWrite);
 
         group.MapPost("/product-returns", async (ProductReturnRequest request, IIdentityService identity,
             IInventoryService inventory, CancellationToken cancellationToken) =>
@@ -73,7 +71,7 @@ public static class InventoryEndpoints
                 new ReturnProductCommand(request.StoreId, request.OrderId, request.OrderLineId,
                     request.Quantity, request.Reason, request.ExpectedOrderVersion, request.CommandId,
                     current.Id), cancellationToken));
-        });
+        }).RequireAuthorization(SystemPermissions.InventoryWrite);
 
         return endpoints;
     }

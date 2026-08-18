@@ -7,12 +7,10 @@ namespace Erp.Api.Endpoints;
 
 public static class FacilityEndpoints
 {
-    private static readonly string[] Operators = [SystemRoles.Owner, SystemRoles.StoreManager, SystemRoles.FrontDesk];
-    private static readonly string[] ConfigurationOperators = [SystemRoles.Owner, SystemRoles.StoreManager];
-
     public static IEndpointRouteBuilder MapFacilityEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/facilities").WithTags("Facilities").RequireAuthorization();
+        var group = endpoints.MapGroup("/api/v1/facilities").WithTags("Facilities")
+            .RequireAuthorization(SystemPermissions.FacilityOperate);
 
         group.MapGet("/configuration/stores", async (IIdentityService identity, IFacilityService facilities,
             CancellationToken cancellationToken) =>
@@ -20,7 +18,7 @@ public static class FacilityEndpoints
             var current = await identity.GetCurrentAsync(cancellationToken);
             return current is null ? Results.Unauthorized() : Results.Ok(await facilities.ListConfigurationStoresAsync(
                 current.TenantId, cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.FacilityConfigureAllStores);
 
         group.MapGet("/configuration", async (Guid storeId, IIdentityService identity, IFacilityService facilities,
             CancellationToken cancellationToken) =>
@@ -30,7 +28,7 @@ public static class FacilityEndpoints
             if (!CanConfigureStore(current, storeId)) return Results.Forbid();
             return EndpointResults.From(await facilities.GetConfigurationAsync(current.TenantId, storeId,
                 cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ConfigurationOperators));
+        }).RequireAuthorization(SystemPermissions.FacilityConfigure);
 
         group.MapGet("/board", async (Guid storeId, IIdentityService identity, IFacilityService facilities, CancellationToken cancellationToken) =>
         {
@@ -61,7 +59,7 @@ public static class FacilityEndpoints
             return EndpointResults.From(await facilities.CreateGroupAsync(current.TenantId,
                 new CreateFacilityGroupCommand(request.StoreId, request.DisplayName ?? string.Empty, request.SortOrder,
                     current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ConfigurationOperators));
+        }).RequireAuthorization(SystemPermissions.FacilityConfigure);
 
         group.MapPut("/groups/{groupId:guid}", async (Guid groupId, UpdateGroupRequest request,
             IIdentityService identity, IFacilityService facilities, CancellationToken cancellationToken) =>
@@ -72,14 +70,14 @@ public static class FacilityEndpoints
             return EndpointResults.From(await facilities.UpdateGroupAsync(current.TenantId,
                 new UpdateFacilityGroupCommand(request.StoreId, groupId, request.DisplayName ?? string.Empty,
                     request.SortOrder, request.ExpectedVersion, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ConfigurationOperators));
+        }).RequireAuthorization(SystemPermissions.FacilityConfigure);
 
         group.MapPost("/types", async (CreateTypeRequest request, IIdentityService identity, IFacilityService facilities, CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             return current is null ? Results.Unauthorized() : EndpointResults.From(await facilities.CreateTypeAsync(current.TenantId,
                 new CreateFacilityTypeCommand(request.DisplayName ?? string.Empty, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.FacilityConfigureAllStores);
 
         group.MapPost("", async (CreateFacilityRequest request, IIdentityService identity, IFacilityService facilities, CancellationToken cancellationToken) =>
         {
@@ -91,7 +89,7 @@ public static class FacilityEndpoints
                     request.DisplayName ?? string.Empty, request.ServiceName, request.EquipmentName,
                     request.ReferencePriceMinor, request.SortOrder, request.DefaultCleaningMinutes,
                     request.AllowReservation, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ConfigurationOperators));
+        }).RequireAuthorization(SystemPermissions.FacilityConfigure);
 
         group.MapPut("/{facilityId:guid}", async (Guid facilityId, UpdateFacilityRequest request,
             IIdentityService identity, IFacilityService facilities, CancellationToken cancellationToken) =>
@@ -106,7 +104,7 @@ public static class FacilityEndpoints
                     request.Code, request.DisplayName ?? string.Empty, request.ServiceName, request.EquipmentName,
                     request.ReferencePriceMinor, request.SortOrder, request.DefaultCleaningMinutes,
                     request.AllowReservation, lifecycleStatus, request.ExpectedVersion, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ConfigurationOperators));
+        }).RequireAuthorization(SystemPermissions.FacilityConfigure);
 
         group.MapPost("/sessions/start", async (StartSessionRequest request, IIdentityService identity, IFacilityService facilities, CancellationToken cancellationToken) =>
         {
@@ -117,20 +115,20 @@ public static class FacilityEndpoints
                 new StartFacilitySessionCommand(request.StoreId, request.FacilityId, request.CustomerId,
                     request.PlannedServiceItemId, request.ExpectedDurationMinutes, request.Note,
                     request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(Operators));
+        }).RequireAuthorization(SystemPermissions.FacilityOperate);
 
         group.MapPost("/sessions/{sessionId:guid}/pause", (Guid sessionId, SessionCommandRequest request, IIdentityService identity,
             IFacilityService facilities, CancellationToken cancellationToken) => Operate(sessionId, request, identity, facilities,
                 (service, tenantId, command, token) => service.PauseAsync(tenantId, command, token), cancellationToken))
-            .RequireAuthorization(policy => policy.RequireRole(Operators));
+            .RequireAuthorization(SystemPermissions.FacilityOperate);
         group.MapPost("/sessions/{sessionId:guid}/resume", (Guid sessionId, SessionCommandRequest request, IIdentityService identity,
             IFacilityService facilities, CancellationToken cancellationToken) => Operate(sessionId, request, identity, facilities,
                 (service, tenantId, command, token) => service.ResumeAsync(tenantId, command, token), cancellationToken))
-            .RequireAuthorization(policy => policy.RequireRole(Operators));
+            .RequireAuthorization(SystemPermissions.FacilityOperate);
         group.MapPost("/sessions/{sessionId:guid}/end", (Guid sessionId, SessionCommandRequest request, IIdentityService identity,
             IFacilityService facilities, CancellationToken cancellationToken) => Operate(sessionId, request, identity, facilities,
                 (service, tenantId, command, token) => service.EndAsync(tenantId, command, token), cancellationToken))
-            .RequireAuthorization(policy => policy.RequireRole(Operators));
+            .RequireAuthorization(SystemPermissions.FacilityOperate);
 
         group.MapPost("/sessions/{sessionId:guid}/switch", async (Guid sessionId, SwitchSessionRequest request, IIdentityService identity,
             IFacilityService facilities, CancellationToken cancellationToken) =>
@@ -141,7 +139,7 @@ public static class FacilityEndpoints
             return EndpointResults.From(await facilities.SwitchAsync(current.TenantId,
                 new SwitchFacilityCommand(request.StoreId, sessionId, request.TargetFacilityId, request.Reason,
                     request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(Operators));
+        }).RequireAuthorization(SystemPermissions.FacilityOperate);
 
         group.MapPost("/{facilityId:guid}/cleaning/complete", async (Guid facilityId, SessionCommandRequest request,
             IIdentityService identity, IFacilityService facilities, CancellationToken cancellationToken) =>
@@ -151,7 +149,7 @@ public static class FacilityEndpoints
             if (!HasStore(current, request.StoreId)) return Results.Forbid();
             return EndpointResults.From(await facilities.CompleteCleaningAsync(current.TenantId, request.StoreId, facilityId,
                 request.CommandId, current.Id, cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(Operators));
+        }).RequireAuthorization(SystemPermissions.FacilityOperate);
 
         return endpoints;
     }

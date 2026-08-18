@@ -332,7 +332,7 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                     return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_MOBILE_REQUIRED",
                         "使用会员账户前必须核对完整手机号", cancellationToken);
                 var customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == order.CustomerId &&
-                    x.TenantId == tenantId && x.HomeStoreId == command.StoreId &&
+                    x.TenantId == tenantId &&
                     x.Status == CustomerStatus.Active, cancellationToken);
                 if (customer is null || !CryptographicOperations.FixedTimeEquals(customer.MobileLookupHash,
                     Convert.FromHexString(mobileIdentity)))

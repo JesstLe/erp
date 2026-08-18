@@ -74,8 +74,9 @@ public sealed partial class ProductionBootstrapper(ErpDbContext db, UserManager<
             db.Employees.Add(employee);
             db.EmployeeStores.Add(new EmployeeStore(tenant.Id, employee.Id, store.Id, true));
 
-            foreach (var action in AllOwnerActions)
-                db.RoleActionGrants.Add(new RoleActionGrant(tenant.Id, roles[SystemRoles.Owner].Id, action));
+            foreach (var (roleName, role) in roles)
+            foreach (var action in SystemPermissions.ForRole(roleName))
+                db.RoleActionGrants.Add(new RoleActionGrant(tenant.Id, role.Id, action));
 
             db.PriceOverridePolicies.Add(PriceOverridePolicy.Default(tenant.Id, owner.Id, DateTimeOffset.UtcNow));
             db.MemberCardTypes.Add(new MemberCardType(tenant.Id, "STANDARD", "标准会员", null));
@@ -169,13 +170,6 @@ public sealed partial class ProductionBootstrapper(ErpDbContext db, UserManager<
     [
         SystemRoles.Owner, SystemRoles.StoreManager, SystemRoles.FrontDesk, SystemRoles.Cashier,
         SystemRoles.Technician,
-    ];
-
-    private static readonly string[] AllOwnerActions =
-    [
-        SystemActions.CatalogRead, SystemActions.CatalogWrite, SystemActions.PricePublish,
-        SystemActions.FacilityOperate, SystemActions.CustomerRead, SystemActions.CustomerWrite,
-        SystemActions.MembershipOpen, SystemActions.CashierCheckout, SystemActions.AuditRead,
     ];
 
     private sealed record BootstrapOptions(string TenantCode, string TenantName, string StoreCode,

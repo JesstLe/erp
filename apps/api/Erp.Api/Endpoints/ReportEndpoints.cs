@@ -9,7 +9,7 @@ public static class ReportEndpoints
     public static IEndpointRouteBuilder MapReportEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/reports").WithTags("Reports")
-            .RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager));
+            .RequireAuthorization(SystemPermissions.ReportRead);
 
         group.MapGet("/operations", async (Guid storeId, DateOnly? fromDate, DateOnly? toDate,
             IIdentityService identity, IReportService reports, CancellationToken cancellationToken) =>

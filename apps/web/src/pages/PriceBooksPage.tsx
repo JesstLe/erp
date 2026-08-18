@@ -5,10 +5,13 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
 import { apiRequest, ApiError } from '../api/client'
 import type { PriceBook, ProductItem, ServiceItem } from '../api/types'
+import { Permission } from '../security/permissions'
+import { useAuthorization } from '../security/useAuthorization'
 
 interface PriceForm { name: string; effectiveFrom: Dayjs; serviceSelected: Record<string, boolean>; productSelected: Record<string, boolean>; prices: Record<string, number>; productPrices: Record<string, number> }
 
 export function PriceBooksPage() {
+  const { can } = useAuthorization(); const canManage = can(Permission.PricePublish)
   const [open, setOpen] = useState(false); const [editing, setEditing] = useState<PriceBook>()
   const [form] = Form.useForm<PriceForm>(); const queryClient = useQueryClient()
   const effectiveFrom = Form.useWatch('effectiveFrom', form)
@@ -46,14 +49,14 @@ export function PriceBooksPage() {
   }
 
   return <div className="page-stack">
-    <div className="page-heading"><div><Typography.Title level={2}>价格版本</Typography.Title><Typography.Paragraph>服务与商品独立定价。草稿可继续编辑或取消；已发布版本永久只读，改价必须建立新版本。</Typography.Paragraph></div><Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!items.data?.length && !products.data?.length}>新建价格版本</Button></div>
+    <div className="page-heading"><div><Typography.Title level={2}>价格版本</Typography.Title><Typography.Paragraph>服务与商品独立定价。草稿可继续编辑或取消；已发布版本永久只读，改价必须建立新版本。</Typography.Paragraph></div>{canManage && <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!items.data?.length && !products.data?.length}>新建价格版本</Button>}</div>
     {!items.isLoading && !products.isLoading && !items.data?.length && !products.data?.length && <Alert type="info" showIcon title="请先创建服务项目或产品，再建立价格版本。" />}
     <Card variant="borderless"><Table<PriceBook> rowKey="id" loading={books.isLoading} dataSource={books.data ?? []} expandable={{ expandedRowRender: (book) => <Table rowKey="key" size="small" pagination={false} dataSource={[...book.lines.map((line) => ({ key: `service-${line.serviceItemId}`, type: '服务项目', name: line.serviceItemName, unit: '次', unitPriceMinor: line.unitPriceMinor })), ...book.productLines.map((line) => ({ key: `product-${line.productItemId}`, type: '产品', name: line.productItemName, unit: line.unitName, unitPriceMinor: line.unitPriceMinor }))]} columns={[{ title: '类型', dataIndex: 'type', width: 110, render: (value: string) => <Tag color={value === '产品' ? 'blue' : 'cyan'}>{value}</Tag> }, { title: '目录名称', dataIndex: 'name' }, { title: '单位', dataIndex: 'unit', width: 100 }, { title: '标准价格', dataIndex: 'unitPriceMinor', width: 150, render: (value: number) => `¥${(value / 100).toFixed(2)}` }]} /> }} columns={[
       { title: '版本名称', dataIndex: 'name' },
       { title: '生效日期', dataIndex: 'effectiveFrom', width: 140 },
       { title: '定价条目', key: 'count', width: 100, render: (_, book) => book.lines.length + book.productLines.length },
       { title: '状态', dataIndex: 'status', width: 120, render: (value: string) => <Tag color={value === 'PUBLISHED' ? 'green' : value === 'DRAFT' ? 'orange' : 'default'}>{value === 'PUBLISHED' ? '已发布' : value === 'DRAFT' ? '草稿' : '已取消'}</Tag> },
-      { title: '操作', key: 'actions', width: 240, render: (_, book) => book.status === 'DRAFT' ? <Space><Button type="link" icon={<EditOutlined />} onClick={() => openEdit(book)}>编辑</Button><Button type="link" icon={<CheckCircleOutlined />} loading={publish.isPending} onClick={() => publish.mutate(book.id)}>发布</Button><Popconfirm title="确认取消该草稿？" description="取消后不能恢复，但会保留历史记录。" onConfirm={() => cancel.mutate(book)}><Button type="link" danger icon={<StopOutlined />} loading={cancel.isPending}>取消</Button></Popconfirm></Space> : <Typography.Text type="secondary">只读</Typography.Text> },
+      { title: '操作', key: 'actions', width: 240, render: (_, book) => canManage && book.status === 'DRAFT' ? <Space><Button type="link" icon={<EditOutlined />} onClick={() => openEdit(book)}>编辑</Button><Button type="link" icon={<CheckCircleOutlined />} loading={publish.isPending} onClick={() => publish.mutate(book.id)}>发布</Button><Popconfirm title="确认取消该草稿？" description="取消后不能恢复，但会保留历史记录。" onConfirm={() => cancel.mutate(book)}><Button type="link" danger icon={<StopOutlined />} loading={cancel.isPending}>取消</Button></Popconfirm></Space> : <Typography.Text type="secondary">只读</Typography.Text> },
     ]} /></Card>
     <Modal title={editing ? '编辑价格草稿' : '新建价格版本'} width={700} open={open} onCancel={() => { setOpen(false); setEditing(undefined) }} onOk={() => form.submit()} confirmLoading={save.isPending} okText="保存草稿" destroyOnHidden>
       {save.error && <Alert type="error" showIcon title={save.error instanceof ApiError ? save.error.message : '保存失败'} className="modal-alert" />}

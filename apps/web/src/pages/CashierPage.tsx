@@ -59,6 +59,8 @@ import type {
 } from "../api/types";
 import { useAuth } from "../auth/useAuth";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { Permission } from "../security/permissions";
+import { useAuthorization } from "../security/useAuthorization";
 import {
   cashAmountMinor as calculateCashAmountMinor,
   cashTenderedMinorForSubmission,
@@ -235,6 +237,7 @@ function openReceiptPrint(receipt: PaymentReceipt, popup: Window) {
 
 export function CashierPage() {
   const auth = useAuth();
+  const { can } = useAuthorization();
   const storeId = auth.store?.id;
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
@@ -355,12 +358,7 @@ export function CashierPage() {
   });
   const refunds = useQuery({
     queryKey: ["refunds", storeId],
-    enabled: Boolean(
-      storeId &&
-        auth.user?.roles.some(
-          (role) => role === "OWNER" || role === "STORE_MANAGER",
-        ),
-    ),
+    enabled: Boolean(storeId && can(Permission.RefundRequest)),
     queryFn: () =>
       apiRequest<PageResult<Refund>>(
         `/api/v1/refunds?storeId=${storeId}&page=1&pageSize=100`,
@@ -396,12 +394,10 @@ export function CashierPage() {
         `/api/v1/customers/${settleOrder?.customerId}?storeId=${storeId}`,
       ),
   });
-  const canReviewShifts =
-    auth.user?.roles.some(
-      (role) => role === "OWNER" || role === "STORE_MANAGER",
-    ) ?? false;
-  const canApproveRefunds = auth.user?.roles.includes("OWNER") ?? false;
-  const isOwner = auth.user?.roles.includes("OWNER") ?? false;
+  const canReviewShifts = can(Permission.ShiftReview);
+  const canApproveRefunds = can(Permission.RefundApprove);
+  const canRequestRefunds = can(Permission.RefundRequest);
+  const isOwner = can(Permission.CashierApprovePrice);
   const pricePolicy = useQuery({
     queryKey: ["price-override-policy"],
     enabled: Boolean(auth.user),
@@ -2190,9 +2186,7 @@ export function CashierPage() {
                   line.category !== "ManualExternal" &&
                   line.amountMinor > (reservedByAllocation[line.id] ?? 0),
               ) &&
-              auth.user?.roles.some(
-                (role) => role === "OWNER" || role === "STORE_MANAGER",
-              ) && (
+              canRequestRefunds && (
                 <Button danger onClick={() => beginRefund(selectedPayment)}>
                   申请退款
                 </Button>

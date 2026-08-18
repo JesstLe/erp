@@ -52,7 +52,7 @@ public sealed class ServicePass : Entity
         new(TenantId, Id, StoreId, CustomerId, ServicePassLedgerAction.Issue, PurchasedUses, BonusUses,
             RemainingPurchasedUses, RemainingBonusUses, null, null, commandId, operatorId, IssueReason, now);
 
-    public ServicePassLedger Redeem(int uses, Guid? serviceOrderId, string reason, Guid commandId,
+    public ServicePassLedger Redeem(Guid operationStoreId, int uses, Guid? serviceOrderId, string reason, Guid commandId,
         Guid operatorId, DateOnly localDate, DateTimeOffset now)
     {
         EnsureActive(localDate);
@@ -64,12 +64,12 @@ public sealed class ServicePass : Entity
         RemainingBonusUses -= bonus;
         Status = RemainingUses == 0 ? ServicePassStatus.Exhausted : ServicePassStatus.Active;
         Touch();
-        return new ServicePassLedger(TenantId, Id, StoreId, CustomerId, ServicePassLedgerAction.Redeem,
+        return new ServicePassLedger(TenantId, Id, operationStoreId, CustomerId, ServicePassLedgerAction.Redeem,
             -purchased, -bonus, RemainingPurchasedUses, RemainingBonusUses, serviceOrderId, null,
             commandId, operatorId, Required(reason, 500, "核销原因"), now);
     }
 
-    public ServicePassLedger Reverse(ServicePassLedger original, string reason, Guid commandId,
+    public ServicePassLedger Reverse(Guid operationStoreId, ServicePassLedger original, string reason, Guid commandId,
         Guid operatorId, DateOnly localDate, DateTimeOffset now)
     {
         if (original.PassId != Id || original.Action != ServicePassLedgerAction.Redeem)
@@ -82,12 +82,12 @@ public sealed class ServicePass : Entity
         RemainingBonusUses = checked(RemainingBonusUses + bonus);
         Status = ServicePassStatus.Active;
         Touch();
-        return new ServicePassLedger(TenantId, Id, StoreId, CustomerId, ServicePassLedgerAction.Reverse,
+        return new ServicePassLedger(TenantId, Id, operationStoreId, CustomerId, ServicePassLedgerAction.Reverse,
             purchased, bonus, RemainingPurchasedUses, RemainingBonusUses, original.ServiceOrderId,
             original.Id, commandId, operatorId, Required(reason, 500, "撤销原因"), now);
     }
 
-    public ServicePassLedger Expire(string reason, Guid commandId, Guid operatorId, DateOnly localDate,
+    public ServicePassLedger Expire(Guid operationStoreId, string reason, Guid commandId, Guid operatorId, DateOnly localDate,
         DateTimeOffset now)
     {
         if (Status != ServicePassStatus.Active || ValidTo is null || ValidTo >= localDate)
@@ -98,7 +98,7 @@ public sealed class ServicePass : Entity
         RemainingBonusUses = 0;
         Status = ServicePassStatus.Expired;
         Touch();
-        return new ServicePassLedger(TenantId, Id, StoreId, CustomerId, ServicePassLedgerAction.Expire,
+        return new ServicePassLedger(TenantId, Id, operationStoreId, CustomerId, ServicePassLedgerAction.Expire,
             -purchased, -bonus, 0, 0, null, null, commandId, operatorId,
             Required(reason, 500, "过期处理原因"), now);
     }

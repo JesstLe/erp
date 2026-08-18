@@ -22,7 +22,7 @@
 5. 启动 API：`dotnet run --project apps/api/Erp.Api`。
 6. 启动前端：`npm --prefix apps/web run dev`。
 
-不会在仓库中提供可用于正式环境的默认密码。开发种子账号仅在明确设置 `ERP_SEED_OWNER_PASSWORD` 后创建。
+不会在仓库中提供可用于正式环境的默认密码。开发种子账号仅在明确设置 `ERP_SEED_OWNER_PASSWORD` 后创建；独立平台管理员通过 `dotnet run --project apps/api/Erp.Api -- --bootstrap-platform-admin` 按 `.env` 中的一次性初始化变量创建，首次登录必须改密。
 
 ## 测试策略
 

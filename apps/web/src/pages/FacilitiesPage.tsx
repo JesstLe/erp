@@ -6,6 +6,8 @@ import { useNavigate } from 'react-router-dom'
 import { apiRequest, ApiError } from '../api/client'
 import type { CustomerSummary, FacilityBoard, FacilityBoardItem, PageResult, ServiceItem } from '../api/types'
 import { useAuth } from '../auth/useAuth'
+import { Permission } from '../security/permissions'
+import { useAuthorization } from '../security/useAuthorization'
 
 const statusMeta: Record<string, { label: string; color: string }> = {
   AVAILABLE: { label: '可用', color: 'green' }, IN_USE: { label: '使用中', color: 'blue' }, PAUSED: { label: '已暂停', color: 'orange' },
@@ -33,7 +35,7 @@ export function FacilitiesPage() {
   const operation = async (item: FacilityBoardItem, action: 'pause' | 'resume' | 'end') => { if (!storeId || !item.sessionId) return; await mutate.mutateAsync({ path: `/api/v1/facilities/sessions/${item.sessionId}/${action}`, body: { storeId, commandId: commandId() } }); message.success(action === 'pause' ? '计时已暂停' : action === 'resume' ? '计时已继续' : '服务已结束，未产生收费') }
   const switchFacility = async (values: SwitchValues) => { if (!storeId || !switchTarget?.sessionId) return; await mutate.mutateAsync({ path: `/api/v1/facilities/sessions/${switchTarget.sessionId}/switch`, body: { storeId, ...values, commandId: commandId() } }); message.success('设施已更换，原计时记录已保留'); setSwitchTarget(undefined); switchForm.resetFields() }
   const completeCleaning = async (item: FacilityBoardItem) => { if (!storeId) return; await mutate.mutateAsync({ path: `/api/v1/facilities/${item.id}/cleaning/complete`, body: { storeId, commandId: commandId() } }); message.success('清洁已完成，设施恢复可用') }
-  const canConfigure = auth.user?.roles.some((role) => role === 'OWNER' || role === 'STORE_MANAGER')
+  const { can } = useAuthorization(); const canConfigure = can(Permission.FacilityConfigure)
 
   return <div className="page-stack">
     <div className="page-heading"><div><Typography.Title level={2}>设施接待</Typography.Title><Typography.Paragraph>点击可用设施后再明确开始；计时只记录占用，不参与自动收费。</Typography.Paragraph></div><Space>{canConfigure && <Button icon={<SettingOutlined />} onClick={() => navigate('/settings/facilities')}>门店设施配置</Button>}<Button onClick={() => refresh()} loading={board.isFetching}>刷新状态</Button></Space></div>

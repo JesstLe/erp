@@ -10,6 +10,8 @@ using Erp.Application.Identity;
 using Erp.Application.Inventory;
 using Erp.Application.Organization;
 using Erp.Application.Scheduling;
+using Erp.Application.Platform;
+using Erp.Application.Security;
 using Erp.Infrastructure.Seed;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -36,7 +38,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202608180028", ready?.SchemaVersion);
+        Assert.Equal("202608190030", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {
@@ -142,6 +144,31 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         });
         Assert.True(employee.AccountEnabled);
 
+        using (var frontDeskClient = fixture.CreateIsolatedClient())
+        {
+            var frontDeskLogin = await PostAsync<CurrentUserDto>(frontDeskClient, "/api/v1/auth/login", new
+            {
+                account = "technician02", password = "Reset_Test!7890", rememberMe = false,
+            });
+            Assert.True(frontDeskLogin.MustChangePassword);
+            var frontDesk = await PostAsync<CurrentUserDto>(frontDeskClient, "/api/v1/auth/change-password", new
+            {
+                currentPassword = "Reset_Test!7890", newPassword = "FrontDesk_Test!456",
+            });
+            Assert.Contains(SystemPermissions.FacilityOperate, frontDesk.Permissions);
+            Assert.Contains(SystemPermissions.CustomerWrite, frontDesk.Permissions);
+            Assert.DoesNotContain(SystemPermissions.CashierCheckout, frontDesk.Permissions);
+            Assert.DoesNotContain(SystemPermissions.InventoryRead, frontDesk.Permissions);
+            using var catalogResponse = await frontDeskClient.GetAsync("/api/v1/catalog/service-items");
+            using var reportResponse = await frontDeskClient.GetAsync(
+                $"/api/v1/reports/operations?storeId={storeId}");
+            using var cashierResponse = await frontDeskClient.GetAsync(
+                $"/api/v1/cashier/orders?storeId={storeId}");
+            Assert.Equal(HttpStatusCode.OK, catalogResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, reportResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, cashierResponse.StatusCode);
+        }
+
         var customer = await PostAsync<CustomerDetailDto>(client, "/api/v1/customers", new
         {
             storeId, name = "测试顾客", mobile = "13800138000", gender = (string?)null,
@@ -211,6 +238,16 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Single(customerPage.Items);
         Assert.Equal(1, customerPage.Page);
         Assert.Equal(1, customerPage.PageSize);
+        var crossStoreCustomerPage = await PostAsync<PageResponse<CustomerSummaryDto>>(client,
+            "/api/v1/customers/search", new
+            {
+                storeId = secondStore.Id, query = "13900139000", page = 1, pageSize = 20,
+            });
+        Assert.Equal(customer.Id, Assert.Single(crossStoreCustomerPage.Items).Id);
+        var crossStoreCustomerDetail = await client.GetFromJsonAsync<CustomerDetailDto>(
+            $"/api/v1/customers/{customer.Id}?storeId={secondStore.Id}");
+        Assert.Equal(storeId, crossStoreCustomerDetail!.HomeStoreId);
+        Assert.Contains(crossStoreCustomerDetail.Cards, card => card.Id == customer.Cards.Single().Id);
         var invalidCustomerPage = await SendAsync(client, HttpMethod.Post, "/api/v1/customers/search",
             new { storeId, query = "", page = 1, pageSize = 101 });
         Assert.Equal(HttpStatusCode.UnprocessableEntity, invalidCustomerPage.StatusCode);
@@ -227,6 +264,9 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var correction = Assert.Single(serviceRecord.Corrections);
         Assert.Equal("自动回归更正服务描述", correction.Reason);
         Assert.Equal("更正后的服务内容", correction.ServiceContent);
+        var crossStoreRecords = await client.GetFromJsonAsync<PageResponse<ServiceRecordDto>>(
+            $"/api/v1/customers/{customer.Id}/service-records?storeId={secondStore.Id}&page=1&pageSize=20");
+        Assert.Contains(crossStoreRecords!.Items, item => item.Id == serviceRecord.Id && item.StoreId == storeId);
 
         var service = await PostAsync<ServiceItemDto>(client, "/api/v1/catalog/service-items", new
         {
@@ -493,6 +533,54 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal(6_000L, Assert.Single(accountsAfterTopupRefund,
             account => account.AccountType == "Bonus").BalanceUnits);
 
+        _ = await PostAsync<CashierShiftDto>(client, "/api/v1/payments/shifts/open", new
+        {
+            storeId = secondStore.Id, openingCashMinor = 0L, commandId = Guid.NewGuid(),
+        });
+        var secondStoreMethods = (await client.GetFromJsonAsync<IReadOnlyList<PaymentMethodDto>>(
+            $"/api/v1/payments/methods?storeId={secondStore.Id}"))!;
+        var secondStoreCash = Assert.Single(secondStoreMethods, x => x.Code == "CASH");
+        _ = await PostAsync<MemberTopupDto>(client, "/api/v1/member-topups", new
+        {
+            storeId = secondStore.Id, customerId = customer.Id, cardId = memberCard.Id,
+            principalMinor = 10_000L, bonusMinor = 0L, note = "二店跨店储值回归",
+            allocations = new[] { new { methodId = secondStoreCash.Id, amountMinor = 10_000L,
+                externalReference = (string?)null } },
+            commandId = Guid.NewGuid(),
+        });
+        var crossStoreOrder = await PostAsync<ServiceOrderDto>(client, "/api/v1/cashier/orders", new
+        {
+            storeId = secondStore.Id, visitId = (Guid?)null, customerId = customer.Id,
+            note = "二店使用一店会员余额", lines = new object[]
+            {
+                new { lineType = "SERVICE", serviceItemId = service.Id, productItemId = (Guid?)null,
+                    serviceEmployeeId = (Guid?)null, quantity = 1, actualSeconds = 60,
+                    enteredPriceMinor = 10_000L, priceOverrideReason = (string?)null },
+            },
+            commandId = Guid.NewGuid(),
+        });
+        crossStoreOrder = await PostAsync<ServiceOrderDto>(client,
+            $"/api/v1/cashier/orders/{crossStoreOrder.Id}/confirm", new
+            {
+                storeId = secondStore.Id, expectedVersion = crossStoreOrder.Version, commandId = Guid.NewGuid(),
+            });
+        var principalMethod = Assert.Single(secondStoreMethods, x => x.Code == "MEMBER_PRINCIPAL");
+        var principalAccount = Assert.Single(accountsAfterTopupRefund, x => x.AccountType == "Principal");
+        var crossStorePayment = await PostAsync<PaymentDto>(client,
+            $"/api/v1/payments/orders/{crossStoreOrder.Id}/settle", new
+            {
+                storeId = secondStore.Id, expectedVersion = crossStoreOrder.Version,
+                allocations = new[] { new { methodId = principalMethod.Id, amountMinor = 10_000L,
+                    externalReference = (string?)null, memberAccountId = (Guid?)principalAccount.Id } },
+                cashTenderedMinor = (long?)null, verifiedMobile = "13900139000",
+                verificationChallengeId = (Guid?)null, commandId = Guid.NewGuid(),
+            });
+        Assert.Equal("Paid", crossStorePayment.Status);
+        var crossStoreBalance = await client.GetFromJsonAsync<CustomerDetailDto>(
+            $"/api/v1/customers/{customer.Id}?storeId={secondStore.Id}");
+        Assert.Equal(30_000L, Assert.Single(Assert.Single(crossStoreBalance!.Cards).Accounts,
+            account => account.AccountType == "Principal").BalanceUnits);
+
         var points = await PostAsync<MemberPointSummaryDto>(client,
             "/api/v1/membership-benefits/points/adjust", new
             {
@@ -594,8 +682,8 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var filteredOrders = await client.GetFromJsonAsync<PageResponse<ServiceOrderDto>>(
             $"/api/v1/cashier/orders?storeId={storeId}&query=%E6%B5%8B%E8%AF%95%E6%9C%8D%E5%8A%A1" +
             $"&customerId={customer.Id}&catalogItemId={service.Id}&status=PartiallyRefunded" +
-            $"&fromDate={DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}" +
-            $"&toDate={DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}&page=1&pageSize=20");
+            $"&fromDate={CurrentShanghaiDate():yyyy-MM-dd}" +
+            $"&toDate={CurrentShanghaiDate():yyyy-MM-dd}&page=1&pageSize=20");
         Assert.Single(filteredOrders!.Items);
         Assert.Equal(order.Id, filteredOrders.Items.Single().Id);
         var invalidOrderFilter = await client.GetAsync(
@@ -683,6 +771,165 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal(HttpStatusCode.UnprocessableEntity, invalidOrderPage.StatusCode);
     }
 
+    [Fact]
+    public async Task PlatformRegistrationSecurityEventsAndTenantSuspensionAreIsolated()
+    {
+        using var client = fixture.CreateIsolatedClient();
+        using (var unauthorized = await client.GetAsync("/api/v1/platform/merchants?page=1&pageSize=20"))
+            Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
+
+        var receipt = await PostAsync<MerchantRegistrationReceiptDto>(client,
+            "/api/v1/public/merchant-registration-applications", new
+            {
+                merchantName = "平台回归商户", storeName = "平台回归首店", contactName = "回归负责人",
+                contactMobile = "13600136000", contactEmail = "owner@example.test",
+                desiredOwnerAccount = "platform-merchant-owner", note = "平台端到端自动回归",
+                acceptedTerms = true,
+            }, HttpStatusCode.Created);
+        Assert.Equal("PendingReview", receipt.Status);
+
+        using (var failedLogin = await SendAsync(client, HttpMethod.Post, "/api/v1/platform/auth/login", new
+        {
+            account = "unknown.platform", password = "Wrong_Password!123", rememberMe = false,
+        }))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, failedLogin.StatusCode);
+            Assert.Contains("INVALID_CREDENTIALS", await failedLogin.Content.ReadAsStringAsync(),
+                StringComparison.Ordinal);
+        }
+
+        var platform = await PostAsync<PlatformCurrentUserDto>(client, "/api/v1/platform/auth/login", new
+        {
+            account = "platform.admin", password = RealApiPostgreSqlFixture.PlatformInitialPassword,
+            rememberMe = false,
+        });
+        Assert.True(platform.MustChangePassword);
+        using (var blocked = await client.GetAsync("/api/v1/platform/registration-applications?page=1&pageSize=20"))
+            Assert.Equal(HttpStatusCode.Forbidden, blocked.StatusCode);
+        platform = await PostAsync<PlatformCurrentUserDto>(client, "/api/v1/platform/auth/change-password", new
+        {
+            currentPassword = RealApiPostgreSqlFixture.PlatformInitialPassword,
+            newPassword = RealApiPostgreSqlFixture.PlatformChangedPassword,
+        });
+        Assert.False(platform.MustChangePassword);
+
+        var applications = await client.GetFromJsonAsync<PageResponse<MerchantRegistrationApplicationDto>>(
+            "/api/v1/platform/registration-applications?status=PendingReview&page=1&pageSize=100");
+        var application = Assert.Single(applications!.Items, x => x.Id == receipt.Id);
+        application = await PostAsync<MerchantRegistrationApplicationDto>(client,
+            $"/api/v1/platform/registration-applications/{application.Id}/approval", new
+            {
+                tenantCode = "B02", storeCode = "S01",
+                initialPassword = RealApiPostgreSqlFixture.MerchantInitialPassword,
+                reason = "平台端到端审核通过", expectedVersion = application.Version,
+            });
+        Assert.Equal("Approved", application.Status);
+        Assert.NotNull(application.TenantId);
+
+        var merchants = await client.GetFromJsonAsync<PageResponse<PlatformMerchantDto>>(
+            "/api/v1/platform/merchants?query=B02&page=1&pageSize=20");
+        var merchant = Assert.Single(merchants!.Items, x => x.Id == application.TenantId);
+        Assert.Equal("Enabled", merchant.Status);
+        Assert.Equal(1, merchant.StoreCount);
+        Assert.Equal(1, merchant.LoginAccountCount);
+
+        var securityEvents = await client.GetFromJsonAsync<PageResponse<LoginSecurityEventDto>>(
+            "/api/v1/platform/security-events?scope=Platform&account=platform.admin&page=1&pageSize=100");
+        Assert.Contains(securityEvents!.Items, x => x.EventType == "LoginSucceeded" && x.ResultCode == "SUCCESS");
+        Assert.Contains(securityEvents.Items, x => x.EventType == "PasswordChanged");
+        await fixture.AssertLoginSecurityEventIsImmutableAsync(securityEvents.Items[0].Id);
+        var unknownEvents = await client.GetFromJsonAsync<PageResponse<LoginSecurityEventDto>>(
+            "/api/v1/platform/security-events?scope=Platform&account=unknown.platform&page=1&pageSize=100");
+        var unknownEvent = Assert.Single(unknownEvents!.Items, x => x.EventType == "LoginFailed");
+        Assert.NotEqual("unknown.platform", unknownEvent.Account);
+
+        var merchantLogin = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
+        {
+            account = "platform-merchant-owner", password = RealApiPostgreSqlFixture.MerchantInitialPassword,
+            rememberMe = false,
+        });
+        Assert.True(merchantLogin.MustChangePassword);
+        merchantLogin = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/change-password", new
+        {
+            currentPassword = RealApiPostgreSqlFixture.MerchantInitialPassword,
+            newPassword = "Merchant_Changed!456",
+        });
+        var merchantStoreId = Assert.Single(merchantLogin.Stores).Id;
+        var merchantCustomer = await PostAsync<CustomerDetailDto>(client, "/api/v1/customers", new
+        {
+            storeId = merchantStoreId, name = "跨品牌隔离顾客", mobile = "13500135000",
+            serviceNotificationConsent = false, marketingConsent = false, commandId = Guid.NewGuid(),
+        });
+
+        var otherBrandReceipt = await PostAsync<MerchantRegistrationReceiptDto>(client,
+            "/api/v1/public/merchant-registration-applications", new
+            {
+                merchantName = "隔离回归品牌", storeName = "隔离回归首店", contactName = "隔离负责人",
+                contactMobile = "13700137001", contactEmail = "isolated@example.test",
+                desiredOwnerAccount = "isolated-brand-owner", note = "跨品牌隔离自动回归",
+                acceptedTerms = true,
+            }, HttpStatusCode.Created);
+        applications = await client.GetFromJsonAsync<PageResponse<MerchantRegistrationApplicationDto>>(
+            "/api/v1/platform/registration-applications?status=PendingReview&page=1&pageSize=100");
+        var otherBrandApplication = Assert.Single(applications!.Items, x => x.Id == otherBrandReceipt.Id);
+        otherBrandApplication = await PostAsync<MerchantRegistrationApplicationDto>(client,
+            $"/api/v1/platform/registration-applications/{otherBrandApplication.Id}/approval", new
+            {
+                tenantCode = "B03", storeCode = "S01",
+                initialPassword = RealApiPostgreSqlFixture.MerchantInitialPassword,
+                reason = "跨品牌隔离自动回归审核", expectedVersion = otherBrandApplication.Version,
+            });
+        using var otherBrandClient = fixture.CreateIsolatedClient();
+        var otherBrandOwner = await PostAsync<CurrentUserDto>(otherBrandClient, "/api/v1/auth/login", new
+        {
+            account = "isolated-brand-owner", password = RealApiPostgreSqlFixture.MerchantInitialPassword,
+            rememberMe = false,
+        });
+        otherBrandOwner = await PostAsync<CurrentUserDto>(otherBrandClient, "/api/v1/auth/change-password", new
+        {
+            currentPassword = RealApiPostgreSqlFixture.MerchantInitialPassword,
+            newPassword = "Isolated_Changed!789",
+        });
+        var otherBrandStoreId = Assert.Single(otherBrandOwner.Stores).Id;
+        var otherBrandCustomer = await PostAsync<CustomerDetailDto>(otherBrandClient, "/api/v1/customers", new
+        {
+            storeId = otherBrandStoreId, name = "另一品牌同手机号顾客", mobile = "13500135000",
+            serviceNotificationConsent = false, marketingConsent = false, commandId = Guid.NewGuid(),
+        });
+        Assert.NotEqual(merchantCustomer.Id, otherBrandCustomer.Id);
+        using (var crossTenantRead = await otherBrandClient.GetAsync(
+                   $"/api/v1/customers/{merchantCustomer.Id}?storeId={otherBrandStoreId}"))
+            Assert.Equal(HttpStatusCode.NotFound, crossTenantRead.StatusCode);
+
+        merchant = await PostAsync<PlatformMerchantDto>(client,
+            $"/api/v1/platform/merchants/{merchant.Id}/status-change", new
+            {
+                enable = false, reason = "验证商户停用即时失效", expectedVersion = merchant.Version,
+            });
+        Assert.Equal("Disabled", merchant.Status);
+        using (var disabledSession = await client.GetAsync("/api/v1/auth/me"))
+            Assert.Equal(HttpStatusCode.Unauthorized, disabledSession.StatusCode);
+        merchant = await PostAsync<PlatformMerchantDto>(client,
+            $"/api/v1/platform/merchants/{merchant.Id}/status-change", new
+            {
+                enable = true, reason = "完成停用验证后恢复", expectedVersion = merchant.Version,
+            });
+        Assert.Equal("Enabled", merchant.Status);
+
+        var merchantEvents = await client.GetFromJsonAsync<PageResponse<LoginSecurityEventDto>>(
+            "/api/v1/platform/security-events?scope=Merchant&account=platform-merchant-owner&page=1&pageSize=100");
+        Assert.Contains(merchantEvents!.Items, x => x.EventType == "LoginSucceeded" && x.TenantId == merchant.Id);
+        using var logout = await SendAsync(client, HttpMethod.Post, "/api/v1/platform/auth/logout", new { });
+        Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+    }
+
+    private static DateOnly CurrentShanghaiDate()
+    {
+        var local = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow,
+            TimeZoneInfo.FindSystemTimeZoneById("Asia/Shanghai"));
+        return DateOnly.FromDateTime(local.DateTime);
+    }
+
     private static async Task<T> PostAsync<T>(HttpClient client, string path, object body,
         HttpStatusCode expectedStatus = HttpStatusCode.OK)
     {
@@ -731,7 +978,11 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
     private static async Task<HttpResponseMessage> SendAsync(HttpClient client, HttpMethod method, string path,
         object body)
     {
-        var csrf = await client.GetFromJsonAsync<CsrfResponse>("/api/v1/security/csrf");
+        var csrfPath = path.StartsWith("/api/v1/platform/", StringComparison.Ordinal) &&
+            !path.Equals("/api/v1/platform/auth/login", StringComparison.Ordinal)
+                ? "/api/v1/platform/auth/csrf"
+                : "/api/v1/security/csrf";
+        var csrf = await client.GetFromJsonAsync<CsrfResponse>(csrfPath);
         var request = new HttpRequestMessage(method, path) { Content = JsonContent.Create(body) };
         request.Headers.Add("X-CSRF-TOKEN", csrf!.Token);
         return await client.SendAsync(request);
@@ -748,6 +999,9 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
 {
     internal const string InitialPassword = "Initial_Test!123";
     internal const string ChangedPassword = "Changed_Test!456";
+    internal const string PlatformInitialPassword = "Platform_Initial!123";
+    internal const string PlatformChangedPassword = "Platform_Changed!456";
+    internal const string MerchantInitialPassword = "Merchant_Initial!123";
 
     private readonly PostgreSqlContainer database = new PostgreSqlBuilder("postgres:18.4-alpine")
         .WithDatabase("erp_integration")
@@ -760,6 +1014,24 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
     private ErpTestApplicationFactory? factory;
 
     public HttpClient Client { get; private set; } = null!;
+
+    public HttpClient CreateIsolatedClient() => factory?.CreateClient(new WebApplicationFactoryClientOptions
+    {
+        AllowAutoRedirect = false,
+        BaseAddress = new Uri("https://localhost"),
+        HandleCookies = true,
+    }) ?? throw new InvalidOperationException("测试应用尚未初始化");
+
+    public async Task AssertLoginSecurityEventIsImmutableAsync(Guid eventId)
+    {
+        await using var connection = new NpgsqlConnection(database.GetConnectionString());
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "UPDATE login_security_events SET result_code = result_code WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", eventId);
+        var exception = await Assert.ThrowsAsync<PostgresException>(() => command.ExecuteNonQueryAsync());
+        Assert.Equal("55000", exception.SqlState);
+    }
 
     public async Task InitializeAsync()
     {
@@ -777,6 +1049,8 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
         });
         using var scope = factory.Services.CreateScope();
         await scope.ServiceProvider.GetRequiredService<ProductionBootstrapper>()
+            .BootstrapAsync(CancellationToken.None);
+        await scope.ServiceProvider.GetRequiredService<PlatformAdminBootstrapper>()
             .BootstrapAsync(CancellationToken.None);
     }
 
@@ -827,6 +1101,8 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
             ["AllowedHosts"] = "localhost",
             ["CustomerPrivacy__LookupPepper"] = "integration-customer-pepper-1234567890",
             ["MemberVerification__CodePepper"] = "integration-member-pepper-123456789012",
+            ["SecurityEvents__AccountHashPepper"] = "integration-login-security-pepper-1234567890",
+            ["PlatformRegistration__ContactHashPepper"] = "integration-registration-pepper-123456789012",
             ["FileStorage__RootPath"] = Path.Combine(temporaryRoot, "files"),
             ["DataProtection__KeyRingPath"] = Path.Combine(temporaryRoot, "keys"),
         };
@@ -860,6 +1136,8 @@ internal sealed class ErpTestApplicationFactory(string connectionString, string 
                 ["AllowedHosts"] = "localhost",
                 ["CustomerPrivacy:LookupPepper"] = "integration-customer-pepper-1234567890",
                 ["MemberVerification:CodePepper"] = "integration-member-pepper-123456789012",
+                ["SecurityEvents:AccountHashPepper"] = "integration-login-security-pepper-1234567890",
+                ["PlatformRegistration:ContactHashPepper"] = "integration-registration-pepper-123456789012",
                 ["FileStorage:RootPath"] = Path.Combine(temporaryRoot, "files"),
                 ["DataProtection:KeyRingPath"] = Path.Combine(temporaryRoot, "keys"),
                 ["ERP_BOOTSTRAP_CONFIRM"] = ProductionBootstrapper.RequiredConfirmation,
@@ -871,6 +1149,10 @@ internal sealed class ErpTestApplicationFactory(string connectionString, string 
                 ["ERP_BOOTSTRAP_OWNER_DISPLAY_NAME"] = "集成测试负责人",
                 ["ERP_BOOTSTRAP_OWNER_EMPLOYEE_NO"] = "E0001",
                 ["ERP_BOOTSTRAP_OWNER_PASSWORD"] = RealApiPostgreSqlFixture.InitialPassword,
+                ["ERP_PLATFORM_BOOTSTRAP_CONFIRM"] = PlatformAdminBootstrapper.RequiredConfirmation,
+                ["ERP_PLATFORM_ADMIN_ACCOUNT"] = "platform.admin",
+                ["ERP_PLATFORM_ADMIN_DISPLAY_NAME"] = "平台集成管理员",
+                ["ERP_PLATFORM_ADMIN_PASSWORD"] = RealApiPostgreSqlFixture.PlatformInitialPassword,
             }));
         builder.ConfigureLogging(logging =>
         {

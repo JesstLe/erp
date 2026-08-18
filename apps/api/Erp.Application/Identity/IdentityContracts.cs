@@ -13,6 +13,7 @@ public sealed record CurrentUserDto(
     string Account,
     bool MustChangePassword,
     IReadOnlyList<string> Roles,
+    IReadOnlyList<string> Permissions,
     IReadOnlyList<AuthorizedStoreDto> Stores);
 
 public sealed record AuthorizedStoreDto(Guid Id, string Code, string Name, bool IsDefault);

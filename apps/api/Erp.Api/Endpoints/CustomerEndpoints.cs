@@ -7,14 +7,10 @@ namespace Erp.Api.Endpoints;
 
 public static class CustomerEndpoints
 {
-    private static readonly string[] CustomerOperators =
-        [SystemRoles.Owner, SystemRoles.StoreManager, SystemRoles.FrontDesk, SystemRoles.Cashier];
-    private static readonly string[] MembershipOperators = [SystemRoles.Owner, SystemRoles.StoreManager];
-    private static readonly string[] ServiceRecordOperators = [SystemRoles.Owner, SystemRoles.StoreManager];
-
     public static IEndpointRouteBuilder MapCustomerEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/customers").WithTags("Customers").RequireAuthorization();
+        var group = endpoints.MapGroup("/api/v1/customers").WithTags("Customers")
+            .RequireAuthorization(SystemPermissions.CustomerRead);
 
         group.MapPost("/search", async (CustomerSearchRequest request, IIdentityService identity, ICustomerService customers,
             CancellationToken cancellationToken) =>
@@ -27,7 +23,7 @@ public static class CustomerEndpoints
             return Results.Ok(await customers.SearchAsync(current.TenantId, request.StoreId, request.Query, page,
                 pageSize,
                 cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(CustomerOperators)).RequireRateLimiting("customer-search");
+        }).RequireRateLimiting("customer-search");
 
         group.MapGet("/{customerId:guid}", async (Guid customerId, Guid storeId, IIdentityService identity,
             ICustomerService customers, CancellationToken cancellationToken) =>
@@ -35,11 +31,10 @@ public static class CustomerEndpoints
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
-            var includeFinancialDetails = current.Roles.Any(role => role is SystemRoles.Owner or
-                SystemRoles.StoreManager or SystemRoles.Cashier);
+            var includeFinancialDetails = current.Permissions.Contains(SystemPermissions.MembershipManage);
             return EndpointResults.From(await customers.GetAsync(current.TenantId, storeId, customerId,
                 includeFinancialDetails, cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(CustomerOperators));
+        });
 
         group.MapPost("/{customerId:guid}/mobile/reveal", async (Guid customerId,
             RevealCustomerMobileRequest request, IIdentityService identity, ICustomerService customers,
@@ -51,7 +46,7 @@ public static class CustomerEndpoints
             return EndpointResults.From(await customers.RevealMobileAsync(current.TenantId,
                 new RevealCustomerMobileCommand(request.StoreId, customerId, request.Purpose ?? string.Empty,
                     request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(CustomerOperators))
+        })
             .RequireRateLimiting("customer-search");
 
         group.MapPost("/export", async (ExportCustomersRequest request, HttpResponse response,
@@ -60,16 +55,17 @@ public static class CustomerEndpoints
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, request.StoreId)) return Results.Forbid();
-            var canExportFullMobile = current.Roles.Contains(SystemRoles.Owner,
-                StringComparer.OrdinalIgnoreCase);
+            var canExportFullMobile = current.Permissions.Contains(SystemPermissions.CustomerExportFullMobile);
+            var canExportAllStores = current.Permissions.Contains(SystemPermissions.OrganizationManage);
             var result = await customers.ExportAsync(current.TenantId,
                 new ExportCustomersCommand(request.StoreId, request.Query, request.IncludeFullMobile,
-                    canExportFullMobile, request.Purpose ?? string.Empty, request.CommandId, current.Id),
+                    canExportFullMobile, canExportAllStores, request.Purpose ?? string.Empty, request.CommandId,
+                    current.Id),
                 cancellationToken);
             response.Headers.CacheControl = "private, no-store";
             return EndpointResults.From(result, value => Results.File(value.Content,
                 "text/csv; charset=utf-8", value.FileName, enableRangeProcessing: false));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager))
+        }).RequireAuthorization(SystemPermissions.CustomerExport)
             .RequireRateLimiting("customer-search");
 
         group.MapPost("", async (CreateCustomerRequest request, IIdentityService identity, ICustomerService customers,
@@ -82,7 +78,7 @@ public static class CustomerEndpoints
                 new CreateCustomerCommand(request.StoreId, request.Name ?? string.Empty, request.Mobile ?? string.Empty,
                     request.Gender, request.BirthDate, request.SourceCode, request.ServiceNotificationConsent,
                     request.MarketingConsent, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(CustomerOperators));
+        }).RequireAuthorization(SystemPermissions.CustomerWrite);
 
         group.MapPut("/{customerId:guid}", async (Guid customerId, UpdateCustomerRequest request,
             IIdentityService identity, ICustomerService customers, CancellationToken cancellationToken) =>
@@ -95,7 +91,7 @@ public static class CustomerEndpoints
                     request.Mobile ?? string.Empty, request.Gender, request.BirthDate, request.SourceCode,
                     request.ServiceNotificationConsent, request.MarketingConsent, request.ExpectedVersion,
                     request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager));
+        }).RequireAuthorization(SystemPermissions.CustomerManage);
 
         group.MapPost("/{customerId:guid}/status", async (Guid customerId, ChangeCustomerStatusRequest request,
             IIdentityService identity, ICustomerService customers, CancellationToken cancellationToken) =>
@@ -107,7 +103,7 @@ public static class CustomerEndpoints
                 new ChangeCustomerStatusCommand(request.StoreId, customerId, request.Restore,
                     request.Reason ?? string.Empty, request.ExpectedVersion, request.CommandId, current.Id),
                 cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager));
+        }).RequireAuthorization(SystemPermissions.CustomerManage);
 
         group.MapPost("/{sourceCustomerId:guid}/merge-preview", async (Guid sourceCustomerId,
             PreviewCustomerMergeRequest request, IIdentityService identity, ICustomerService customers,
@@ -119,7 +115,7 @@ public static class CustomerEndpoints
             return EndpointResults.From(await customers.PreviewMergeAsync(current.TenantId,
                 new PreviewCustomerMergeCommand(request.StoreId, sourceCustomerId, request.TargetCustomerId),
                 cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner))
+        }).RequireAuthorization(SystemPermissions.CustomerMerge)
             .RequireRateLimiting("customer-search");
 
         group.MapPost("/{sourceCustomerId:guid}/merge", async (Guid sourceCustomerId,
@@ -133,14 +129,14 @@ public static class CustomerEndpoints
                 new MergeCustomerCommand(request.StoreId, sourceCustomerId, request.TargetCustomerId,
                     request.ExpectedSourceVersion, request.ExpectedTargetVersion, request.Reason ?? string.Empty,
                     request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.CustomerMerge);
 
         group.MapGet("/membership/card-types", async (IIdentityService identity, ICustomerService customers,
             CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             return current is null ? Results.Unauthorized() : Results.Ok(await customers.ListCardTypesAsync(current.TenantId, cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(CustomerOperators));
+        });
 
         group.MapPost("/membership/card-types", async (CreateCardTypeRequest request, IIdentityService identity,
             ICustomerService customers, CancellationToken cancellationToken) =>
@@ -149,7 +145,7 @@ public static class CustomerEndpoints
             return current is null ? Results.Unauthorized() : EndpointResults.From(await customers.CreateCardTypeAsync(current.TenantId,
                 new CreateMemberCardTypeCommand(request.Code ?? string.Empty, request.Name ?? string.Empty,
                     request.ValidityDays, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.MembershipCardTypeManage);
 
         group.MapPost("/{customerId:guid}/membership", async (Guid customerId, OpenMembershipRequest request,
             IIdentityService identity, ICustomerService customers, CancellationToken cancellationToken) =>
@@ -160,7 +156,7 @@ public static class CustomerEndpoints
             return EndpointResults.From(await customers.OpenMembershipAsync(current.TenantId,
                 new OpenMembershipCommand(request.StoreId, customerId, request.CardTypeId, request.CardNo,
                     request.Note, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(MembershipOperators));
+        }).RequireAuthorization(SystemPermissions.MembershipOpen);
 
         group.MapGet("/{customerId:guid}/service-records", async (Guid customerId, Guid storeId,
             int? page, int? pageSize,
@@ -173,7 +169,7 @@ public static class CustomerEndpoints
                 return InvalidPagination();
             return Results.Ok(await records.ListAsync(current.TenantId, storeId, customerId, normalizedPage,
                 normalizedPageSize, cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ServiceRecordOperators));
+        }).RequireAuthorization(SystemPermissions.ServiceRecordManage);
 
         group.MapGet("/{customerId:guid}/service-record-order-options", async (Guid customerId, Guid storeId,
             IIdentityService identity, IServiceRecordService records, CancellationToken cancellationToken) =>
@@ -183,7 +179,7 @@ public static class CustomerEndpoints
             if (!HasStore(current, storeId)) return Results.Forbid();
             return Results.Ok(await records.ListOrderOptionsAsync(current.TenantId, storeId, customerId,
                 cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ServiceRecordOperators));
+        }).RequireAuthorization(SystemPermissions.ServiceRecordManage);
 
         group.MapPost("/{customerId:guid}/service-records", async (Guid customerId, HttpRequest request,
             IIdentityService identity, IServiceRecordService records, CancellationToken cancellationToken) =>
@@ -224,7 +220,7 @@ public static class CustomerEndpoints
             {
                 foreach (var stream in streams) await stream.DisposeAsync();
             }
-        }).RequireAuthorization(policy => policy.RequireRole(ServiceRecordOperators))
+        }).RequireAuthorization(SystemPermissions.ServiceRecordManage)
             .RequireRateLimiting("file-upload")
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(32 * 1024 * 1024));
 
@@ -239,7 +235,7 @@ public static class CustomerEndpoints
                 new CorrectServiceRecordCommand(request.StoreId, customerId, recordId,
                     request.Reason ?? string.Empty, request.ConditionNotes, request.ServiceContent,
                     request.FollowUpNotes, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(ServiceRecordOperators));
+        }).RequireAuthorization(SystemPermissions.ServiceRecordManage);
 
         group.MapGet("/{customerId:guid}/service-record-files/{fileId:guid}", async (Guid customerId, Guid fileId,
             Guid storeId, HttpResponse response, IIdentityService identity, IServiceRecordService records,
@@ -253,7 +249,7 @@ public static class CustomerEndpoints
             if (!result.IsSuccess || result.Value is null) return EndpointResults.From(result);
             response.Headers.CacheControl = "private, no-store";
             return Results.File(result.Value.Content, result.Value.ContentType, enableRangeProcessing: false);
-        }).RequireAuthorization(policy => policy.RequireRole(ServiceRecordOperators));
+        }).RequireAuthorization(SystemPermissions.ServiceRecordManage);
 
         return endpoints;
     }

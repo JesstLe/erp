@@ -35,6 +35,24 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0,
             AutoReplenishment = true,
         }));
+    options.AddPolicy("platform-login", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
+            Window = TimeSpan.FromMinutes(15),
+            QueueLimit = 0,
+            AutoReplenishment = true,
+        }));
+    options.AddPolicy("merchant-registration", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 5,
+            Window = TimeSpan.FromHours(1),
+            QueueLimit = 0,
+            AutoReplenishment = true,
+        }));
     options.AddPolicy("customer-search", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions
@@ -97,6 +115,15 @@ if (args.Contains("--bootstrap", StringComparer.Ordinal))
     return;
 }
 
+if (args.Contains("--bootstrap-platform-admin", StringComparer.Ordinal))
+{
+    using var bootstrapScope = app.Services.CreateScope();
+    var result = await bootstrapScope.ServiceProvider.GetRequiredService<PlatformAdminBootstrapper>()
+        .BootstrapAsync(CancellationToken.None);
+    Console.WriteLine($"平台管理员初始化完成：账号={result.Account}，首次登录必须修改密码。");
+    return;
+}
+
 app.UseExceptionHandler(exceptionHandler => exceptionHandler.Run(async context =>
 {
     var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
@@ -136,12 +163,14 @@ app.UseAuthorization();
 app.Use(async (context, next) =>
 {
     var isApiRequest = context.Request.Path.StartsWithSegments("/api/v1");
+    var isPlatformRequest = context.Request.Path.StartsWithSegments("/api/v1/platform");
     var isPasswordBootstrapEndpoint = context.Request.Path.StartsWithSegments("/api/v1/auth/login")
         || context.Request.Path.StartsWithSegments("/api/v1/auth/logout")
         || context.Request.Path.StartsWithSegments("/api/v1/auth/me")
         || context.Request.Path.StartsWithSegments("/api/v1/auth/change-password")
         || context.Request.Path.StartsWithSegments("/api/v1/security/csrf");
-    if (isApiRequest && !isPasswordBootstrapEndpoint && context.User.Identity?.IsAuthenticated == true)
+    if (isApiRequest && !isPlatformRequest && !isPasswordBootstrapEndpoint &&
+        context.User.Identity?.IsAuthenticated == true)
     {
         var current = await context.RequestServices.GetRequiredService<IIdentityService>()
             .GetCurrentAsync(context.RequestAborted);
@@ -168,7 +197,8 @@ app.Use(async (context, next) =>
         || HttpMethods.IsDelete(context.Request.Method);
     var shouldValidate = context.Request.Path.StartsWithSegments("/api/v1")
         && unsafeMethod
-        && !context.Request.Path.StartsWithSegments("/api/v1/security/csrf");
+        && !context.Request.Path.StartsWithSegments("/api/v1/security/csrf")
+        && !context.Request.Path.StartsWithSegments("/api/v1/platform/auth/csrf");
     if (shouldValidate)
     {
         try
@@ -209,6 +239,7 @@ app.MapGet("/health/ready", async (IDatabaseReadinessService readiness, Cancella
 }).AllowAnonymous();
 app.MapSecurityEndpoints();
 app.MapIdentityEndpoints();
+app.MapPlatformEndpoints();
 app.MapOrganizationEndpoints();
 app.MapEmployeeEndpoints();
 app.MapCatalogEndpoints();

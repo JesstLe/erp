@@ -3,6 +3,8 @@ import { Spin } from 'antd'
 import { lazy, Suspense } from 'react'
 import { useAuth } from './auth/useAuth'
 import { AppLayout } from './layout/AppLayout'
+import { Permission, type PermissionCode } from './security/permissions'
+import { useAuthorization } from './security/useAuthorization'
 import './styles.css'
 
 const LoginPage = lazy(() => import('./pages/LoginPage').then((module) => ({ default: module.LoginPage })))
@@ -23,6 +25,11 @@ const SupplyChainPage = lazy(() => import('./pages/SupplyChainPage').then((modul
 const FacilityConfigurationPage = lazy(() => import('./pages/FacilityConfigurationPage').then((module) => ({ default: module.FacilityConfigurationPage })))
 const OrganizationSettingsPage = lazy(() => import('./pages/OrganizationSettingsPage').then((module) => ({ default: module.OrganizationSettingsPage })))
 const SchedulingPage = lazy(() => import('./pages/SchedulingPage').then((module) => ({ default: module.SchedulingPage })))
+const MerchantRegisterPage = lazy(() => import('./pages/MerchantRegisterPage').then((module) => ({ default: module.MerchantRegisterPage })))
+const PlatformLoginPage = lazy(() => import('./pages/PlatformLoginPage').then((module) => ({ default: module.PlatformLoginPage })))
+const PlatformChangePasswordPage = lazy(() => import('./pages/PlatformChangePasswordPage').then((module) => ({ default: module.PlatformChangePasswordPage })))
+const PlatformAdminPage = lazy(() => import('./pages/PlatformAdminPage').then((module) => ({ default: module.PlatformAdminPage })))
+const ForbiddenPage = lazy(() => import('./pages/ForbiddenPage').then((module) => ({ default: module.ForbiddenPage })))
 
 function ProtectedRoute() {
   const auth = useAuth(); const location = useLocation()
@@ -32,6 +39,44 @@ function ProtectedRoute() {
   return <Outlet />
 }
 
+function AuthorizedRoute({ permission }: { permission: PermissionCode }) {
+  const { can } = useAuthorization()
+  return can(permission) ? <Outlet /> : <Navigate to="/forbidden" replace />
+}
+
 export default function App() {
-  return <Suspense fallback={<div className="screen-loader"><Spin size="large" /></div>}><Routes><Route path="/login" element={<LoginPage />} /><Route element={<ProtectedRoute />}><Route path="change-password" element={<ChangePasswordPage />} /><Route element={<AppLayout />}><Route index element={<DashboardPage />} /><Route path="catalog/items" element={<ServiceItemsPage />} /><Route path="catalog/products" element={<ProductsPage />} /><Route path="catalog/prices" element={<PriceBooksPage />} /><Route path="facilities" element={<FacilitiesPage />} /><Route path="scheduling" element={<SchedulingPage />} /><Route path="customers" element={<CustomersPage />} /><Route path="cashier" element={<CashierPage />} /><Route path="inventory" element={<InventoryPage />} /><Route path="supply-chain" element={<SupplyChainPage />} /><Route path="reports" element={<ReportsPage />} /><Route path="audit" element={<AuditPage />} /><Route path="settings/organization" element={<OrganizationSettingsPage />} /><Route path="settings/facilities" element={<FacilityConfigurationPage />} /><Route path="settings/employees" element={<EmployeesPage />} /><Route path="settings/payment-channels" element={<PaymentChannelsPage />} /></Route></Route><Route path="*" element={<Navigate to="/" replace />} /></Routes></Suspense>
+  return <Suspense fallback={<div className="screen-loader"><Spin size="large" /></div>}>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<MerchantRegisterPage />} />
+      <Route path="/platform/login" element={<PlatformLoginPage />} />
+      <Route path="/platform/change-password" element={<PlatformChangePasswordPage />} />
+      <Route path="/platform" element={<PlatformAdminPage />} />
+      <Route element={<ProtectedRoute />}>
+        <Route path="change-password" element={<ChangePasswordPage />} />
+        <Route element={<AppLayout />}>
+          <Route path="forbidden" element={<ForbiddenPage />} />
+          <Route element={<AuthorizedRoute permission={Permission.DashboardRead} />}><Route index element={<DashboardPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.CatalogRead} />}>
+            <Route path="catalog/items" element={<ServiceItemsPage />} />
+            <Route path="catalog/products" element={<ProductsPage />} />
+            <Route path="catalog/prices" element={<PriceBooksPage />} />
+          </Route>
+          <Route element={<AuthorizedRoute permission={Permission.FacilityOperate} />}><Route path="facilities" element={<FacilitiesPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.SchedulingOperate} />}><Route path="scheduling" element={<SchedulingPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.CustomerRead} />}><Route path="customers" element={<CustomersPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.CashierCheckout} />}><Route path="cashier" element={<CashierPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.InventoryRead} />}><Route path="inventory" element={<InventoryPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.SupplyChainRead} />}><Route path="supply-chain" element={<SupplyChainPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.ReportRead} />}><Route path="reports" element={<ReportsPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.AuditRead} />}><Route path="audit" element={<AuditPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.OrganizationManage} />}><Route path="settings/organization" element={<OrganizationSettingsPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.FacilityConfigure} />}><Route path="settings/facilities" element={<FacilityConfigurationPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.EmployeeManage} />}><Route path="settings/employees" element={<EmployeesPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.PaymentChannelManage} />}><Route path="settings/payment-channels" element={<PaymentChannelsPage />} /></Route>
+        </Route>
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  </Suspense>
 }

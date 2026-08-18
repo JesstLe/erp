@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { apiRequest, ApiError } from '../api/client'
 import type { ServiceItem } from '../api/types'
-import { useAuth } from '../auth/useAuth'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { Permission } from '../security/permissions'
+import { useAuthorization } from '../security/useAuthorization'
 
 interface ItemForm { code?: string; name: string; standardDurationMinutes: number; status: string; commissionMode: string; commissionRatePercent?: number; commissionFixedYuan?: number }
 
@@ -14,7 +15,7 @@ function requestError(error: unknown): string {
 }
 
 export function ServiceItemsPage() {
-  const auth = useAuth(); const canManage = auth.user?.roles.includes('OWNER') ?? false
+  const { can } = useAuthorization(); const canManage = can(Permission.CatalogWrite)
   const [open, setOpen] = useState(false); const [editing, setEditing] = useState<ServiceItem>()
   const [queryText, setQueryText] = useState(''); const [status, setStatus] = useState<string>()
   const normalizedQuery = queryText.trim(); const appliedQuery = useDebouncedValue(normalizedQuery)

@@ -2,7 +2,7 @@ using Erp.Application.Common;
 
 namespace Erp.Application.Customers;
 
-public sealed record ServicePassLedgerDto(Guid Id, string Action, int PurchasedUsesDelta,
+public sealed record ServicePassLedgerDto(Guid Id, Guid StoreId, string Action, int PurchasedUsesDelta,
     int BonusUsesDelta, int PurchasedUsesAfter, int BonusUsesAfter, Guid? ServiceOrderId,
     Guid? ReversedLedgerId, string Reason, DateTimeOffset OccurredAtUtc);
 

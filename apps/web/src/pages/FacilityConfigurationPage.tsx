@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { ApiError, apiRequest } from '../api/client'
 import type { FacilityConfiguration, FacilityConfigurationGroup, FacilityConfigurationItem, FacilityConfigurationStore, FacilityType } from '../api/types'
 import { useAuth } from '../auth/useAuth'
+import { Permission } from '../security/permissions'
+import { useAuthorization } from '../security/useAuthorization'
 
 interface GroupValues { displayName: string; sortOrder: number }
 interface FacilityValues {
@@ -32,8 +34,8 @@ function money(minor?: number | null) { return minor === undefined || minor === 
 export function FacilityConfigurationPage() {
   const auth = useAuth()
   const queryClient = useQueryClient()
-  const isOwner = auth.user?.roles.includes('OWNER') ?? false
-  const canConfigure = auth.user?.roles.some((role) => role === 'OWNER' || role === 'STORE_MANAGER') ?? false
+  const { can } = useAuthorization(); const isOwner = can(Permission.FacilityConfigureAllStores)
+  const canConfigure = can(Permission.FacilityConfigure)
   const [storeId, setStoreId] = useState(auth.store?.id)
   const [editingGroup, setEditingGroup] = useState<FacilityConfigurationGroup | 'new'>()
   const [editingFacility, setEditingFacility] = useState<FacilityConfigurationItem | 'new'>()

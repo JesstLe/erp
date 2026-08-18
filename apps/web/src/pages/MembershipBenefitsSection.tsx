@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { apiRequest, ApiError } from "../api/client";
 import type { MemberCard, MemberPointSummary, MembershipBenefits, ServiceItem, ServicePass } from "../api/types";
-import { useAuth } from "../auth/useAuth";
 import { isServicePassDue } from "./membershipRules";
+import { Permission } from "../security/permissions";
+import { useAuthorization } from "../security/useAuthorization";
 
 interface IssuePassValues { cardId: string; serviceItemId: string; passName: string; purchasedUses: number; bonusUses: number; validFrom: string; validTo?: string; reason: string }
 interface RedeemPassValues { uses: number; serviceOrderId?: string; reason: string }
@@ -16,10 +17,10 @@ function commandId() { return crypto.randomUUID() }
 function requestError(error: unknown) { return error instanceof ApiError ? error.message : "操作失败，请稍后重试" }
 
 export function MembershipBenefitsSection({ storeId, customerId, cards }: { storeId: string; customerId: string; cards: MemberCard[] }) {
-  const auth = useAuth(); const queryClient = useQueryClient()
-  const canManage = auth.user?.roles.some((role) => role === "OWNER" || role === "STORE_MANAGER") ?? false
-  const canRedeem = auth.user?.roles.some((role) => role === "OWNER" || role === "STORE_MANAGER" || role === "CASHIER") ?? false
-  const isOwner = auth.user?.roles.includes("OWNER") ?? false
+  const { can } = useAuthorization(); const queryClient = useQueryClient()
+  const canManage = can(Permission.MembershipAdmin)
+  const canRedeem = can(Permission.MembershipManage)
+  const isOwner = can(Permission.MembershipReverse)
   const [issueOpen, setIssueOpen] = useState(false); const [pointOpen, setPointOpen] = useState(false)
   const [redeemPass, setRedeemPass] = useState<ServicePass>(); const [reversePass, setReversePass] = useState<{ pass: ServicePass; ledgerId: string }>()
   const [reversePoints, setReversePoints] = useState<{ account: MemberPointSummary; ledgerId: string }>()

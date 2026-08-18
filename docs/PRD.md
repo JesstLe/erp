@@ -27,7 +27,7 @@
 
 第一版开发范围已经收敛为：系统基础、员工与权限、项目/产品目录和价格、设施接待、顾客与会员基础、收银结算、人工支付登记、交班和审计。采购、销售、复杂库存、配货、工资、短信营销和分析报表保留需求设计，不进入首个开发闭环。
 
-第一版面向一个品牌下的总部、区域和多个门店；数据库预留租户字段，但不开放多商户 SaaS 管理后台。新系统从空库开始，不迁移参考系统历史会员、余额、订单和流水。
+每个商户对应一个相互隔离的品牌租户，品牌下可包含总部、区域和多个门店。顾客主档、会员卡、储值本金、奖励金、积分、次卡及服务档案在同一品牌内跨门店共享：A 店建档或开卡后，授权员工可在 B 店检索同一顾客并使用有效权益。`home_store_id`/会员卡 `store_id` 只表示建档或发卡来源，不得作为跨店访问限制；消费、储值、核销、订单、支付、库存、班次和设施等经营事实仍记录实际发生门店。不同品牌之间必须以 `tenant_id` 完全隔离，任何手机号、卡号、余额、服务记录和交易查询都不得跨租户返回。详细规则见 [品牌租户与多门店数据边界](modules/brand-multistore-data-boundary.md)。平台控制面独立提供注册审核、商户启停和跨商户登录安全事件查询，默认不直接访问商户业务数据。新系统从空库开始，不迁移参考系统历史会员、余额、订单和流水。
 
 ## 4. 目标用户
 
@@ -108,6 +108,8 @@
 - [门店接待、设施计时与收银领域设计](domains/store-service-and-cashier.md)
 - [微信支付与支付宝支付开发设计](payment-integration-development-guide.md)
 - [老板系统收银与会员资金业务逻辑审阅](../design-audit/cashier-business-logic-2026-08-18/report.md)
+- [平台管理中心与登录安全事件 PRD](modules/platform-administration-and-login-security.md)
+- [品牌租户与多门店数据边界](modules/brand-multistore-data-boundary.md)
 - [数据库设计与变更治理规范](database-design-and-change-governance.md)
 - [Linux单机部署与容量基线](linux-server-deployment-baseline.md)
 - [CRUD与版本更新需求沟通纪要](requirements-communication-log.md)

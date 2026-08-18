@@ -8,11 +8,10 @@ namespace Erp.Api.Endpoints;
 
 public static class CashierEndpoints
 {
-    private static readonly string[] OrderOperators = [SystemRoles.Owner, SystemRoles.StoreManager, SystemRoles.Cashier];
-
     public static IEndpointRouteBuilder MapCashierEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        var group = endpoints.MapGroup("/api/v1/cashier").WithTags("Cashier").RequireAuthorization(policy => policy.RequireRole(OrderOperators));
+        var group = endpoints.MapGroup("/api/v1/cashier").WithTags("Cashier")
+            .RequireAuthorization(SystemPermissions.CashierCheckout);
 
         group.MapGet("/pending-visits", async (Guid storeId, int? page, int? pageSize,
             IIdentityService identity, ICashierService cashier,
@@ -124,7 +123,7 @@ public static class CashierEndpoints
                     request.ManagerLineDiscountBasisPoints, request.ManagerOrderDiscountMinor,
                     request.AllowManagerPriceIncrease, request.ExpectedVersion, request.CommandId, current.Id),
                 cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.CashierApprovePrice);
 
         group.MapGet("/price-approvals", async (Guid storeId, string? status, int? page, int? pageSize,
             IIdentityService identity,
@@ -137,7 +136,7 @@ public static class CashierEndpoints
                 return EndpointResults.InvalidPagination();
             return Results.Ok(await cashier.ListPriceOverrideApprovalsAsync(current.TenantId, storeId, status,
                 normalizedPage, normalizedPageSize, cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.CashierApprovePrice);
 
         group.MapPost("/price-approvals/{approvalId:guid}/approve", async (Guid approvalId,
             DecidePriceApprovalRequest request, IIdentityService identity, ICashierService cashier,
@@ -149,7 +148,7 @@ public static class CashierEndpoints
             return EndpointResults.From(await cashier.ApprovePriceOverrideAsync(current.TenantId,
                 new DecidePriceOverrideApprovalCommand(request.StoreId, approvalId, request.ExpectedVersion,
                     request.Note, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.CashierApprovePrice);
 
         group.MapPost("/price-approvals/{approvalId:guid}/reject", async (Guid approvalId,
             DecidePriceApprovalRequest request, IIdentityService identity, ICashierService cashier,
@@ -161,7 +160,7 @@ public static class CashierEndpoints
             return EndpointResults.From(await cashier.RejectPriceOverrideAsync(current.TenantId,
                 new DecidePriceOverrideApprovalCommand(request.StoreId, approvalId, request.ExpectedVersion,
                     request.Note, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.CashierApprovePrice);
 
         return endpoints;
     }

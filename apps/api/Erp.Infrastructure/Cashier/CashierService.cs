@@ -199,8 +199,8 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             if (command.CustomerId is not null)
             {
                 customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == command.CustomerId && x.TenantId == tenantId &&
-                    x.HomeStoreId == command.StoreId && x.Status == CustomerStatus.Active, cancellationToken);
-                if (customer is null) return await FailureAndRollback(transaction, "CUSTOMER_NOT_FOUND", "顾客不存在或不属于当前门店", cancellationToken);
+                    x.Status == CustomerStatus.Active, cancellationToken);
+                if (customer is null) return await FailureAndRollback(transaction, "CUSTOMER_NOT_FOUND", "顾客不存在或已停用", cancellationToken);
             }
 
             Visit visit;

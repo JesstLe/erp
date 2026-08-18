@@ -49,7 +49,13 @@
    sudo /usr/local/sbin/erp-bootstrap
    ```
 
-6. 失败时只回退应用槽位，不降级数据库：
+6. 初始化独立平台管理员。凭据只写入 `/root/erp-platform-initial-credentials.txt`，该账号不属于任何商户：
+
+   ```bash
+   sudo /usr/local/sbin/erp-platform-bootstrap
+   ```
+
+7. 失败时只回退应用槽位，不降级数据库：
 
    ```bash
    sudo /usr/local/sbin/erp-rollback

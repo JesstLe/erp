@@ -83,7 +83,7 @@ internal sealed class MemberVerificationService(ErpDbContext db, CustomerPrivacy
                 return await FailureAndRollback(transaction, "VALIDATION_FAILED",
                     "验证码金额不能超过消费单应收金额", cancellationToken);
             var customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == order.CustomerId &&
-                x.TenantId == tenantId && x.HomeStoreId == command.StoreId && x.Status == CustomerStatus.Active,
+                x.TenantId == tenantId && x.Status == CustomerStatus.Active,
                 cancellationToken);
             if (customer is null || !CryptographicOperations.FixedTimeEquals(customer.MobileLookupHash, mobileHash))
                 return await FailureAndRollback(transaction, "MEMBER_MOBILE_MISMATCH",

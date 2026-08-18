@@ -22,17 +22,23 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
     public async Task<PageResult<CustomerSummaryDto>> SearchAsync(Guid tenantId, Guid storeId, string? query,
         int page, int pageSize, CancellationToken cancellationToken)
     {
-        var customers = BuildCustomerQuery(tenantId, storeId, query);
+        var customers = BuildCustomerQuery(tenantId, query);
         if (customers is null) return new PageResult<CustomerSummaryDto>([], 0, page, pageSize);
 
         var total = await customers.CountAsync(cancellationToken);
         var rows = await customers.OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
             .Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(x => new { Customer = x, ActiveCards = db.MemberCards.Count(card => card.CustomerId == x.Id && card.Status == MemberCardStatus.Active) })
+            .Select(x => new
+            {
+                Customer = x,
+                HomeStoreName = db.Stores.Where(store => store.TenantId == tenantId && store.Id == x.HomeStoreId)
+                    .Select(store => store.Name).Single(),
+                ActiveCards = db.MemberCards.Count(card => card.CustomerId == x.Id && card.Status == MemberCardStatus.Active),
+            })
             .ToListAsync(cancellationToken);
         var items = rows.Select(x => new CustomerSummaryDto(x.Customer.Id, x.Customer.Name,
             privacy.MaskProtectedMobile(x.Customer.MobileCiphertext), x.Customer.Status.ToString(), x.Customer.HomeStoreId,
-            x.ActiveCards, x.Customer.CreatedAtUtc)).ToList();
+            x.HomeStoreName, x.ActiveCards, x.Customer.CreatedAtUtc)).ToList();
         return new PageResult<CustomerSummaryDto>(items, total, page, pageSize);
     }
 
@@ -40,10 +46,10 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         bool includeFinancialDetails, CancellationToken cancellationToken)
     {
         var customer = await db.Customers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == customerId &&
-            x.TenantId == tenantId && x.HomeStoreId == storeId, cancellationToken);
+            x.TenantId == tenantId, cancellationToken);
         if (customer?.Status == CustomerStatus.Merged && customer.MergedIntoCustomerId is Guid targetId)
             customer = await db.Customers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetId &&
-                x.TenantId == tenantId && x.HomeStoreId == storeId, cancellationToken);
+                x.TenantId == tenantId, cancellationToken);
         return customer is null
             ? ResultFactory.Failure<CustomerDetailDto>("CUSTOMER_NOT_FOUND", "顾客不存在")
             : ResultFactory.Success(await ToDetailAsync(customer, includeFinancialDetails, cancellationToken));
@@ -64,7 +70,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         if (replay is not null) return replay;
 
         var customer = await db.Customers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == command.CustomerId &&
-            x.TenantId == tenantId && x.HomeStoreId == command.StoreId, cancellationToken);
+            x.TenantId == tenantId, cancellationToken);
         if (customer is null)
         {
             await RollbackIfActiveAsync(transaction, cancellationToken);
@@ -90,9 +96,11 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             return ResultFactory.Failure<CustomerExportDto>("VALIDATION_FAILED", "导出顾客名单必须填写2到200字业务目的");
         if (command.IncludeFullMobile && !command.CanExportFullMobile)
             return ResultFactory.Failure<CustomerExportDto>("SENSITIVE_EXPORT_FORBIDDEN", "只有最高权限可以导出完整手机号");
-        var customers = BuildCustomerQuery(tenantId, command.StoreId, command.Query);
+        var customers = BuildCustomerQuery(tenantId, command.Query);
         if (customers is null)
             return ResultFactory.Failure<CustomerExportDto>("VALIDATION_FAILED", "查询条件不能超过100字");
+        if (!command.CanExportAllStores)
+            customers = customers.Where(x => x.HomeStoreId == command.StoreId);
 
         var rows = await customers.OrderBy(x => x.Name).ThenBy(x => x.CreatedAtUtc).Take(5_001)
             .Select(x => new
@@ -222,7 +230,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         try
         {
             var customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == command.CustomerId &&
-                x.TenantId == tenantId && x.HomeStoreId == command.StoreId, cancellationToken);
+                x.TenantId == tenantId, cancellationToken);
             if (customer is null)
                 return await RollbackFailure<CustomerDetailDto>(transaction, "CUSTOMER_NOT_FOUND", "顾客不存在",
                     cancellationToken);
@@ -291,7 +299,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         try
         {
             var customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == command.CustomerId &&
-                x.TenantId == tenantId && x.HomeStoreId == command.StoreId, cancellationToken);
+                x.TenantId == tenantId, cancellationToken);
             if (customer is null)
                 return await RollbackFailure<CustomerDetailDto>(transaction, "CUSTOMER_NOT_FOUND", "顾客不存在",
                     cancellationToken);
@@ -335,9 +343,6 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         var target = customers.SingleOrDefault(x => x.Id == command.TargetCustomerId);
         if (source is null || target is null)
             return ResultFactory.Failure<CustomerMergePreviewDto>("CUSTOMER_NOT_FOUND", "源档案或保留档案不存在");
-        if (source.HomeStoreId != command.StoreId || target.HomeStoreId != command.StoreId)
-            return ResultFactory.Failure<CustomerMergePreviewDto>("FORBIDDEN_DATA_SCOPE",
-                "只能预览当前授权门店内的顾客合并");
         return ResultFactory.Success(await BuildMergePreviewAsync(source, target, command.StoreId,
             cancellationToken));
     }
@@ -368,9 +373,6 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             if (source is null || target is null)
                 return await RollbackFailure<CustomerDetailDto>(transaction, "CUSTOMER_NOT_FOUND",
                     "源档案或保留档案不存在", cancellationToken);
-            if (source.HomeStoreId != command.StoreId || target.HomeStoreId != command.StoreId)
-                return await RollbackFailure<CustomerDetailDto>(transaction, "FORBIDDEN_DATA_SCOPE",
-                    "只能合并当前授权门店内的顾客档案", cancellationToken);
             if (source.Version != command.ExpectedSourceVersion || target.Version != command.ExpectedTargetVersion)
                 return await RollbackFailure<CustomerDetailDto>(transaction, "VERSION_CONFLICT",
                     "顾客档案已被其他终端修改，请重新预览", cancellationToken);
@@ -418,8 +420,6 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         var blockers = new List<string>();
         if (source.Status == CustomerStatus.Merged) blockers.Add("源档案已经合并");
         if (target.Status != CustomerStatus.Active) blockers.Add("保留档案必须为正常状态");
-        if (source.HomeStoreId != storeId || target.HomeStoreId != storeId)
-            blockers.Add("当前只允许合并同一归属门店的顾客档案");
         if (await db.Customers.AsNoTracking().AnyAsync(x => x.TenantId == source.TenantId &&
             x.MergedIntoCustomerId == source.Id, cancellationToken))
             blockers.Add("源档案已经承接其他合并档案，不能再次作为源档案");
@@ -511,7 +511,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         try
         {
             var customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == command.CustomerId && x.TenantId == tenantId &&
-                x.HomeStoreId == command.StoreId && x.Status == CustomerStatus.Active, cancellationToken);
+                x.Status == CustomerStatus.Active, cancellationToken);
             if (customer is null)
             {
                 await RollbackIfActiveAsync(transaction, cancellationToken);
@@ -586,6 +586,8 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         var cardTypeNames = await db.MemberCardTypes.AsNoTracking().Where(x => x.TenantId == customer.TenantId)
             .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
         var cardIds = cards.Select(x => x.Id).ToList();
+        var homeStoreName = await db.Stores.AsNoTracking().Where(x => x.TenantId == customer.TenantId &&
+                x.Id == customer.HomeStoreId).Select(x => x.Name).SingleAsync(cancellationToken);
         var accounts = includeFinancialDetails
             ? await db.MemberAccounts.AsNoTracking().Where(x => cardIds.Contains(x.CardId))
                 .OrderBy(x => x.AccountType).ToListAsync(cancellationToken)
@@ -598,7 +600,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             privacy.MaskProtectedMobile(customer.MobileCiphertext), customer.Gender.ToString(), customer.BirthDate,
             customer.SourceCode,
             customer.ServiceNotificationConsent, customer.MarketingConsent, customer.Status.ToString(),
-            customer.HomeStoreId, customer.Version, cardDtos, aliases.Select(x => new MergedCustomerAliasDto(
+            customer.HomeStoreId, homeStoreName, customer.Version, cardDtos, aliases.Select(x => new MergedCustomerAliasDto(
                 x.Id, x.Name, privacy.MaskProtectedMobile(x.MobileCiphertext), x.MergedAtUtc)).ToList());
     }
 
@@ -606,17 +608,17 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         Guid customerId, CancellationToken cancellationToken)
     {
         var customer = await db.Customers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == customerId &&
-            x.TenantId == tenantId && x.HomeStoreId == storeId, cancellationToken);
+            x.TenantId == tenantId, cancellationToken);
         return customer is null
             ? ResultFactory.Failure<CustomerMobileRevealDto>("CUSTOMER_NOT_FOUND", "顾客不存在")
             : ResultFactory.Success(new CustomerMobileRevealDto(customer.Id,
                 privacy.RevealProtectedMobile(customer.MobileCiphertext), clock.GetUtcNow()));
     }
 
-    private IQueryable<Customer>? BuildCustomerQuery(Guid tenantId, Guid storeId, string? query)
+    private IQueryable<Customer>? BuildCustomerQuery(Guid tenantId, string? query)
     {
         var customers = db.Customers.AsNoTracking().Where(x =>
-            x.TenantId == tenantId && x.HomeStoreId == storeId && x.Status != CustomerStatus.Merged);
+            x.TenantId == tenantId && x.Status != CustomerStatus.Merged);
         var term = query?.Trim();
         if (term?.Length > 100) return null;
         if (string.IsNullOrEmpty(term)) return customers;

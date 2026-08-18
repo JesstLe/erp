@@ -3,7 +3,7 @@ using Erp.Application.Common;
 namespace Erp.Application.Customers;
 
 public sealed record CustomerSummaryDto(Guid Id, string DisplayName, string MaskedMobile, string Status,
-    Guid HomeStoreId, int ActiveCardCount, DateTimeOffset CreatedAtUtc);
+    Guid HomeStoreId, string HomeStoreName, int ActiveCardCount, DateTimeOffset CreatedAtUtc);
 
 public sealed record MemberCardTypeDto(Guid Id, string Code, string Name, int? ValidityDays, string Status);
 public sealed record MemberAccountDto(Guid Id, string AccountType, long BalanceUnits, string Status);
@@ -13,7 +13,7 @@ public sealed record MergedCustomerAliasDto(Guid Id, string DisplayName, string 
     DateTimeOffset? MergedAtUtc);
 public sealed record CustomerDetailDto(Guid Id, string DisplayName, string MaskedMobile, string Gender,
     DateOnly? BirthDate, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent,
-    string Status, Guid HomeStoreId, uint Version, IReadOnlyList<MemberCardDto> Cards,
+    string Status, Guid HomeStoreId, string HomeStoreName, uint Version, IReadOnlyList<MemberCardDto> Cards,
     IReadOnlyList<MergedCustomerAliasDto> MergedAliases);
 public sealed record CustomerMobileRevealDto(Guid CustomerId, string Mobile, DateTimeOffset RevealedAtUtc);
 public sealed record CustomerExportDto(byte[] Content, string FileName, int RowCount, bool IncludesFullMobile);
@@ -44,7 +44,7 @@ public sealed record OpenMembershipCommand(Guid StoreId, Guid CustomerId, Guid C
 public sealed record RevealCustomerMobileCommand(Guid StoreId, Guid CustomerId, string Purpose,
     Guid CommandId, Guid OperatorId);
 public sealed record ExportCustomersCommand(Guid StoreId, string? Query, bool IncludeFullMobile,
-    bool CanExportFullMobile, string Purpose, Guid CommandId, Guid OperatorId);
+    bool CanExportFullMobile, bool CanExportAllStores, string Purpose, Guid CommandId, Guid OperatorId);
 
 public interface ICustomerService
 {

@@ -30,6 +30,12 @@ public sealed class Tenant : Entity
         Touch();
     }
 
+    public void ChangeStatus(bool enable)
+    {
+        Status = enable ? TenantStatus.Enabled : TenantStatus.Disabled;
+        Touch();
+    }
+
     private static string Require(string value, int maxLength, string field)
     {
         var normalized = value.Trim();

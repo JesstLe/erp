@@ -100,7 +100,7 @@ systemctl enable --now ssh
 systemctl restart ssh
 
 cat >/etc/sudoers.d/erpdeploy <<'EOF'
-erpdeploy ALL=(root) NOPASSWD: /usr/local/sbin/erp-deploy, /usr/local/sbin/erp-rollback, /usr/local/sbin/erp-bootstrap, /usr/local/sbin/erp-backup
+erpdeploy ALL=(root) NOPASSWD: /usr/local/sbin/erp-deploy, /usr/local/sbin/erp-rollback, /usr/local/sbin/erp-bootstrap, /usr/local/sbin/erp-platform-bootstrap, /usr/local/sbin/erp-backup
 EOF
 chmod 0440 /etc/sudoers.d/erpdeploy
 visudo -cf /etc/sudoers.d/erpdeploy >/dev/null
@@ -158,12 +158,16 @@ SQL
 
 privacy_pepper=$(openssl rand -hex 48)
 verification_pepper=$(openssl rand -hex 48)
+security_event_pepper=$(openssl rand -hex 48)
+registration_contact_pepper=$(openssl rand -hex 48)
 cat >/etc/erp/erp.env <<EOF
 ASPNETCORE_ENVIRONMENT=Production
 AllowedHosts=$public_address;127.0.0.1;localhost
 ConnectionStrings__ErpDatabase=Host=127.0.0.1;Port=5432;Database=erp;Username=erp_app;Password=$app_password
 CustomerPrivacy__LookupPepper=$privacy_pepper
 MemberVerification__CodePepper=$verification_pepper
+SecurityEvents__AccountHashPepper=$security_event_pepper
+PlatformRegistration__ContactHashPepper=$registration_contact_pepper
 FileStorage__RootPath=/srv/erp/data/attachments
 DataProtection__KeyRingPath=/srv/erp/data/data-protection-keys
 EOF
@@ -287,6 +291,7 @@ log '安装受控运维命令'
 install -m 0755 "$script_directory/Deploy-Release.sh" /usr/local/sbin/erp-deploy
 install -m 0755 "$script_directory/rollback.sh" /usr/local/sbin/erp-rollback
 install -m 0755 "$script_directory/bootstrap.sh" /usr/local/sbin/erp-bootstrap
+install -m 0755 "$script_directory/platform-bootstrap.sh" /usr/local/sbin/erp-platform-bootstrap
 install -m 0755 "$script_directory/backup.sh" /usr/local/sbin/erp-backup
 install -m 0755 "$script_directory/health-check.sh" /usr/local/sbin/erp-health-check
 install -m 0644 "$script_directory/common.sh" /usr/local/lib/erp-common.sh

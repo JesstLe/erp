@@ -1,6 +1,6 @@
 import { LockOutlined, ShopOutlined, UserOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Checkbox, Form, Input, Space, Typography } from 'antd'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { apiRequest, ApiError, resetCsrfToken } from '../api/client'
 import type { CurrentUser } from '../api/types'
@@ -49,6 +49,7 @@ export function LoginPage() {
         <Button type="primary" htmlType="submit" block loading={submitting}>进入工作台</Button>
       </Form>
       <Typography.Paragraph type="secondary" className="login-security-note">登录失败不会透露账号是否存在；连续失败将暂时锁定账号。</Typography.Paragraph>
+      <Typography.Paragraph className="public-footer"><Link to="/register">还没有商户账号？申请开通</Link></Typography.Paragraph>
     </Card>
   </main>
 }

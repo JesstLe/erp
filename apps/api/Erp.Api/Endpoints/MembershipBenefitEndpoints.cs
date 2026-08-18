@@ -6,15 +6,10 @@ namespace Erp.Api.Endpoints;
 
 public static class MembershipBenefitEndpoints
 {
-    private static readonly string[] Readers =
-        [SystemRoles.Owner, SystemRoles.StoreManager, SystemRoles.Cashier];
-    private static readonly string[] Operators =
-        [SystemRoles.Owner, SystemRoles.StoreManager, SystemRoles.Cashier];
-
     public static IEndpointRouteBuilder MapMembershipBenefitEndpoints(this IEndpointRouteBuilder endpoints)
     {
         var group = endpoints.MapGroup("/api/v1/membership-benefits").WithTags("Membership benefits")
-            .RequireAuthorization(policy => policy.RequireRole(Readers));
+            .RequireAuthorization(SystemPermissions.MembershipManage);
 
         group.MapGet("", async (Guid storeId, Guid customerId, IIdentityService identity,
             IMembershipBenefitService service, CancellationToken cancellationToken) =>
@@ -37,7 +32,7 @@ public static class MembershipBenefitEndpoints
                     request.ServiceItemId, request.PassName ?? string.Empty, request.PurchasedUses,
                     request.BonusUses, request.ValidFrom, request.ValidTo, request.Reason ?? string.Empty,
                     request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager));
+        }).RequireAuthorization(SystemPermissions.MembershipAdmin);
 
         group.MapPost("/service-passes/{passId:guid}/redeem", async (Guid passId,
             RedeemPassRequest request, IIdentityService identity, IMembershipBenefitService service,
@@ -50,7 +45,7 @@ public static class MembershipBenefitEndpoints
                 new RedeemServicePassCommand(request.StoreId, passId, request.Uses,
                     request.ServiceOrderId, request.Reason ?? string.Empty, request.ExpectedVersion,
                     request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(Operators));
+        }).RequireAuthorization(SystemPermissions.MembershipManage);
 
         group.MapPost("/service-passes/{passId:guid}/reverse", async (Guid passId,
             ReversePassRequest request, IIdentityService identity, IMembershipBenefitService service,
@@ -63,7 +58,7 @@ public static class MembershipBenefitEndpoints
                 new ReverseServicePassCommand(request.StoreId, passId, request.LedgerId,
                     request.Reason ?? string.Empty, request.ExpectedVersion, request.CommandId, current.Id),
                 cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.MembershipReverse);
 
         group.MapPost("/service-passes/{passId:guid}/expire", async (Guid passId,
             ExpirePassRequest request, IIdentityService identity, IMembershipBenefitService service,
@@ -75,7 +70,7 @@ public static class MembershipBenefitEndpoints
             return EndpointResults.From(await service.ExpirePassAsync(current.TenantId,
                 new ExpireServicePassCommand(request.StoreId, passId, request.Reason ?? string.Empty,
                     request.ExpectedVersion, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager));
+        }).RequireAuthorization(SystemPermissions.MembershipAdmin);
 
         group.MapPost("/points/adjust", async (AdjustPointsRequest request, IIdentityService identity,
             IMembershipBenefitService service, CancellationToken cancellationToken) =>
@@ -87,7 +82,7 @@ public static class MembershipBenefitEndpoints
                 new AdjustMemberPointsCommand(request.StoreId, request.CustomerId, request.CardId,
                     request.Units, request.Credit, request.ExpiresOn, request.Reason ?? string.Empty,
                     request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager));
+        }).RequireAuthorization(SystemPermissions.MembershipAdmin);
 
         group.MapPost("/points/reverse", async (ReversePointsRequest request, IIdentityService identity,
             IMembershipBenefitService service, CancellationToken cancellationToken) =>
@@ -98,7 +93,7 @@ public static class MembershipBenefitEndpoints
             return EndpointResults.From(await service.ReversePointsAsync(current.TenantId,
                 new ReverseMemberPointsCommand(request.StoreId, request.CardId, request.LedgerId,
                     request.Reason ?? string.Empty, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+        }).RequireAuthorization(SystemPermissions.MembershipReverse);
 
         group.MapPost("/points/expire", async (ExpirePointsRequest request, IIdentityService identity,
             IMembershipBenefitService service, CancellationToken cancellationToken) =>
@@ -109,7 +104,7 @@ public static class MembershipBenefitEndpoints
             return EndpointResults.From(await service.ExpirePointsAsync(current.TenantId,
                 new ExpireMemberPointsCommand(request.StoreId, request.CardId,
                     request.Reason ?? string.Empty, request.CommandId, current.Id), cancellationToken));
-        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager));
+        }).RequireAuthorization(SystemPermissions.MembershipAdmin);
 
         return endpoints;
     }
