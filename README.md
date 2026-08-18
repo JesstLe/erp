@@ -626,6 +626,7 @@ npm --prefix apps/web audit --omit=dev
 - [CRUD 与生命周期规则](docs/crud-and-lifecycle-rules.md)
 - [数据库设计与变更治理](docs/database-design-and-change-governance.md)
 - [支付接入开发指南](docs/payment-integration-development-guide.md)
+- [电商自动选品调研与设计](docs/ecommerce-auto-selection-research.md)
 - [技术架构与开发基线](docs/technical-architecture-and-stack.md)
 - [开发进度与验证证据](docs/development-progress.md)
 - [变更记录](CHANGELOG.md)
