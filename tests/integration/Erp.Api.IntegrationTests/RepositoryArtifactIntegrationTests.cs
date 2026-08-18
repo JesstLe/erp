@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Erp.Infrastructure.Customers;
 
 namespace Erp.Api.IntegrationTests;
 
@@ -234,9 +235,28 @@ public sealed partial class RepositoryArtifactIntegrationTests
         Assert.Contains("ON DELETE RESTRICT", migration, StringComparison.Ordinal);
         Assert.Contains("never creates a charge", migration, StringComparison.Ordinal);
         Assert.Contains("x.HomeStoreId == command.StoreId", facilityService, StringComparison.Ordinal);
-        Assert.Contains("CustomerPrivacyService.MaskName", facilityService, StringComparison.Ordinal);
+        Assert.DoesNotContain("CustomerPrivacyService.MaskName", facilityService, StringComparison.Ordinal);
+        Assert.Contains("ToDictionaryAsync(x => x.Id, x => x.Name", facilityService, StringComparison.Ordinal);
         Assert.Contains("带入预计服务", cashierPage, StringComparison.Ordinal);
         Assert.Contains("预计服务都不会自动形成费用", cashierPage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CustomerSearchUsesFullMobileHashWhileResponsesKeepOnlyMiddleFourMasked()
+    {
+        var service = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Customers", "CustomerService.cs"));
+        var endpoints = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Api", "Endpoints",
+            "CustomerEndpoints.cs"));
+
+        Assert.Equal("138****1234", CustomerPrivacyService.MaskMobile("13812341234"));
+        Assert.Contains("privacy.Hash(digits)", service, StringComparison.Ordinal);
+        Assert.Contains("x.MobileLookupHash == hash", service, StringComparison.Ordinal);
+        Assert.Contains("privacy.MaskProtectedMobile", service, StringComparison.Ordinal);
+        Assert.DoesNotContain("CustomerPrivacyService.MaskName", service, StringComparison.Ordinal);
+        Assert.Contains("MapPost(\"/search\"", endpoints, StringComparison.Ordinal);
+        Assert.DoesNotContain("MapGet(\"\",", endpoints, StringComparison.Ordinal);
+        Assert.Contains("RequireRateLimiting(\"customer-search\")", endpoints, StringComparison.Ordinal);
     }
 
     [Fact]

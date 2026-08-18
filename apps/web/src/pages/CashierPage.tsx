@@ -39,7 +39,7 @@ export function CashierPage() {
   const priceBooks = useQuery({ queryKey: ['price-books'], queryFn: () => apiRequest<PriceBook[]>('/api/v1/catalog/price-books') })
   const products = useQuery({ queryKey: ['product-items'], queryFn: () => apiRequest<ProductItem[]>('/api/v1/catalog/products') })
   const serviceEmployees = useQuery({ queryKey: ['service-employees', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<ServiceEmployee[]>(`/api/v1/cashier/service-employees?storeId=${storeId}`) })
-  const customers = useQuery({ queryKey: ['customers', storeId, 'cashier'], enabled: Boolean(storeId), queryFn: () => apiRequest<CustomerSummary[]>(`/api/v1/customers?storeId=${storeId}&query=`) })
+  const customers = useQuery({ queryKey: ['customers', storeId, 'cashier'], enabled: Boolean(storeId), queryFn: () => apiRequest<CustomerSummary[]>('/api/v1/customers/search', { method: 'POST', body: JSON.stringify({ storeId, query: '' }) }) })
   const selected = useQuery({ queryKey: ['cashier-order', storeId, selectedId], enabled: Boolean(storeId && selectedId), queryFn: () => apiRequest<ServiceOrder>(`/api/v1/cashier/orders/${selectedId}?storeId=${storeId}`) })
   const paymentMethods = useQuery({ queryKey: ['payment-methods', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<PaymentMethod[]>(`/api/v1/payments/methods?storeId=${storeId}`) })
   const payments = useQuery({ queryKey: ['payments', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<Payment[]>(`/api/v1/payments?storeId=${storeId}`) })

@@ -33,10 +33,9 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
         var sessions = await db.FacilitySessions.AsNoTracking().Include(x => x.Pauses)
             .Where(x => visitIds.Contains(x.VisitId)).ToListAsync(cancellationToken);
         var customerIds = visits.Where(x => x.CustomerId.HasValue).Select(x => x.CustomerId!.Value).Distinct().ToList();
-        var rawCustomerNames = await db.Customers.AsNoTracking()
+        var customerNames = await db.Customers.AsNoTracking()
             .Where(x => x.TenantId == tenantId && customerIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
-        var customerNames = rawCustomerNames.ToDictionary(x => x.Key, x => CustomerPrivacyService.MaskName(x.Value));
         var plannedServiceIds = visits.Where(x => x.PlannedServiceItemId.HasValue)
             .Select(x => x.PlannedServiceItemId!.Value).Distinct().ToList();
         var plannedServiceNames = await db.ServiceItems.AsNoTracking()
