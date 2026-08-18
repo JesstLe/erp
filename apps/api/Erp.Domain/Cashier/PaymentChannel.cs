@@ -7,6 +7,7 @@ public enum PaymentChannelProvider { WeChatPay, Alipay }
 public enum PaymentChannelEnvironment { Sandbox, Production }
 public enum PaymentChannelOrderStatus { Created, QrReady, Paid, Closed, Failed, Expired }
 public enum PaymentChannelEventStatus { Received, Processed, Ignored, Failed }
+public enum PaymentChannelRefundStatus { Created, Processing, Succeeded, Failed }
 
 public sealed class PaymentChannelConfiguration : Entity
 {
@@ -221,5 +222,99 @@ public sealed class PaymentChannelEvent : Entity
         if (normalized.Length is 0 || normalized.Length > max)
             throw new DomainRuleException("VALIDATION_FAILED", $"{field}长度不正确");
         return normalized;
+    }
+}
+
+public sealed class PaymentChannelRefund : Entity
+{
+    private PaymentChannelRefund() { }
+
+    public PaymentChannelRefund(Guid tenantId, Guid configurationId, Guid refundId,
+        Guid originalChannelOrderId, PaymentChannelProvider provider, string outRefundNo,
+        string outTradeNo, string providerTradeNo, long amountMinor) : base(tenantId)
+    {
+        if (amountMinor <= 0 || amountMinor > 10_000_000_000)
+            throw new DomainRuleException("VALIDATION_FAILED", "渠道退款金额超出允许范围");
+        ConfigurationId = configurationId;
+        RefundId = refundId;
+        OriginalChannelOrderId = originalChannelOrderId;
+        Provider = provider;
+        OutRefundNo = Required(outRefundNo, 64, "商户退款单号");
+        OutTradeNo = Required(outTradeNo, 64, "原商户订单号");
+        ProviderTradeNo = Required(providerTradeNo, 128, "原渠道交易号");
+        AmountMinor = amountMinor;
+        Status = PaymentChannelRefundStatus.Created;
+    }
+
+    public Guid ConfigurationId { get; private set; }
+    public Guid RefundId { get; private set; }
+    public Guid OriginalChannelOrderId { get; private set; }
+    public PaymentChannelProvider Provider { get; private set; }
+    public string OutRefundNo { get; private set; } = string.Empty;
+    public string OutTradeNo { get; private set; } = string.Empty;
+    public string ProviderTradeNo { get; private set; } = string.Empty;
+    public string? ProviderRefundNo { get; private set; }
+    public long AmountMinor { get; private set; }
+    public PaymentChannelRefundStatus Status { get; private set; }
+    public string? FailureCode { get; private set; }
+    public DateTimeOffset? LastQueriedAtUtc { get; private set; }
+    public DateTimeOffset? SucceededAtUtc { get; private set; }
+
+    public void MarkProcessing(string? providerRefundNo)
+    {
+        if (Status == PaymentChannelRefundStatus.Succeeded) return;
+        if (Status is not (PaymentChannelRefundStatus.Created or PaymentChannelRefundStatus.Failed or
+            PaymentChannelRefundStatus.Processing))
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "渠道退款当前不能进入处理中");
+        ProviderRefundNo = Optional(providerRefundNo, 128, "渠道退款号") ?? ProviderRefundNo;
+        FailureCode = null;
+        Status = PaymentChannelRefundStatus.Processing;
+        Touch();
+    }
+
+    public void MarkSucceeded(string? providerRefundNo, DateTimeOffset now)
+    {
+        var normalized = Optional(providerRefundNo, 128, "渠道退款号");
+        if (Status == PaymentChannelRefundStatus.Succeeded)
+        {
+            if (normalized is not null && ProviderRefundNo is not null &&
+                !string.Equals(normalized, ProviderRefundNo, StringComparison.Ordinal))
+                throw new DomainRuleException("CHANNEL_RESULT_CONFLICT", "渠道退款已由不同退款号确认");
+            return;
+        }
+        ProviderRefundNo = normalized ?? ProviderRefundNo;
+        FailureCode = null;
+        Status = PaymentChannelRefundStatus.Succeeded;
+        SucceededAtUtc = now;
+        Touch();
+    }
+
+    public void MarkFailed(string failureCode)
+    {
+        if (Status == PaymentChannelRefundStatus.Succeeded)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "已成功退款不能标记失败");
+        FailureCode = Required(failureCode, 80, "渠道退款失败代码");
+        Status = PaymentChannelRefundStatus.Failed;
+        Touch();
+    }
+
+    public void RecordQuery(DateTimeOffset now)
+    {
+        LastQueriedAtUtc = now;
+        Touch();
+    }
+
+    private static string Required(string value, int max, string field)
+    {
+        var normalized = value.Trim();
+        if (normalized.Length is 0 || normalized.Length > max)
+            throw new DomainRuleException("VALIDATION_FAILED", $"{field}长度不正确");
+        return normalized;
+    }
+
+    private static string? Optional(string? value, int max, string field)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return Required(value, max, field);
     }
 }

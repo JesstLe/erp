@@ -91,6 +91,30 @@ internal sealed class WechatPayGateway(HttpClient httpClient, TimeProvider clock
                 response.ErrorMessage);
     }
 
+    public async Task<PaymentChannelRefundResult> RefundAsync(PaymentChannelCredentialProfile credentials,
+        PaymentChannelRefundRequest request, CancellationToken cancellationToken)
+    {
+        var body = JsonSerializer.Serialize(new
+        {
+            transaction_id = request.ProviderTradeNo,
+            out_refund_no = request.OutRefundNo,
+            reason = Utf8Prefix(request.Reason, 80),
+            amount = new { refund = request.RefundAmountMinor, total = request.TotalAmountMinor, currency = "CNY" },
+        }, JsonOptions);
+        var response = await SendAsync(credentials, HttpMethod.Post, "/v3/refund/domestic/refunds", body,
+            cancellationToken);
+        return ParseRefundResponse(response, request);
+    }
+
+    public async Task<PaymentChannelRefundResult> QueryRefundAsync(
+        PaymentChannelCredentialProfile credentials, PaymentChannelRefundRequest request,
+        CancellationToken cancellationToken)
+    {
+        var path = $"/v3/refund/domestic/refunds/{Uri.EscapeDataString(request.OutRefundNo)}";
+        var response = await SendAsync(credentials, HttpMethod.Get, path, string.Empty, cancellationToken);
+        return ParseRefundResponse(response, request);
+    }
+
     public PaymentChannelNotification VerifyNotification(PaymentChannelCredentialProfile credentials,
         PaymentChannelNotificationEnvelope notification)
     {
@@ -199,6 +223,55 @@ internal sealed class WechatPayGateway(HttpClient httpClient, TimeProvider clock
         "PAYERROR" => PaymentChannelTradeState.Failed,
         _ => PaymentChannelTradeState.Unknown,
     };
+
+    private static PaymentChannelRefundResult ParseRefundResponse(SignedResponse response,
+        PaymentChannelRefundRequest request)
+    {
+        if (!response.IsTrusted || !response.IsSuccess)
+            return new PaymentChannelRefundResult(false, PaymentChannelRefundState.Unknown, null, null,
+                response.ErrorCode, response.ErrorMessage);
+        try
+        {
+            using var document = JsonDocument.Parse(response.Body);
+            var root = document.RootElement;
+            var amount = root.GetProperty("amount");
+            var refundAmount = amount.GetProperty("refund").GetInt64();
+            var totalAmount = amount.GetProperty("total").GetInt64();
+            if (!string.Equals(root.GetProperty("out_refund_no").GetString(), request.OutRefundNo,
+                    StringComparison.Ordinal) || refundAmount != request.RefundAmountMinor ||
+                totalAmount != request.TotalAmountMinor)
+                return new PaymentChannelRefundResult(false, PaymentChannelRefundState.Unknown, null, null,
+                    "CHANNEL_RESULT_CONFLICT", "微信退款结果与本地退款单或金额不一致");
+            var state = root.GetProperty("status").GetString() switch
+            {
+                "SUCCESS" => PaymentChannelRefundState.Succeeded,
+                "PROCESSING" => PaymentChannelRefundState.Pending,
+                "CLOSED" or "ABNORMAL" => PaymentChannelRefundState.Failed,
+                _ => PaymentChannelRefundState.Unknown,
+            };
+            return new PaymentChannelRefundResult(true, state,
+                root.TryGetProperty("refund_id", out var refundId) ? refundId.GetString() : null,
+                refundAmount, null, null);
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException)
+        {
+            return new PaymentChannelRefundResult(false, PaymentChannelRefundState.Unknown, null, null,
+                "CHANNEL_INVALID_RESPONSE", "微信退款返回格式无效");
+        }
+    }
+
+    private static string Utf8Prefix(string value, int maximumBytes)
+    {
+        var result = new StringBuilder();
+        var bytes = 0;
+        foreach (var rune in value.Trim().EnumerateRunes())
+        {
+            if (bytes + rune.Utf8SequenceLength > maximumBytes) break;
+            result.Append(rune.ToString());
+            bytes += rune.Utf8SequenceLength;
+        }
+        return result.ToString();
+    }
 
     private static PaymentChannelNotification Invalid(byte[] digest, string code) =>
         new(false, null, null, null, null, PaymentChannelTradeState.Unknown, null, null, digest, code);

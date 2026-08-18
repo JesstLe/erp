@@ -2,8 +2,8 @@ using Erp.Domain.Common;
 
 namespace Erp.Domain.Cashier;
 
-public enum RefundStatus { PendingApproval, Completed, Rejected }
-public enum RefundRoute { OriginalCash, OriginalMemberAccount }
+public enum RefundStatus { PendingApproval, Processing, Completed, Rejected }
+public enum RefundRoute { OriginalCash, OriginalMemberAccount, OriginalChannel }
 
 public sealed record RefundLineDraft(Guid OriginalAllocationId, long AmountMinor,
     PaymentMethodCategory Category, Guid? MemberAccountId);
@@ -48,10 +48,33 @@ public sealed class Refund : Entity
     {
         if (Status != RefundStatus.PendingApproval)
             throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "只有待审批退款可以完成");
+        if (_lines.Any(x => x.Category == PaymentMethodCategory.ChannelExternal))
+            throw new DomainRuleException("CHANNEL_REFUND_REQUIRES_PROCESSING", "渠道退款必须等待原路退款结果");
         foreach (var line in _lines)
             line.Complete(line.Category == PaymentMethodCategory.Cash ? cashShiftId : null, now);
         Status = RefundStatus.Completed;
         ApprovedBy = approvedBy;
+        CompletedAtUtc = now;
+        Touch();
+    }
+
+    public void BeginChannelProcessing(Guid approvedBy)
+    {
+        if (Status != RefundStatus.PendingApproval ||
+            _lines.Any(x => x.Category != PaymentMethodCategory.ChannelExternal))
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前退款单不能发起渠道退款");
+        Status = RefundStatus.Processing;
+        ApprovedBy = approvedBy;
+        Touch();
+    }
+
+    public void CompleteChannel(DateTimeOffset now)
+    {
+        if (Status != RefundStatus.Processing ||
+            _lines.Any(x => x.Category != PaymentMethodCategory.ChannelExternal))
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前渠道退款不能完成");
+        foreach (var line in _lines) line.Complete(null, now);
+        Status = RefundStatus.Completed;
         CompletedAtUtc = now;
         Touch();
     }
@@ -84,8 +107,8 @@ public sealed class RefundLine : Entity
     {
         if (amountMinor <= 0 || amountMinor > 10_000_000_000)
             throw new DomainRuleException("VALIDATION_FAILED", "退款金额必须大于0且不超过允许范围");
-        if (category is PaymentMethodCategory.ManualExternal or PaymentMethodCategory.ChannelExternal)
-            throw new DomainRuleException("REFUND_ROUTE_UNAVAILABLE", "外部渠道退款必须由独立的原路退款流程处理");
+        if (category == PaymentMethodCategory.ManualExternal)
+            throw new DomainRuleException("REFUND_ROUTE_UNAVAILABLE", "人工外部登记尚不能伪装为原路退款");
         if ((category == PaymentMethodCategory.InternalAccount) != memberAccountId.HasValue)
             throw new DomainRuleException("VALIDATION_FAILED", "会员退款必须且只能关联原会员账户");
         RefundId = refundId;
@@ -93,8 +116,12 @@ public sealed class RefundLine : Entity
         AmountMinor = amountMinor;
         Category = category;
         MemberAccountId = memberAccountId;
-        Route = category == PaymentMethodCategory.Cash
-            ? RefundRoute.OriginalCash : RefundRoute.OriginalMemberAccount;
+        Route = category switch
+        {
+            PaymentMethodCategory.Cash => RefundRoute.OriginalCash,
+            PaymentMethodCategory.ChannelExternal => RefundRoute.OriginalChannel,
+            _ => RefundRoute.OriginalMemberAccount,
+        };
     }
 
     public Guid RefundId { get; private set; }

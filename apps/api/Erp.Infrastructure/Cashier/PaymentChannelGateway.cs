@@ -3,6 +3,7 @@ using Erp.Domain.Cashier;
 namespace Erp.Infrastructure.Cashier;
 
 internal enum PaymentChannelTradeState { Pending, Paid, Closed, Failed, Unknown }
+internal enum PaymentChannelRefundState { Pending, Succeeded, Failed, Unknown }
 
 internal sealed record PaymentChannelCreateRequest(string OutTradeNo, long AmountMinor, string Subject,
     DateTimeOffset ExpiresAtUtc);
@@ -18,6 +19,10 @@ internal sealed record PaymentChannelNotification(bool IsVerified, string? Provi
     DateTimeOffset? PaidAtUtc, byte[] PayloadSha256, string? ErrorCode);
 internal sealed record PaymentChannelNotificationEnvelope(IReadOnlyDictionary<string, string> Headers,
     string Body, IReadOnlyDictionary<string, string>? Form = null);
+internal sealed record PaymentChannelRefundRequest(string OutTradeNo, string ProviderTradeNo,
+    string OutRefundNo, long RefundAmountMinor, long TotalAmountMinor, string Reason);
+internal sealed record PaymentChannelRefundResult(bool IsSuccess, PaymentChannelRefundState State,
+    string? ProviderRefundNo, long? RefundAmountMinor, string? ErrorCode, string? ErrorMessage);
 
 internal interface IPaymentChannelGateway
 {
@@ -28,6 +33,10 @@ internal interface IPaymentChannelGateway
         CancellationToken cancellationToken);
     Task<PaymentChannelCloseResult> CloseAsync(PaymentChannelCredentialProfile credentials, string outTradeNo,
         CancellationToken cancellationToken);
+    Task<PaymentChannelRefundResult> RefundAsync(PaymentChannelCredentialProfile credentials,
+        PaymentChannelRefundRequest request, CancellationToken cancellationToken);
+    Task<PaymentChannelRefundResult> QueryRefundAsync(PaymentChannelCredentialProfile credentials,
+        PaymentChannelRefundRequest request, CancellationToken cancellationToken);
     PaymentChannelNotification VerifyNotification(PaymentChannelCredentialProfile credentials,
         PaymentChannelNotificationEnvelope notification);
 }

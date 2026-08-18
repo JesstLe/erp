@@ -125,6 +125,25 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void ChannelRefundMigrationKeepsLocalLedgerPendingUntilProviderSuccess()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180013__channel_refunds.sql"));
+        var service = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Cashier", "RefundService.cs"));
+
+        Assert.Contains("status IN ('PendingApproval', 'Processing', 'Completed', 'Rejected')", migration,
+            StringComparison.Ordinal);
+        Assert.Contains("CONSTRAINT uq_payment_channel_refunds_refund UNIQUE (refund_id)", migration,
+            StringComparison.Ordinal);
+        Assert.Contains("OriginalChannel", migration, StringComparison.Ordinal);
+        Assert.Contains("currentChannel.MarkSucceeded", service, StringComparison.Ordinal);
+        Assert.True(service.IndexOf("currentChannel.MarkSucceeded", StringComparison.Ordinal) <
+            service.IndexOf("currentPayment.ApplyRefund", StringComparison.Ordinal));
+        Assert.Contains("currentRefund.CompleteChannel", service, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");
