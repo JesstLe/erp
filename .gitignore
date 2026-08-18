@@ -25,6 +25,7 @@ npm-debug.log*
 playwright-report/
 test-results/
 artifacts/runtime/
+artifacts/releases/
 
 # IDE / OS
 .idea/
