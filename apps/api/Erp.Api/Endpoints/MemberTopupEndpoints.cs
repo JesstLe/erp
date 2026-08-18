@@ -1,4 +1,5 @@
 using Erp.Application.Cashier;
+using Erp.Application.Common;
 using Erp.Application.Customers;
 using Erp.Application.Identity;
 using Erp.Application.Security;
@@ -15,13 +16,17 @@ public static class MemberTopupEndpoints
         var group = endpoints.MapGroup("/api/v1/member-topups").WithTags("Member top-ups")
             .RequireAuthorization(policy => policy.RequireRole(Operators));
 
-        group.MapGet("", async (Guid storeId, Guid? customerId, IIdentityService identity,
+        group.MapGet("", async (Guid storeId, Guid? customerId, int? page, int? pageSize,
+            IIdentityService identity,
             IMemberTopupService topups, CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
-            return Results.Ok(await topups.ListAsync(current.TenantId, storeId, customerId, cancellationToken));
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedPageSize))
+                return EndpointResults.InvalidPagination();
+            return Results.Ok(await topups.ListAsync(current.TenantId, storeId, customerId, normalizedPage,
+                normalizedPageSize, cancellationToken));
         });
 
         group.MapPost("", async (CreateTopupRequest request, IIdentityService identity,

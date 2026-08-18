@@ -17,6 +17,56 @@ public sealed class CustomerMembershipTests
     }
 
     [Fact]
+    public void CustomerProfileCanBeUpdatedWithoutReplacingTheAggregate()
+    {
+        var today = new DateOnly(2026, 8, 18);
+        var customer = new Customer(TenantId, StoreId, "旧姓名", "ciphertext", new byte[32], "1234",
+            CustomerGender.Unknown, null, null, false, false, today);
+
+        customer.UpdateProfile("新姓名", "new-ciphertext", Enumerable.Repeat((byte)1, 32).ToArray(), "5678",
+            CustomerGender.Female, new DateOnly(1990, 1, 2), "WALK_IN", true, false, today);
+
+        Assert.Equal("新姓名", customer.Name);
+        Assert.Equal("5678", customer.MobileLastFour);
+        Assert.Equal(CustomerGender.Female, customer.Gender);
+        Assert.True(customer.ServiceNotificationConsent);
+    }
+
+    [Fact]
+    public void CustomerDisableAndRestoreUseExplicitStateTransitions()
+    {
+        var customer = new Customer(TenantId, StoreId, "测试顾客", "ciphertext", new byte[32], "1234",
+            CustomerGender.Unknown, null, null, false, false, new DateOnly(2026, 8, 18));
+
+        customer.Disable();
+        Assert.Equal(CustomerStatus.Disabled, customer.Status);
+        Assert.Throws<DomainRuleException>(customer.Disable);
+
+        customer.Restore();
+        Assert.Equal(CustomerStatus.Active, customer.Status);
+        Assert.Throws<DomainRuleException>(customer.Restore);
+    }
+
+    [Fact]
+    public void CustomerMergeRecordsLineageAndCannotBeRepeated()
+    {
+        var customer = new Customer(TenantId, StoreId, "重复档案", "ciphertext", new byte[32], "1234",
+            CustomerGender.Unknown, null, null, false, false, new DateOnly(2026, 8, 18));
+        var targetId = Guid.CreateVersion7();
+        var operatorId = Guid.CreateVersion7();
+        var now = new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero);
+
+        customer.MergeInto(targetId, operatorId, "本人核验为同一顾客", now);
+
+        Assert.Equal(CustomerStatus.Merged, customer.Status);
+        Assert.Equal(targetId, customer.MergedIntoCustomerId);
+        Assert.Equal(operatorId, customer.MergedBy);
+        Assert.Equal(now, customer.MergedAtUtc);
+        Assert.Throws<DomainRuleException>(() => customer.MergeInto(Guid.CreateVersion7(), operatorId,
+            "再次合并", now));
+    }
+
+    [Fact]
     public void CardTypeRejectsOutOfRangeValidity()
     {
         Assert.Throws<DomainRuleException>(() => new MemberCardType(TenantId, "VIP", "会员卡", 3651));
@@ -81,15 +131,23 @@ public sealed class CustomerMembershipTests
     }
 
     [Fact]
-    public void TopupCanOnlyBeFullyRefundedOnce()
+    public void TopupSupportsPartialThenFinalRefundWithProportionalBonusRevocation()
     {
         var order = new MemberTopupOrder(TenantId, StoreId, Guid.CreateVersion7(), Guid.CreateVersion7(),
             "TU202608180003", 10_000, 2_000, "误操作冲正", DateTimeOffset.UtcNow);
 
-        order.ApplyFullRefund();
+        var firstBonus = order.CalculateBonusRevocation(2_500);
+        order.ApplyRefund(2_500, firstBonus);
 
+        Assert.Equal(500, firstBonus);
+        Assert.Equal(MemberTopupStatus.PartiallyRefunded, order.Status);
+        Assert.Equal(7_500, order.RemainingPrincipalMinor);
+
+        var finalBonus = order.CalculateBonusRevocation(7_500);
+        order.ApplyRefund(7_500, finalBonus);
         Assert.Equal(MemberTopupStatus.Refunded, order.Status);
-        Assert.Throws<DomainRuleException>(order.ApplyFullRefund);
+        Assert.Equal(2_000, order.RevokedBonusMinor);
+        Assert.Throws<DomainRuleException>(() => order.ApplyRefund(1, 0));
     }
 
     [Fact]
@@ -127,7 +185,7 @@ public sealed class CustomerMembershipTests
     }
 
     [Fact]
-    public void SpendingFromFiveHundredPlusOneHundredBlocksAFullTopupReversal()
+    public void SpendingFromFiveHundredPlusOneHundredAllowsOnlyRemainingPrincipalRefund()
     {
         var customerId = Guid.CreateVersion7();
         var cardId = Guid.CreateVersion7();
@@ -144,10 +202,27 @@ public sealed class CustomerMembershipTests
 
         Assert.Equal(45_000, principal.BalanceUnits);
         Assert.Equal(10_000, bonus.BalanceUnits);
+        var requiredBonus = MemberTopupReversalPolicy.CalculateRequiredBonusRevocation(
+            50_000, 10_000, 0, 0, 45_000);
+        MemberTopupReversalPolicy.EnsureBalancesAvailable(principal.BalanceUnits,
+            bonus.BalanceUnits, 45_000, requiredBonus);
+        Assert.Equal(9_000, requiredBonus);
+
         var exception = Assert.Throws<DomainRuleException>(() =>
-            MemberTopupReversalPolicy.EnsureOriginalBalancesAvailable(principal.BalanceUnits,
+            MemberTopupReversalPolicy.EnsureBalancesAvailable(principal.BalanceUnits,
                 bonus.BalanceUnits, 50_000, 10_000));
         Assert.Equal("TOPUP_BALANCE_ALREADY_USED", exception.Code);
+    }
+
+    [Fact]
+    public void PartialRefundRoundsBonusRevocationUpAndCumulativeFinalRefundRemovesAllBonus()
+    {
+        Assert.Equal(1, MemberTopupReversalPolicy.CalculateRequiredBonusRevocation(
+            3, 1, 0, 0, 1));
+        Assert.Equal(0, MemberTopupReversalPolicy.CalculateRequiredBonusRevocation(
+            3, 1, 1, 1, 1));
+        Assert.Equal(0, MemberTopupReversalPolicy.CalculateRequiredBonusRevocation(
+            3, 1, 2, 1, 1));
     }
 
     [Fact]

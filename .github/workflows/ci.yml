@@ -1,0 +1,48 @@
+name: continuous-integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore locked dependencies
+        run: dotnet restore ERP.slnx --locked-mode
+      - name: Build with warnings as errors
+        run: dotnet build ERP.slnx --no-restore -c Release
+      - name: Run unit and real PostgreSQL API tests
+        run: dotnet test ERP.slnx --no-build --no-restore -c Release
+      - name: Reject vulnerable .NET dependencies
+        run: dotnet list ERP.slnx package --vulnerable --include-transitive
+      - name: Parse Linux deployment scripts
+        run: find deploy/linux -type f -name '*.sh' -print0 | xargs -0 -r -n1 bash -n
+
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=moderate

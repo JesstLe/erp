@@ -7,7 +7,9 @@ using Erp.Application.Auditing;
 using Erp.Application.Reports;
 using Erp.Application.Inventory;
 using Erp.Application.Notifications;
+using Erp.Application.Organization;
 using Erp.Application.Common;
+using Erp.Application.Scheduling;
 using Erp.Infrastructure.Catalog;
 using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Cashier;
@@ -18,7 +20,9 @@ using Erp.Infrastructure.Files;
 using Erp.Infrastructure.Facilities;
 using Erp.Infrastructure.Identity;
 using Erp.Infrastructure.Notifications;
+using Erp.Infrastructure.Organization;
 using Erp.Infrastructure.Persistence;
+using Erp.Infrastructure.Scheduling;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -94,20 +98,24 @@ public static class DependencyInjection
 
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<IEmployeeService, EmployeeService>();
+        services.AddScoped<IOrganizationService, OrganizationService>();
         services.AddSingleton<SecureFileStorage>();
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IFacilityService, FacilityService>();
+        services.AddScoped<ISchedulingService, SchedulingService>();
         services.AddScoped<CustomerPrivacyService>();
         services.AddScoped<ICustomerService, CustomerService>();
         services.AddScoped<IDatabaseReadinessService, DatabaseReadinessService>();
         services.AddScoped<IServiceRecordService, ServiceRecordService>();
         services.AddScoped<IMemberTopupService, MemberTopupService>();
+        services.AddScoped<IMembershipBenefitService, MembershipBenefitService>();
         services.AddScoped<MemberVerificationCodeService>();
         services.AddScoped<IMemberVerificationService, MemberVerificationService>();
         services.AddScoped<ICashierService, CashierService>();
         services.AddScoped<InventoryPostingService>();
         services.AddScoped<IInventoryService>(provider => provider.GetRequiredService<InventoryPostingService>());
+        services.AddScoped<ISupplyChainService, SupplyChainService>();
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddSingleton<PaymentChannelCredentialResolver>();
         services.AddHttpClient<WechatPayGateway>(client =>
@@ -127,6 +135,7 @@ public static class DependencyInjection
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<Seed.DevelopmentSeeder>();
+        services.AddScoped<Seed.ProductionBootstrapper>();
         return services;
     }
 }

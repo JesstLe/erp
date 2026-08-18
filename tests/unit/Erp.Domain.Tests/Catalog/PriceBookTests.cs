@@ -54,4 +54,18 @@ public sealed class PriceBookTests
         Assert.Empty(book.Lines);
         Assert.Single(book.ProductLines);
     }
+
+    [Fact]
+    public void DraftCanBeEditedAndCancelledButPublishedVersionCannot()
+    {
+        var book = new PriceBook(Guid.CreateVersion7(), "原草稿", new DateOnly(2026, 8, 18));
+        book.SetPrice(Guid.CreateVersion7(), 5_000);
+        book.UpdateDraft("新草稿", new DateOnly(2026, 9, 1));
+        book.CancelDraft();
+
+        Assert.Equal("新草稿", book.Name);
+        Assert.Equal(new DateOnly(2026, 9, 1), book.EffectiveFrom);
+        Assert.Equal(PriceBookStatus.Retired, book.Status);
+        Assert.Throws<DomainRuleException>(() => book.UpdateDraft("不能修改", new DateOnly(2026, 9, 2)));
+    }
 }

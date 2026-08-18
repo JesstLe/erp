@@ -37,4 +37,18 @@ describe('apiRequest', () => {
     expect(error).toMatchObject({ status: 401, code: 'AUTHENTICATION_FAILED', traceId: 'trace-1' })
     expect((error as Error).message).toBe('账号或密码错误')
   })
+
+  it('refreshes an expired CSRF token once before surfacing a failure', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ token: 'expired-token' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'INVALID_ANTIFORGERY_TOKEN', message: '令牌失效' } }), { status: 400, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ token: 'fresh-token' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'ok' }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(apiRequest<{ status: string }>('/api/v1/customers', { method: 'POST', body: '{}' }))
+      .resolves.toEqual({ status: 'ok' })
+    const retriedRequest = fetchMock.mock.calls[3][1] as RequestInit
+    expect((retriedRequest.headers as Headers).get('X-CSRF-TOKEN')).toBe('fresh-token')
+  })
 })

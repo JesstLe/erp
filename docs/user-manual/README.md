@@ -17,12 +17,15 @@
 7. [现金、人工外部收款与收银交班](06-payments-and-cashier-shifts.md)
 8. [会员储值与资金分账](11-member-topups.md)
 9. [会员余额消费与手机号验证](12-member-balance-payments.md)
-10. [消费退款与会员储值整单冲正](13-payment-refunds-and-topup-reversals.md)
+10. [消费退款与会员储值退款](13-payment-refunds-and-topup-reversals.md)
 11. [微信支付与支付宝渠道安全配置及对账](14-payment-channel-configuration.md)（本地交易、原路退款和日账单对账代码已具备，待商户验收）
 12. [商品销售与门店库存](15-product-sales-and-inventory.md)
 13. [产品图片与顾客服务档案](16-product-images-and-service-records.md)
 14. [审计记录](07-audit-events.md)
 15. [经营工作台与经营报表](08-dashboard-and-operations-reports.md)
 16. [员工、登录账号与门店权限](09-employees-accounts-and-permissions.md)
+17. [品牌与门店主数据](17-brand-and-store-management.md)
+18. [预约与员工排班](18-appointments-and-employee-scheduling.md)
+19. [次卡、积分与储值部分退款](19-service-passes-points-and-partial-topup-refunds.md)
 
 截图统一保存在 `docs/user-manual/assets/`，示例数据必须是本地虚构数据，不得包含参考系统里的真实顾客、员工、手机号或资金信息。

@@ -39,13 +39,17 @@ public sealed record UpdatePriceOverridePolicyCommand(Guid StoreId, int ManagerL
     Guid CommandId, Guid OperatorId);
 public sealed record DecidePriceOverrideApprovalCommand(Guid StoreId, Guid ApprovalId, uint ExpectedVersion,
     string? Note, Guid CommandId, Guid ApproverId);
+public sealed record ServiceOrderSearchCriteria(string? Query, Guid? CustomerId, Guid? CatalogItemId,
+    Guid? EmployeeId, string? Status, DateOnly? FromDate, DateOnly? ToDate);
 
 public interface ICashierService
 {
-    Task<IReadOnlyList<CashierVisitDto>> ListPendingVisitsAsync(Guid tenantId, Guid storeId, CancellationToken cancellationToken);
+    Task<PageResult<CashierVisitDto>> ListPendingVisitsAsync(Guid tenantId, Guid storeId, int page, int pageSize,
+        CancellationToken cancellationToken);
     Task<IReadOnlyList<ServiceEmployeeDto>> ListServiceEmployeesAsync(Guid tenantId, Guid storeId,
         CancellationToken cancellationToken);
-    Task<IReadOnlyList<ServiceOrderDto>> ListOrdersAsync(Guid tenantId, Guid storeId, CancellationToken cancellationToken);
+    Task<PageResult<ServiceOrderDto>> ListOrdersAsync(Guid tenantId, Guid storeId,
+        ServiceOrderSearchCriteria criteria, int page, int pageSize, CancellationToken cancellationToken);
     Task<Result<ServiceOrderDto>> GetOrderAsync(Guid tenantId, Guid storeId, Guid orderId, CancellationToken cancellationToken);
     Task<Result<ServiceOrderDto>> CreateOrderAsync(Guid tenantId, CreateServiceOrderCommand command, CancellationToken cancellationToken);
     Task<Result<ServiceOrderDto>> ConfirmOrderAsync(Guid tenantId, ConfirmServiceOrderCommand command, CancellationToken cancellationToken);
@@ -55,8 +59,8 @@ public interface ICashierService
         CancellationToken cancellationToken);
     Task<Result<PriceOverridePolicyDto>> UpdatePriceOverridePolicyAsync(Guid tenantId,
         UpdatePriceOverridePolicyCommand command, CancellationToken cancellationToken);
-    Task<IReadOnlyList<PriceOverrideApprovalDto>> ListPriceOverrideApprovalsAsync(Guid tenantId, Guid storeId,
-        string? status, CancellationToken cancellationToken);
+    Task<PageResult<PriceOverrideApprovalDto>> ListPriceOverrideApprovalsAsync(Guid tenantId, Guid storeId,
+        string? status, int page, int pageSize, CancellationToken cancellationToken);
     Task<Result<PriceOverrideApprovalDto>> ApprovePriceOverrideAsync(Guid tenantId,
         DecidePriceOverrideApprovalCommand command, CancellationToken cancellationToken);
     Task<Result<PriceOverrideApprovalDto>> RejectPriceOverrideAsync(Guid tenantId,

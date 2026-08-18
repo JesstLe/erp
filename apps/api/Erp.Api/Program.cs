@@ -1,4 +1,5 @@
 using System.Threading.RateLimiting;
+using System.Net;
 using Erp.Api;
 using Erp.Api.Endpoints;
 using Erp.Infrastructure;
@@ -7,6 +8,7 @@ using Erp.Application.Identity;
 using Erp.Application.Common;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -71,9 +73,29 @@ builder.Services.AddRateLimiter(options =>
         }));
 });
 builder.Services.AddAuthorization();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto |
+        ForwardedHeaders.XForwardedHost;
+    options.ForwardLimit = 1;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+    options.KnownProxies.Add(IPAddress.Loopback);
+    options.KnownProxies.Add(IPAddress.IPv6Loopback);
+});
 builder.Services.AddErpInfrastructure(builder.Configuration, builder.Environment);
 
 var app = builder.Build();
+
+if (args.Contains("--bootstrap", StringComparer.Ordinal))
+{
+    using var bootstrapScope = app.Services.CreateScope();
+    var result = await bootstrapScope.ServiceProvider.GetRequiredService<ProductionBootstrapper>()
+        .BootstrapAsync(CancellationToken.None);
+    Console.WriteLine(
+        $"正式空库初始化完成：品牌={result.TenantCode}，门店={result.StoreCode}，负责人账号={result.OwnerAccount}，负责人首次登录必须修改密码。");
+    return;
+}
 
 app.UseExceptionHandler(exceptionHandler => exceptionHandler.Run(async context =>
 {
@@ -88,6 +110,8 @@ app.UseExceptionHandler(exceptionHandler => exceptionHandler.Run(async context =
         Extensions = { ["traceId"] = context.TraceIdentifier },
     });
 }));
+
+app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
 {
@@ -185,14 +209,18 @@ app.MapGet("/health/ready", async (IDatabaseReadinessService readiness, Cancella
 }).AllowAnonymous();
 app.MapSecurityEndpoints();
 app.MapIdentityEndpoints();
+app.MapOrganizationEndpoints();
 app.MapEmployeeEndpoints();
 app.MapCatalogEndpoints();
 app.MapFacilityEndpoints();
+app.MapSchedulingEndpoints();
 app.MapCustomerEndpoints();
 app.MapMemberTopupEndpoints();
+app.MapMembershipBenefitEndpoints();
 app.MapMemberVerificationEndpoints();
 app.MapCashierEndpoints();
 app.MapInventoryEndpoints();
+app.MapSupplyChainEndpoints();
 app.MapPaymentEndpoints();
 app.MapPaymentChannelEndpoints();
 app.MapRefundEndpoints();

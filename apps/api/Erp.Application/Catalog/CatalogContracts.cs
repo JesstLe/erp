@@ -29,7 +29,8 @@ public sealed record PriceBookDto(
     DateOnly EffectiveFrom,
     DateTimeOffset? PublishedAtUtc,
     IReadOnlyList<PriceBookLineDto> Lines,
-    IReadOnlyList<ProductPriceBookLineDto> ProductLines);
+    IReadOnlyList<ProductPriceBookLineDto> ProductLines,
+    uint Version);
 
 public sealed record PriceBookLineDto(Guid ServiceItemId, string ServiceItemName, long UnitPriceMinor);
 public sealed record ProductPriceBookLineDto(Guid ProductItemId, string ProductItemName, string UnitName, long UnitPriceMinor);
@@ -39,6 +40,10 @@ public sealed record CreatePriceBookCommand(string Name, DateOnly EffectiveFrom,
 
 public sealed record CreatePriceBookLineCommand(Guid ServiceItemId, long UnitPriceMinor);
 public sealed record CreateProductPriceBookLineCommand(Guid ProductItemId, long UnitPriceMinor);
+public sealed record UpdatePriceBookCommand(Guid Id, string Name, DateOnly EffectiveFrom,
+    IReadOnlyList<CreatePriceBookLineCommand> Lines, IReadOnlyList<CreateProductPriceBookLineCommand> ProductLines,
+    uint ExpectedVersion, Guid OperatorId, Guid? StoreId);
+public sealed record CancelPriceBookCommand(Guid Id, uint ExpectedVersion, Guid OperatorId, Guid? StoreId);
 
 public interface ICatalogService
 {
@@ -68,6 +73,10 @@ public interface ICatalogService
     Task<IReadOnlyList<PriceBookDto>> ListPriceBooksAsync(Guid tenantId, CancellationToken cancellationToken);
 
     Task<Result<PriceBookDto>> CreatePriceBookAsync(Guid tenantId, CreatePriceBookCommand command, CancellationToken cancellationToken);
+    Task<Result<PriceBookDto>> UpdatePriceBookAsync(Guid tenantId, UpdatePriceBookCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<PriceBookDto>> CancelPriceBookAsync(Guid tenantId, CancelPriceBookCommand command,
+        CancellationToken cancellationToken);
 
     Task<Result<PriceBookDto>> PublishPriceBookAsync(Guid tenantId, Guid priceBookId, Guid operatorId, Guid? storeId,
         CancellationToken cancellationToken);

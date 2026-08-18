@@ -19,22 +19,24 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
     IHttpContextAccessor httpContextAccessor, PaymentChannelCredentialResolver credentialResolver,
     PaymentChannelGatewayRegistry gatewayRegistry) : IRefundService
 {
-    public async Task<IReadOnlyList<RefundDto>> ListAsync(Guid tenantId, Guid storeId, Guid? paymentId,
-        CancellationToken cancellationToken)
+    public async Task<PageResult<RefundDto>> ListAsync(Guid tenantId, Guid storeId, Guid? paymentId,
+        int page, int pageSize, CancellationToken cancellationToken)
     {
         var query = db.Refunds.AsNoTracking().Include(x => x.Lines)
             .Where(x => x.TenantId == tenantId && x.StoreId == storeId);
         if (paymentId.HasValue) query = query.Where(x => x.PaymentId == paymentId.Value);
-        var refunds = await query.OrderByDescending(x => x.RequestedAtUtc).Take(100)
-            .ToListAsync(cancellationToken);
+        var total = await query.CountAsync(cancellationToken);
+        var refunds = await query.OrderByDescending(x => x.RequestedAtUtc).ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
         var paymentIds = refunds.Select(x => x.PaymentId).Distinct().ToList();
         var refundIds = refunds.Select(x => x.Id).ToList();
         var payments = await db.Payments.AsNoTracking().Where(x => paymentIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, cancellationToken);
         var channelRefunds = await db.PaymentChannelRefunds.AsNoTracking()
             .Where(x => refundIds.Contains(x.RefundId)).ToDictionaryAsync(x => x.RefundId, cancellationToken);
-        return refunds.Where(x => payments.ContainsKey(x.PaymentId))
+        var items = refunds.Where(x => payments.ContainsKey(x.PaymentId))
             .Select(x => ToDto(x, payments[x.PaymentId], channelRefunds.GetValueOrDefault(x.Id))).ToList();
+        return new PageResult<RefundDto>(items, total, page, pageSize);
     }
 
     public async Task<Result<RefundDto>> RequestAsync(Guid tenantId, RequestRefundCommand command,
@@ -86,12 +88,20 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
                 if (reserved.GetValueOrDefault(allocationId) + amount > allocations[allocationId].AmountMinor)
                     return await Fail(transaction, "REFUND_AMOUNT_EXCEEDED",
                         "退款累计金额不能超过原支付分摊金额", cancellationToken);
-            if (payment.BusinessType == PaymentBusinessType.MemberTopup &&
-                (reserved.Values.Sum() != 0 || requested.Count != payment.Allocations.Count ||
-                 requested.Sum(x => x.Value) != payment.PaidMinor || requested.Any(x =>
-                     x.Value != allocations[x.Key].AmountMinor)))
-                return await Fail(transaction, "TOPUP_FULL_REVERSAL_REQUIRED",
-                    "会员储值只允许按原支付分摊整单冲正，不能部分退款", cancellationToken);
+            if (payment.BusinessType == PaymentBusinessType.MemberTopup)
+            {
+                var topup = await db.MemberTopupOrders.AsNoTracking().SingleAsync(x =>
+                    x.Id == payment.BusinessId && x.TenantId == tenantId, cancellationToken);
+                var pendingAmount = await db.Refunds.Where(x => x.PaymentId == payment.Id &&
+                        (x.Status == RefundStatus.PendingApproval || x.Status == RefundStatus.Processing))
+                    .SumAsync(x => (long?)x.AmountMinor, cancellationToken) ?? 0;
+                if (requested.Values.Sum() > topup.PrincipalMinor - payment.RefundedMinor - pendingAmount)
+                    return await Fail(transaction, "REFUND_AMOUNT_EXCEEDED",
+                        "储值退款累计金额不能超过尚未退回的实收本金", cancellationToken);
+                if (allocations.Values.Any(x => x.Category == PaymentMethodCategory.ChannelExternal))
+                    return await Fail(transaction, "CHANNEL_TOPUP_NOT_AVAILABLE",
+                        "当前储值未开放真实渠道付款，不能创建渠道储值退款", cancellationToken);
+            }
 
             var now = clock.GetUtcNow();
             var local = await StoreLocalTime(command.StoreId, tenantId, now, cancellationToken);
@@ -160,7 +170,7 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
                     x.TenantId == tenantId, cancellationToken);
             else
                 return await Fail(transaction, "REFUND_SOURCE_NOT_SUPPORTED",
-                    "当前仅支持消费退款和会员储值全额冲正", cancellationToken);
+                    "当前仅支持消费退款和会员储值退款", cancellationToken);
             if (refund.Lines.Any(x => x.Category == PaymentMethodCategory.ChannelExternal))
             {
                 if (refund.Lines.Count != 1 ||
@@ -260,20 +270,22 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
                     !topupAccounts.TryGetValue(MemberAccountType.Bonus, out var bonus))
                     return await Fail(transaction, "MEMBER_ACCOUNT_NOT_FOUND",
                         "会员资金账户不完整，不能冲正储值", cancellationToken);
-                MemberTopupReversalPolicy.EnsureOriginalBalancesAvailable(principal.BalanceUnits,
-                    bonus.BalanceUnits, topup.PrincipalMinor, topup.BonusMinor);
+                var bonusRevocation = topup.CalculateBonusRevocation(refund.AmountMinor);
+                MemberTopupReversalPolicy.EnsureBalancesAvailable(principal.BalanceUnits,
+                    bonus.BalanceUnits, refund.AmountMinor, bonusRevocation);
                 db.MemberAccountLedgers.Add(principal.Debit("MemberTopupRefund", refund.Id,
-                    topup.PrincipalMinor, command.CommandId, now));
-                if (topup.BonusMinor > 0)
+                    refund.AmountMinor, command.CommandId, now));
+                if (bonusRevocation > 0)
                     db.MemberAccountLedgers.Add(bonus.Debit("MemberTopupRefund", refund.Id,
-                        topup.BonusMinor, command.CommandId, now));
+                        bonusRevocation, command.CommandId, now));
+                var previousTopupStatus = topup.Status.ToString();
+                topup.ApplyRefund(refund.AmountMinor, bonusRevocation);
                 AddAudit(tenantId, command.StoreId, command.ApproverId,
-                    "membership.topup.refund_debit", topup.Id, topup.Status.ToString(),
-                    MemberTopupStatus.Refunded.ToString(), command.CommandId, refund.Reason, now);
+                    "membership.topup.refund_debit", topup.Id, previousTopupStatus,
+                    topup.Status.ToString(), command.CommandId, refund.Reason, now);
             }
             payment.ApplyRefund(refund.AmountMinor);
             if (order is not null) order.ApplyRefund(refund.AmountMinor);
-            if (topup is not null) topup.ApplyFullRefund();
             refund.Complete(command.ApproverId, cashShift?.Id, now);
             AddReceipt(tenantId, command.CommandId, command.ApproverId, requestHash, refund.Id, now);
             AddAudit(tenantId, command.StoreId, command.ApproverId, "refund.complete", refund.Id,

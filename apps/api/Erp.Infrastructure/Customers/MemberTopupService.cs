@@ -19,17 +19,26 @@ namespace Erp.Infrastructure.Customers;
 internal sealed class MemberTopupService(ErpDbContext db, TimeProvider clock,
     IHttpContextAccessor httpContextAccessor) : IMemberTopupService
 {
-    public async Task<IReadOnlyList<MemberTopupDto>> ListAsync(Guid tenantId, Guid storeId, Guid? customerId,
-        CancellationToken cancellationToken)
+    public async Task<PageResult<MemberTopupDto>> ListAsync(Guid tenantId, Guid storeId, Guid? customerId,
+        int page, int pageSize, CancellationToken cancellationToken)
     {
         var query = db.MemberTopupOrders.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId);
-        if (customerId.HasValue) query = query.Where(x => x.CustomerId == customerId.Value);
-        var orders = await query.OrderByDescending(x => x.PaidAtUtc).Take(100).ToListAsync(cancellationToken);
+        if (customerId.HasValue)
+        {
+            var customerIds = await db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                    (x.Id == customerId.Value || x.MergedIntoCustomerId == customerId.Value))
+                .Select(x => x.Id).ToListAsync(cancellationToken);
+            query = query.Where(x => customerIds.Contains(x.CustomerId));
+        }
+        var total = await query.CountAsync(cancellationToken);
+        var orders = await query.OrderByDescending(x => x.PaidAtUtc).ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
         var ids = orders.Select(x => x.Id).ToList();
         var payments = await db.Payments.AsNoTracking().Include(x => x.Allocations)
             .Where(x => x.TenantId == tenantId && x.BusinessType == PaymentBusinessType.MemberTopup &&
                 ids.Contains(x.BusinessId)).ToDictionaryAsync(x => x.BusinessId, cancellationToken);
-        return orders.Where(x => payments.ContainsKey(x.Id)).Select(x => ToDto(x, payments[x.Id])).ToList();
+        var items = orders.Where(x => payments.ContainsKey(x.Id)).Select(x => ToDto(x, payments[x.Id])).ToList();
+        return new PageResult<MemberTopupDto>(items, total, page, pageSize);
     }
 
     public async Task<Result<MemberTopupDto>> CreateAndSettleAsync(Guid tenantId,
@@ -59,8 +68,11 @@ internal sealed class MemberTopupService(ErpDbContext db, TimeProvider clock,
             if (!customerExists)
                 return await FailureAndRollback(transaction, "CUSTOMER_NOT_FOUND", "顾客不存在或当前不可储值", cancellationToken);
 
+            var customerIds = await db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                    (x.Id == command.CustomerId || x.MergedIntoCustomerId == command.CustomerId))
+                .Select(x => x.Id).ToListAsync(cancellationToken);
             var card = await db.MemberCards.SingleOrDefaultAsync(x => x.Id == command.CardId &&
-                x.TenantId == tenantId && x.CustomerId == command.CustomerId && x.StoreId == command.StoreId &&
+                x.TenantId == tenantId && customerIds.Contains(x.CustomerId) && x.StoreId == command.StoreId &&
                 x.Status == MemberCardStatus.Active, cancellationToken);
             if (card is null)
                 return await FailureAndRollback(transaction, "MEMBER_CARD_NOT_FOUND", "会员卡不存在或当前不可储值", cancellationToken);
@@ -163,7 +175,8 @@ internal sealed class MemberTopupService(ErpDbContext db, TimeProvider clock,
 
     private static MemberTopupDto ToDto(MemberTopupOrder order, Payment payment) => new(order.Id,
         order.TopupNo, order.StoreId, order.CustomerId, order.CardId, order.PrincipalMinor,
-        order.BonusMinor, order.ReceivableMinor, order.Status.ToString(), order.Note, order.PaidAtUtc,
+        order.BonusMinor, order.ReceivableMinor, order.Status.ToString(), order.Note,
+        order.RefundedPrincipalMinor, order.RevokedBonusMinor, order.RemainingPrincipalMinor, order.PaidAtUtc,
         payment.Id, payment.PaymentNo, payment.Status.ToString(), payment.RefundedMinor, payment.Version,
         payment.Allocations.OrderBy(x => x.CreatedAtUtc)
             .Select(x => new PaymentAllocationDto(x.Id, x.MethodId, x.MethodCodeSnapshot,

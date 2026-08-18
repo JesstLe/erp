@@ -17,27 +17,32 @@ internal sealed class PaymentChannelReconciliationService(ErpDbContext db,
 {
     private static readonly TimeSpan ChinaOffset = TimeSpan.FromHours(8);
 
-    public async Task<IReadOnlyList<PaymentChannelReconciliationRunDto>> ListAsync(Guid tenantId,
-        Guid storeId, DateOnly? fromDate, DateOnly? toDate, CancellationToken cancellationToken)
+    public async Task<PageResult<PaymentChannelReconciliationRunDto>> ListAsync(Guid tenantId,
+        Guid storeId, DateOnly? fromDate, DateOnly? toDate, int page, int pageSize,
+        CancellationToken cancellationToken)
     {
         var today = ChinaDate(clock.GetUtcNow());
         var from = fromDate ?? today.AddDays(-30);
         var to = toDate ?? today;
-        if (from > to) return [];
+        if (from > to) return new PageResult<PaymentChannelReconciliationRunDto>([], 0, page, pageSize);
         if (to.DayNumber - from.DayNumber > 90) from = to.AddDays(-90);
-        var runs = await db.PaymentChannelReconciliationRuns.AsNoTracking()
+        var query = db.PaymentChannelReconciliationRuns.AsNoTracking()
             .Where(x => x.TenantId == tenantId && x.StoreId == storeId &&
-                        x.BusinessDate >= from && x.BusinessDate <= to)
+                        x.BusinessDate >= from && x.BusinessDate <= to);
+        var total = await query.CountAsync(cancellationToken);
+        var runs = await query
             .OrderByDescending(x => x.BusinessDate).ThenByDescending(x => x.AttemptNo)
-            .Take(200).ToListAsync(cancellationToken);
-        if (runs.Count == 0) return [];
+            .ThenByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize)
+            .ToListAsync(cancellationToken);
+        if (runs.Count == 0) return new PageResult<PaymentChannelReconciliationRunDto>([], total, page, pageSize);
         var runIds = runs.Select(x => x.Id).ToList();
         var items = await db.PaymentChannelReconciliationItems.AsNoTracking()
             .Where(x => x.TenantId == tenantId && runIds.Contains(x.RunId) &&
                         x.Status != PaymentChannelReconciliationItemStatus.Matched)
             .OrderBy(x => x.Status).ThenBy(x => x.MatchKey).ToListAsync(cancellationToken);
         var grouped = items.GroupBy(x => x.RunId).ToDictionary(x => x.Key, x => x.Select(Map).ToList());
-        return runs.Select(run => Map(run, grouped.GetValueOrDefault(run.Id) ?? [])).ToList();
+        var mapped = runs.Select(run => Map(run, grouped.GetValueOrDefault(run.Id) ?? [])).ToList();
+        return new PageResult<PaymentChannelReconciliationRunDto>(mapped, total, page, pageSize);
     }
 
     public async Task<Result<PaymentChannelReconciliationRunDto>> StartAsync(Guid tenantId,

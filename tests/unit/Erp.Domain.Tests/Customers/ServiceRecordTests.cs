@@ -45,4 +45,17 @@ public sealed class ServiceRecordTests
         Assert.Equal("VALIDATION_FAILED", exception.Code);
         Assert.Equal(6, record.Attachments.Count);
     }
+
+    [Fact]
+    public void CorrectionStoresAFullAppendOnlyNarrativeSnapshot()
+    {
+        var correction = new ServiceRecordCorrection(Guid.CreateVersion7(), Guid.CreateVersion7(),
+            " 服务描述录入有误 ", " 更正情况 ", " 更正服务 ", null, Guid.CreateVersion7(),
+            Guid.CreateVersion7());
+
+        Assert.Equal("服务描述录入有误", correction.Reason);
+        Assert.Equal("更正情况", correction.ConditionNotes);
+        Assert.Equal("更正服务", correction.ServiceContent);
+        Assert.Null(correction.FollowUpNotes);
+    }
 }

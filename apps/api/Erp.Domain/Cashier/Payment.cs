@@ -64,15 +64,15 @@ public sealed class Payment : Entity
     private Payment() { }
 
     public Payment(Guid tenantId, Guid storeId, Guid orderId, string paymentNo, long receivableMinor,
-        IEnumerable<PaymentAllocationDraft> allocations, DateTimeOffset now)
+        IEnumerable<PaymentAllocationDraft> allocations, DateTimeOffset now, long? cashTenderedMinor = null)
         : this(tenantId, storeId, PaymentBusinessType.ServiceOrder, orderId, paymentNo, receivableMinor,
-            allocations, now)
+            allocations, now, cashTenderedMinor)
     {
     }
 
     public Payment(Guid tenantId, Guid storeId, PaymentBusinessType businessType, Guid businessId,
         string paymentNo, long receivableMinor, IEnumerable<PaymentAllocationDraft> allocations,
-        DateTimeOffset now) : base(tenantId)
+        DateTimeOffset now, long? cashTenderedMinor = null) : base(tenantId)
     {
         if (receivableMinor < 0) throw new DomainRuleException("VALIDATION_FAILED", "应收金额不能为负数");
         StoreId = storeId;
@@ -90,6 +90,18 @@ public sealed class Payment : Entity
         var allocatedMinor = checked(_allocations.Sum(x => x.AmountMinor));
         if (allocatedMinor != ReceivableMinor)
             throw new DomainRuleException("PAYMENT_ALLOCATION_UNBALANCED", "支付分摊合计必须等于消费单应收金额");
+        var cashAmountMinor = _allocations.Where(x => x.Category == PaymentMethodCategory.Cash)
+            .Sum(x => x.AmountMinor);
+        if (cashAmountMinor == 0 && cashTenderedMinor.HasValue)
+            throw new DomainRuleException("CASH_TENDER_NOT_ALLOWED", "没有现金分摊时不能填写现金实收");
+        if (cashAmountMinor > 0)
+        {
+            var tendered = cashTenderedMinor ?? cashAmountMinor;
+            if (tendered < cashAmountMinor || tendered > 10_000_000_000)
+                throw new DomainRuleException("INVALID_CASH_TENDER", "现金实收不能小于现金应收且不能超过允许范围");
+            CashTenderedMinor = tendered;
+            CashChangeMinor = tendered - cashAmountMinor;
+        }
         PaidMinor = checked(_allocations.Where(x => x.IsConfirmedForSettlement).Sum(x => x.AmountMinor));
         Status = PaidMinor == ReceivableMinor ? PaymentStatus.Paid : PaymentStatus.Processing;
         PaidAtUtc = Status == PaymentStatus.Paid ? now : null;
@@ -106,6 +118,8 @@ public sealed class Payment : Entity
     public long PaidMinor { get; private set; }
     public long RefundedMinor { get; private set; }
     public DateTimeOffset? PaidAtUtc { get; private set; }
+    public long? CashTenderedMinor { get; private set; }
+    public long? CashChangeMinor { get; private set; }
     public IReadOnlyCollection<PaymentAllocation> Allocations => _allocations;
 
     public void ApplyRefund(long amountMinor)

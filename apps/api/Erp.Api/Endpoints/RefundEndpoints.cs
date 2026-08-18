@@ -1,4 +1,5 @@
 using Erp.Application.Cashier;
+using Erp.Application.Common;
 using Erp.Application.Identity;
 using Erp.Application.Security;
 
@@ -13,14 +14,17 @@ public static class RefundEndpoints
         var group = endpoints.MapGroup("/api/v1/refunds").WithTags("Refunds")
             .RequireAuthorization(policy => policy.RequireRole(RequestRoles));
 
-        group.MapGet("", async (Guid storeId, Guid? paymentId, IIdentityService identity,
+        group.MapGet("", async (Guid storeId, Guid? paymentId, int? page, int? pageSize,
+            IIdentityService identity,
             IRefundService refunds, CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedPageSize))
+                return EndpointResults.InvalidPagination();
             return Results.Ok(await refunds.ListAsync(current.TenantId, storeId, paymentId,
-                cancellationToken));
+                normalizedPage, normalizedPageSize, cancellationToken));
         });
 
         group.MapPost("", async (Request request, IIdentityService identity, IRefundService refunds,

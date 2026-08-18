@@ -1,5 +1,6 @@
 using System.Text;
 using Erp.Application.Cashier;
+using Erp.Application.Common;
 using Erp.Application.Identity;
 using Erp.Application.Security;
 using Erp.Domain.Cashier;
@@ -96,14 +97,17 @@ public static class PaymentChannelEndpoints
             SystemRoles.Cashier));
 
         group.MapGet("/reconciliations", async (Guid storeId, DateOnly? fromDate, DateOnly? toDate,
+            int? page, int? pageSize,
             IIdentityService identity, IPaymentChannelReconciliationService reconciliations,
             CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedPageSize))
+                return EndpointResults.InvalidPagination();
             return Results.Ok(await reconciliations.ListAsync(current.TenantId, storeId, fromDate, toDate,
-                cancellationToken));
+                normalizedPage, normalizedPageSize, cancellationToken));
         });
 
         group.MapPost("/reconciliations/run", async (StartReconciliationRequest request,

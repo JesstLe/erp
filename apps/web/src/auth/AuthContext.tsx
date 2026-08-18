@@ -10,7 +10,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [signedOut, setSignedOut] = useState(false)
   const query = useQuery({ queryKey: ['current-user'], queryFn: () => apiRequest<CurrentUser>('/api/v1/auth/me'), retry: false, staleTime: 60_000 })
   const user = signedOut ? undefined : query.data
-  const store = selectedStore ?? user?.stores.find((item) => item.isDefault) ?? user?.stores[0]
+  const store = selectedStore && user?.stores.some((item) => item.id === selectedStore.id)
+    ? selectedStore : user?.stores.find((item) => item.isDefault) ?? user?.stores[0]
   const value: AuthState = {
     user,
     store,

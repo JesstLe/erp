@@ -22,7 +22,10 @@ public static class CustomerEndpoints
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, request.StoreId)) return Results.Forbid();
-            return Results.Ok(await customers.SearchAsync(current.TenantId, request.StoreId, request.Query,
+            if (!Pagination.TryNormalize(request.Page, request.PageSize, out var page, out var pageSize))
+                return InvalidPagination();
+            return Results.Ok(await customers.SearchAsync(current.TenantId, request.StoreId, request.Query, page,
+                pageSize,
                 cancellationToken));
         }).RequireAuthorization(policy => policy.RequireRole(CustomerOperators)).RequireRateLimiting("customer-search");
 
@@ -81,6 +84,57 @@ public static class CustomerEndpoints
                     request.MarketingConsent, request.CommandId, current.Id), cancellationToken));
         }).RequireAuthorization(policy => policy.RequireRole(CustomerOperators));
 
+        group.MapPut("/{customerId:guid}", async (Guid customerId, UpdateCustomerRequest request,
+            IIdentityService identity, ICustomerService customers, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await customers.UpdateAsync(current.TenantId,
+                new UpdateCustomerCommand(request.StoreId, customerId, request.Name ?? string.Empty,
+                    request.Mobile ?? string.Empty, request.Gender, request.BirthDate, request.SourceCode,
+                    request.ServiceNotificationConsent, request.MarketingConsent, request.ExpectedVersion,
+                    request.CommandId, current.Id), cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager));
+
+        group.MapPost("/{customerId:guid}/status", async (Guid customerId, ChangeCustomerStatusRequest request,
+            IIdentityService identity, ICustomerService customers, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await customers.ChangeStatusAsync(current.TenantId,
+                new ChangeCustomerStatusCommand(request.StoreId, customerId, request.Restore,
+                    request.Reason ?? string.Empty, request.ExpectedVersion, request.CommandId, current.Id),
+                cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner, SystemRoles.StoreManager));
+
+        group.MapPost("/{sourceCustomerId:guid}/merge-preview", async (Guid sourceCustomerId,
+            PreviewCustomerMergeRequest request, IIdentityService identity, ICustomerService customers,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await customers.PreviewMergeAsync(current.TenantId,
+                new PreviewCustomerMergeCommand(request.StoreId, sourceCustomerId, request.TargetCustomerId),
+                cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner))
+            .RequireRateLimiting("customer-search");
+
+        group.MapPost("/{sourceCustomerId:guid}/merge", async (Guid sourceCustomerId,
+            MergeCustomerRequest request, IIdentityService identity, ICustomerService customers,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await customers.MergeAsync(current.TenantId,
+                new MergeCustomerCommand(request.StoreId, sourceCustomerId, request.TargetCustomerId,
+                    request.ExpectedSourceVersion, request.ExpectedTargetVersion, request.Reason ?? string.Empty,
+                    request.CommandId, current.Id), cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
         group.MapGet("/membership/card-types", async (IIdentityService identity, ICustomerService customers,
             CancellationToken cancellationToken) =>
         {
@@ -109,12 +163,16 @@ public static class CustomerEndpoints
         }).RequireAuthorization(policy => policy.RequireRole(MembershipOperators));
 
         group.MapGet("/{customerId:guid}/service-records", async (Guid customerId, Guid storeId,
+            int? page, int? pageSize,
             IIdentityService identity, IServiceRecordService records, CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
-            return Results.Ok(await records.ListAsync(current.TenantId, storeId, customerId, cancellationToken));
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedPageSize))
+                return InvalidPagination();
+            return Results.Ok(await records.ListAsync(current.TenantId, storeId, customerId, normalizedPage,
+                normalizedPageSize, cancellationToken));
         }).RequireAuthorization(policy => policy.RequireRole(ServiceRecordOperators));
 
         group.MapGet("/{customerId:guid}/service-record-order-options", async (Guid customerId, Guid storeId,
@@ -170,6 +228,19 @@ public static class CustomerEndpoints
             .RequireRateLimiting("file-upload")
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(32 * 1024 * 1024));
 
+        group.MapPost("/{customerId:guid}/service-records/{recordId:guid}/corrections", async (
+            Guid customerId, Guid recordId, CorrectServiceRecordRequest request, IIdentityService identity,
+            IServiceRecordService records, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await records.CorrectAsync(current.TenantId,
+                new CorrectServiceRecordCommand(request.StoreId, customerId, recordId,
+                    request.Reason ?? string.Empty, request.ConditionNotes, request.ServiceContent,
+                    request.FollowUpNotes, request.CommandId, current.Id), cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(ServiceRecordOperators));
+
         group.MapGet("/{customerId:guid}/service-record-files/{fileId:guid}", async (Guid customerId, Guid fileId,
             Guid storeId, HttpResponse response, IIdentityService identity, IServiceRecordService records,
             CancellationToken cancellationToken) =>
@@ -189,9 +260,24 @@ public static class CustomerEndpoints
 
     private static bool HasStore(CurrentUserDto user, Guid storeId) => user.Stores.Any(x => x.Id == storeId);
 
-    private sealed record CustomerSearchRequest(Guid StoreId, string? Query);
+    private static IResult InvalidPagination() => Results.UnprocessableEntity(new
+    {
+        error = new { code = "INVALID_PAGINATION", message = "页码必须大于0，每页数量必须为1到100" },
+    });
+
+    private sealed record CustomerSearchRequest(Guid StoreId, string? Query, int? Page, int? PageSize);
+    private sealed record CorrectServiceRecordRequest(Guid StoreId, string? Reason, string? ConditionNotes,
+        string? ServiceContent, string? FollowUpNotes, Guid CommandId);
     private sealed record CreateCustomerRequest(Guid StoreId, string? Name, string? Mobile, string? Gender,
         DateOnly? BirthDate, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent, Guid CommandId);
+    private sealed record UpdateCustomerRequest(Guid StoreId, string? Name, string? Mobile, string? Gender,
+        DateOnly? BirthDate, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent,
+        uint ExpectedVersion, Guid CommandId);
+    private sealed record ChangeCustomerStatusRequest(Guid StoreId, bool Restore, string? Reason,
+        uint ExpectedVersion, Guid CommandId);
+    private sealed record PreviewCustomerMergeRequest(Guid StoreId, Guid TargetCustomerId);
+    private sealed record MergeCustomerRequest(Guid StoreId, Guid TargetCustomerId,
+        uint ExpectedSourceVersion, uint ExpectedTargetVersion, string? Reason, Guid CommandId);
     private sealed record CreateCardTypeRequest(string? Code, string? Name, int? ValidityDays, Guid CommandId);
     private sealed record OpenMembershipRequest(Guid StoreId, Guid CardTypeId, string? CardNo, string? Note, Guid CommandId);
     private sealed record RevealCustomerMobileRequest(Guid StoreId, string? Purpose, Guid CommandId);

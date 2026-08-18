@@ -174,6 +174,29 @@ public static class CatalogEndpoints
                     DefaultStoreId(current), cancellationToken));
         }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
 
+        group.MapPut("/price-books/{id:guid}", async (Guid id, UpdatePriceBookRequest request,
+            IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            var lines = request.Lines?.Select(x => new CreatePriceBookLineCommand(x.ServiceItemId,
+                x.UnitPriceMinor)).ToList() ?? [];
+            var productLines = request.ProductLines?.Select(x => new CreateProductPriceBookLineCommand(
+                x.ProductItemId, x.UnitPriceMinor)).ToList() ?? [];
+            return EndpointResults.From(await catalog.UpdatePriceBookAsync(current.TenantId,
+                new UpdatePriceBookCommand(id, request.Name ?? string.Empty, request.EffectiveFrom, lines,
+                    productLines, request.ExpectedVersion, current.Id, DefaultStoreId(current)), cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
+        group.MapPost("/price-books/{id:guid}/cancel", async (Guid id, CancelPriceBookRequest request,
+            IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(await catalog.CancelPriceBookAsync(
+                current.TenantId, new CancelPriceBookCommand(id, request.ExpectedVersion, current.Id,
+                    DefaultStoreId(current)), cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
         return endpoints;
     }
 
@@ -240,4 +263,8 @@ public static class CatalogEndpoints
 
     private sealed record CreatePriceBookLineRequest(Guid ServiceItemId, long UnitPriceMinor);
     private sealed record CreateProductPriceBookLineRequest(Guid ProductItemId, long UnitPriceMinor);
+    private sealed record UpdatePriceBookRequest(string? Name, DateOnly EffectiveFrom,
+        IReadOnlyList<CreatePriceBookLineRequest>? Lines,
+        IReadOnlyList<CreateProductPriceBookLineRequest>? ProductLines, uint ExpectedVersion);
+    private sealed record CancelPriceBookRequest(uint ExpectedVersion);
 }

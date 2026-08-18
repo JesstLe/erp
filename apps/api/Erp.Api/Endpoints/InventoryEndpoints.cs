@@ -1,4 +1,5 @@
 using Erp.Application.Identity;
+using Erp.Application.Common;
 using Erp.Application.Inventory;
 using Erp.Application.Security;
 
@@ -22,23 +23,30 @@ public static class InventoryEndpoints
             return Results.Ok(await inventory.ListBalancesAsync(current.TenantId, storeId, cancellationToken));
         });
 
-        group.MapGet("/movements", async (Guid storeId, Guid? productItemId, IIdentityService identity,
+        group.MapGet("/movements", async (Guid storeId, Guid? productItemId, int? page, int? pageSize,
+            IIdentityService identity,
             IInventoryService inventory, CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedPageSize))
+                return EndpointResults.InvalidPagination();
             return Results.Ok(await inventory.ListMovementsAsync(current.TenantId, storeId, productItemId,
-                cancellationToken));
+                normalizedPage, normalizedPageSize, cancellationToken));
         });
 
-        group.MapGet("/documents", async (Guid storeId, IIdentityService identity, IInventoryService inventory,
+        group.MapGet("/documents", async (Guid storeId, int? page, int? pageSize,
+            IIdentityService identity, IInventoryService inventory,
             CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
-            return Results.Ok(await inventory.ListDocumentsAsync(current.TenantId, storeId, cancellationToken));
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedPageSize))
+                return EndpointResults.InvalidPagination();
+            return Results.Ok(await inventory.ListDocumentsAsync(current.TenantId, storeId, normalizedPage,
+                normalizedPageSize, cancellationToken));
         });
 
         group.MapPost("/documents", async (PostDocumentRequest request, IIdentityService identity,

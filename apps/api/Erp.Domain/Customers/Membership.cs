@@ -25,14 +25,26 @@ public static class MemberDeductionPolicy
 
 public static class MemberTopupReversalPolicy
 {
-    public static void EnsureOriginalBalancesAvailable(long principalBalance, long bonusBalance,
-        long originalPrincipal, long originalBonus)
+    public static long CalculateRequiredBonusRevocation(long originalPrincipal, long originalBonus,
+        long previouslyRefundedPrincipal, long previouslyRevokedBonus, long requestedPrincipalRefund)
     {
-        if (principalBalance < 0 || bonusBalance < 0 || originalPrincipal <= 0 || originalBonus < 0)
+        if (originalPrincipal <= 0 || originalBonus < 0 || previouslyRefundedPrincipal < 0 ||
+            previouslyRevokedBonus < 0 || requestedPrincipalRefund <= 0 ||
+            previouslyRefundedPrincipal + requestedPrincipalRefund > originalPrincipal)
             throw new DomainRuleException("VALIDATION_FAILED", "会员储值冲正金额或账户余额无效");
-        if (principalBalance < originalPrincipal || bonusBalance < originalBonus)
+        var cumulativeRefunded = previouslyRefundedPrincipal + requestedPrincipalRefund;
+        var targetRevoked = (long)Math.Ceiling((decimal)originalBonus * cumulativeRefunded / originalPrincipal);
+        if (targetRevoked < previouslyRevokedBonus || targetRevoked > originalBonus)
+            throw new DomainRuleException("INVARIANT_VIOLATION", "储值退款对应奖励金计算异常");
+        return targetRevoked - previouslyRevokedBonus;
+    }
+
+    public static void EnsureBalancesAvailable(long principalBalance, long bonusBalance,
+        long requestedPrincipalRefund, long requiredBonusRevocation)
+    {
+        if (principalBalance < requestedPrincipalRefund || bonusBalance < requiredBonusRevocation)
             throw new DomainRuleException("TOPUP_BALANCE_ALREADY_USED",
-                "本次储值本金或赠送奖励已被使用，不能整单冲正");
+                "可退本金或应收回奖励金已被使用，不能完成本次退款");
     }
 }
 
@@ -216,14 +228,28 @@ public sealed class MemberTopupOrder : Entity
     public long BonusMinor { get; private set; }
     public long ReceivableMinor { get; private set; }
     public MemberTopupStatus Status { get; private set; }
+    public long RefundedPrincipalMinor { get; private set; }
+    public long RevokedBonusMinor { get; private set; }
+    public long RemainingPrincipalMinor => PrincipalMinor - RefundedPrincipalMinor;
     public string? Note { get; private set; }
     public DateTimeOffset PaidAtUtc { get; private set; }
 
-    public void ApplyFullRefund()
+    public long CalculateBonusRevocation(long requestedPrincipalRefund) =>
+        MemberTopupReversalPolicy.CalculateRequiredBonusRevocation(PrincipalMinor, BonusMinor,
+            RefundedPrincipalMinor, RevokedBonusMinor, requestedPrincipalRefund);
+
+    public void ApplyRefund(long principalRefundMinor, long bonusRevocationMinor)
     {
-        if (Status != MemberTopupStatus.Paid)
-            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "只有已入账且未冲正的储值单可以全额冲正");
-        Status = MemberTopupStatus.Refunded;
+        if (Status is not (MemberTopupStatus.Paid or MemberTopupStatus.PartiallyRefunded))
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前储值单不能退款");
+        var expectedBonus = CalculateBonusRevocation(principalRefundMinor);
+        if (bonusRevocationMinor != expectedBonus)
+            throw new DomainRuleException("TOPUP_BONUS_REVOCATION_MISMATCH", "退款必须按比例收回对应赠送奖励");
+        RefundedPrincipalMinor = checked(RefundedPrincipalMinor + principalRefundMinor);
+        RevokedBonusMinor = checked(RevokedBonusMinor + bonusRevocationMinor);
+        Status = RefundedPrincipalMinor == PrincipalMinor
+            ? MemberTopupStatus.Refunded
+            : MemberTopupStatus.PartiallyRefunded;
         Touch();
     }
 

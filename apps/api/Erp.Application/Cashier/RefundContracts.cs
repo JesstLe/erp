@@ -23,8 +23,8 @@ public sealed record OperateChannelRefundCommand(Guid StoreId, Guid RefundId, Gu
 
 public interface IRefundService
 {
-    Task<IReadOnlyList<RefundDto>> ListAsync(Guid tenantId, Guid storeId, Guid? paymentId,
-        CancellationToken cancellationToken);
+    Task<PageResult<RefundDto>> ListAsync(Guid tenantId, Guid storeId, Guid? paymentId,
+        int page, int pageSize, CancellationToken cancellationToken);
     Task<Result<RefundDto>> RequestAsync(Guid tenantId, RequestRefundCommand command,
         CancellationToken cancellationToken);
     Task<Result<RefundDto>> ApproveAsync(Guid tenantId, ApproveRefundCommand command,

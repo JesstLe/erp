@@ -16,6 +16,29 @@ public sealed class PaymentTests
         Assert.Equal(10_000, payment.PaidMinor);
         Assert.Equal(PaymentConfirmationStatus.CashRecorded, payment.Allocations.Single().ConfirmationStatus);
         Assert.Equal(ReconciliationStatus.NotRequired, payment.Allocations.Single().ReconciliationStatus);
+        Assert.Equal(10_000, payment.CashTenderedMinor);
+        Assert.Equal(0, payment.CashChangeMinor);
+    }
+
+    [Fact]
+    public void CashTenderIsPersistedAndChangeIsCalculated()
+    {
+        var payment = new Payment(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
+            "PAY202608180003", 10_000,
+            [new(Guid.CreateVersion7(), "CASH", "现金", PaymentMethodCategory.Cash, 10_000, null,
+                Guid.CreateVersion7())], DateTimeOffset.UtcNow, 20_000);
+
+        Assert.Equal(20_000, payment.CashTenderedMinor);
+        Assert.Equal(10_000, payment.CashChangeMinor);
+    }
+
+    [Fact]
+    public void CashTenderBelowCashAllocationIsRejected()
+    {
+        Assert.Throws<DomainRuleException>(() => new Payment(Guid.CreateVersion7(), Guid.CreateVersion7(),
+            Guid.CreateVersion7(), "PAY202608180004", 10_000,
+            [new(Guid.CreateVersion7(), "CASH", "现金", PaymentMethodCategory.Cash, 10_000, null,
+                Guid.CreateVersion7())], DateTimeOffset.UtcNow, 9_999));
     }
 
     [Fact]

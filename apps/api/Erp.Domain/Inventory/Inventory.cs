@@ -4,7 +4,11 @@ namespace Erp.Domain.Inventory;
 
 public enum InventoryReservationStatus { Active, Consumed, Released }
 public enum InventoryMovementDirection { In, Out }
-public enum InventoryMovementType { Opening, Receipt, SaleIssue, SalesReturn, AdjustmentIn, AdjustmentOut }
+public enum InventoryMovementType
+{
+    Opening, Receipt, PurchaseReceipt, SaleIssue, SalesReturn, AdjustmentIn, AdjustmentOut,
+    StocktakeGain, StocktakeLoss, TransferOut, TransferIn,
+}
 public enum InventoryDocumentType { Opening, Receipt, AdjustmentIn, AdjustmentOut }
 
 public sealed class InventoryBalance : Entity

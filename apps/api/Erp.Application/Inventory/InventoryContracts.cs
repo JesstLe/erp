@@ -31,10 +31,10 @@ public interface IInventoryService
 {
     Task<IReadOnlyList<InventoryBalanceDto>> ListBalancesAsync(Guid tenantId, Guid storeId,
         CancellationToken cancellationToken);
-    Task<IReadOnlyList<InventoryMovementDto>> ListMovementsAsync(Guid tenantId, Guid storeId,
-        Guid? productItemId, CancellationToken cancellationToken);
-    Task<IReadOnlyList<InventoryDocumentDto>> ListDocumentsAsync(Guid tenantId, Guid storeId,
-        CancellationToken cancellationToken);
+    Task<PageResult<InventoryMovementDto>> ListMovementsAsync(Guid tenantId, Guid storeId,
+        Guid? productItemId, int page, int pageSize, CancellationToken cancellationToken);
+    Task<PageResult<InventoryDocumentDto>> ListDocumentsAsync(Guid tenantId, Guid storeId,
+        int page, int pageSize, CancellationToken cancellationToken);
     Task<Result<InventoryDocumentDto>> PostDocumentAsync(Guid tenantId, PostInventoryDocumentCommand command,
         CancellationToken cancellationToken);
     Task<Result<ProductReturnDto>> ReturnProductAsync(Guid tenantId, ReturnProductCommand command,
