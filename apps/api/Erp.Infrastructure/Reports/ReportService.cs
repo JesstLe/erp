@@ -90,9 +90,11 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
                 group.Sum(x => x.Gross), group.Sum(x => x.Pending), group.Sum(x => x.Refund),
                 group.Sum(x => x.Gross) - group.Sum(x => x.Refund), group.Sum(x => x.Count)))
             .OrderByDescending(x => x.AmountMinor).ToList();
-        var servicePerformance = orders.SelectMany(order => order.Lines.Select(line => new { order.Id, Line = line }))
+        var servicePerformance = orders.SelectMany(order => order.Lines
+                .Where(line => line.LineType == ServiceOrderLineType.Service && line.ServiceItemId.HasValue)
+                .Select(line => new { order.Id, Line = line }))
             .GroupBy(x => new { x.Line.ServiceItemId, x.Line.ItemCodeSnapshot, x.Line.ItemNameSnapshot })
-            .Select(group => new ServicePerformanceDto(group.Key.ServiceItemId, group.Key.ItemCodeSnapshot,
+            .Select(group => new ServicePerformanceDto(group.Key.ServiceItemId!.Value, group.Key.ItemCodeSnapshot,
                 group.Key.ItemNameSnapshot, group.Sum(x => x.Line.Quantity), group.Sum(x => x.Line.LineAmountMinor),
                 group.Select(x => x.Id).Distinct().Count())).OrderByDescending(x => x.RevenueMinor).Take(20).ToList();
         var usageRows = sessions.GroupBy(x => x.FacilityId).Select(group => new

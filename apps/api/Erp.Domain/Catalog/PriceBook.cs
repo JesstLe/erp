@@ -62,9 +62,9 @@ public sealed class PriceBook : Entity
     public void Publish(DateTimeOffset now)
     {
         EnsureDraft();
-        if (_lines.Count == 0)
+        if (_lines.Count == 0 && _productLines.Count == 0)
         {
-            throw new DomainRuleException("VALIDATION_FAILED", "价格版本至少需要一个项目价格");
+            throw new DomainRuleException("VALIDATION_FAILED", "价格版本至少需要一个服务或产品价格");
         }
 
         Status = PriceBookStatus.Published;

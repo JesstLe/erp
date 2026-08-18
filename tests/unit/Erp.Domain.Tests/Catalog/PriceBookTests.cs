@@ -41,4 +41,17 @@ public sealed class PriceBookTests
         var line = Assert.Single(book.Lines);
         Assert.Equal(12_800, line.UnitPriceMinor);
     }
+
+    [Fact]
+    public void ProductOnlyPriceBookCanBePublishedWithoutServiceBinding()
+    {
+        var book = new PriceBook(Guid.CreateVersion7(), "单独商品价", new DateOnly(2026, 8, 18));
+        book.SetProductPrice(Guid.CreateVersion7(), 2_500);
+
+        book.Publish(DateTimeOffset.UtcNow);
+
+        Assert.Equal(PriceBookStatus.Published, book.Status);
+        Assert.Empty(book.Lines);
+        Assert.Single(book.ProductLines);
+    }
 }

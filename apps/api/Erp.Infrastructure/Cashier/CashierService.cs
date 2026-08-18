@@ -10,6 +10,7 @@ using Erp.Domain.Common;
 using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
 using Erp.Infrastructure.Persistence;
+using Erp.Infrastructure.Inventory;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -17,7 +18,8 @@ using Npgsql;
 
 namespace Erp.Infrastructure.Cashier;
 
-internal sealed class CashierService(ErpDbContext db, TimeProvider clock, IHttpContextAccessor httpContextAccessor) : ICashierService
+internal sealed class CashierService(ErpDbContext db, InventoryPostingService inventory, TimeProvider clock,
+    IHttpContextAccessor httpContextAccessor) : ICashierService
 {
     public async Task<IReadOnlyList<CashierVisitDto>> ListPendingVisitsAsync(Guid tenantId, Guid storeId,
         CancellationToken cancellationToken)
@@ -55,7 +57,9 @@ internal sealed class CashierService(ErpDbContext db, TimeProvider clock, IHttpC
         CancellationToken cancellationToken)
     {
         if (command.CommandId == Guid.Empty) return ResultFactory.Failure<ServiceOrderDto>("VALIDATION_FAILED", "缺少幂等请求号");
-        if (command.Lines.Count is 0 or > 100) return ResultFactory.Failure<ServiceOrderDto>("VALIDATION_FAILED", "消费单需要1到100行服务项目");
+        if (command.Lines.Count is 0 or > 100) return ResultFactory.Failure<ServiceOrderDto>("VALIDATION_FAILED", "消费单需要1到100行项目或产品");
+        if (command.Lines.Any(line => !TryGetLineType(line, out _)))
+            return ResultFactory.Failure<ServiceOrderDto>("VALIDATION_FAILED", "每行必须且只能选择一个服务项目或产品");
         var requestHash = RequestHash(JsonSerializer.Serialize(command with { OperatorId = Guid.Empty }));
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var replay = await ReplayAsync(tenantId, command.CommandId, requestHash,
@@ -70,22 +74,33 @@ internal sealed class CashierService(ErpDbContext db, TimeProvider clock, IHttpC
             if (timeZoneId is null) return await FailureAndRollback(transaction, "VALIDATION_FAILED", "门店时区配置无效", cancellationToken);
             var localTime = TimeZoneInfo.ConvertTime(now, TimeZoneInfo.FindSystemTimeZoneById(timeZoneId));
             var localDate = DateOnly.FromDateTime(localTime.DateTime);
-            var priceBook = await db.PriceBooks.Include(x => x.Lines).Where(x => x.TenantId == tenantId &&
+            var priceBook = await db.PriceBooks.Include(x => x.Lines).Include(x => x.ProductLines)
+                .Where(x => x.TenantId == tenantId &&
                     x.Status == PriceBookStatus.Published && x.EffectiveFrom <= localDate)
                 .OrderByDescending(x => x.EffectiveFrom).ThenByDescending(x => x.PublishedAtUtc)
                 .FirstOrDefaultAsync(cancellationToken);
             if (priceBook is null) return await FailureAndRollback(transaction, "PRICE_BOOK_NOT_FOUND", "当前日期没有已发布价格版本", cancellationToken);
 
-            var itemIds = command.Lines.Select(x => x.ServiceItemId).Distinct().ToList();
-            if (itemIds.Count != command.Lines.Count)
-                return await FailureAndRollback(transaction, "VALIDATION_FAILED", "同一服务项目不能重复录入，请调整数量", cancellationToken);
-            var items = await db.ServiceItems.Where(x => x.TenantId == tenantId && itemIds.Contains(x.Id) &&
+            var serviceIds = command.Lines.Where(x => TryGetLineType(x, out var type) &&
+                    type == ServiceOrderLineType.Service).Select(x => x.ServiceItemId!.Value).ToList();
+            var productIds = command.Lines.Where(x => TryGetLineType(x, out var type) &&
+                    type == ServiceOrderLineType.Product).Select(x => x.ProductItemId!.Value).ToList();
+            if (serviceIds.Distinct().Count() != serviceIds.Count || productIds.Distinct().Count() != productIds.Count)
+                return await FailureAndRollback(transaction, "VALIDATION_FAILED", "同一服务项目或产品不能重复录入，请调整数量", cancellationToken);
+            var items = await db.ServiceItems.Where(x => x.TenantId == tenantId && serviceIds.Contains(x.Id) &&
                 x.Status == CatalogItemStatus.Enabled).ToDictionaryAsync(x => x.Id, cancellationToken);
-            if (items.Count != itemIds.Count)
+            if (items.Count != serviceIds.Count)
                 return await FailureAndRollback(transaction, "VALIDATION_FAILED", "服务项目不存在或已停用", cancellationToken);
+            var products = await db.ProductItems.Where(x => x.TenantId == tenantId && productIds.Contains(x.Id) &&
+                x.Status == CatalogItemStatus.Enabled).ToDictionaryAsync(x => x.Id, cancellationToken);
+            if (products.Count != productIds.Count)
+                return await FailureAndRollback(transaction, "VALIDATION_FAILED", "产品不存在或已停用", cancellationToken);
             var prices = priceBook.Lines.ToDictionary(x => x.ServiceItemId, x => x.UnitPriceMinor);
-            if (itemIds.Any(id => !prices.ContainsKey(id)))
+            var productPrices = priceBook.ProductLines.ToDictionary(x => x.ProductItemId, x => x.UnitPriceMinor);
+            if (serviceIds.Any(id => !prices.ContainsKey(id)))
                 return await FailureAndRollback(transaction, "VALIDATION_FAILED", "已发布价格版本缺少所选项目价格", cancellationToken);
+            if (productIds.Any(id => !productPrices.ContainsKey(id)))
+                return await FailureAndRollback(transaction, "VALIDATION_FAILED", "已发布价格版本缺少所选产品价格", cancellationToken);
 
             Customer? customer = null;
             if (command.CustomerId is not null)
@@ -120,9 +135,20 @@ internal sealed class CashierService(ErpDbContext db, TimeProvider clock, IHttpC
                 }
             }
 
-            var drafts = command.Lines.Select(line => new ServiceOrderLineDraft(line.ServiceItemId,
-                items[line.ServiceItemId].Code, items[line.ServiceItemId].Name, line.Quantity, line.ActualSeconds,
-                prices[line.ServiceItemId], line.EnteredPriceMinor, line.PriceOverrideReason)).ToList();
+            var drafts = command.Lines.Select(line =>
+            {
+                _ = TryGetLineType(line, out var type);
+                if (type == ServiceOrderLineType.Service)
+                {
+                    var id = line.ServiceItemId!.Value;
+                    return new ServiceOrderLineDraft(id, items[id].Code, items[id].Name, line.Quantity,
+                        line.ActualSeconds, prices[id], line.EnteredPriceMinor, line.PriceOverrideReason);
+                }
+                var productId = line.ProductItemId!.Value;
+                var product = products[productId];
+                return ServiceOrderLineDraft.Product(productId, product.Code, product.Name, product.UnitName,
+                    line.Quantity, productPrices[productId], line.EnteredPriceMinor, line.PriceOverrideReason);
+            }).ToList();
             var order = new ServiceOrder(tenantId, command.StoreId, visit.Id, customer?.Id ?? visit.CustomerId,
                 CreateOrderNo(localTime), priceBook.Id, command.Note, drafts);
             db.ServiceOrders.Add(order);
@@ -167,6 +193,7 @@ internal sealed class CashierService(ErpDbContext db, TimeProvider clock, IHttpC
             if (order.Version != command.ExpectedVersion) return await FailureAndRollback(transaction, "VERSION_CONFLICT", "消费单已被修改，请刷新后重试", cancellationToken);
             var previous = order.Status.ToString();
             var now = clock.GetUtcNow();
+            await inventory.ReserveOrderAsync(order, now, cancellationToken);
             order.Confirm(now);
             AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, order.Id, now);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "service_order.confirm", "ServiceOrder", order.Id,
@@ -187,11 +214,77 @@ internal sealed class CashierService(ErpDbContext db, TimeProvider clock, IHttpC
         }
     }
 
+    public async Task<Result<ServiceOrderDto>> VoidOrderAsync(Guid tenantId, VoidServiceOrderCommand command,
+        CancellationToken cancellationToken)
+    {
+        if (command.CommandId == Guid.Empty)
+            return ResultFactory.Failure<ServiceOrderDto>("VALIDATION_FAILED", "缺少幂等请求号");
+        var reason = command.Reason?.Trim();
+        if (reason?.Length is not (>= 2 and <= 500))
+            return ResultFactory.Failure<ServiceOrderDto>("VALIDATION_FAILED", "作废原因必须为2到500字");
+        var requestHash = RequestHash($"ORDER_VOID|{command.StoreId}|{command.OrderId}|{command.ExpectedVersion}|{reason}");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable,
+            cancellationToken);
+        var replay = await ReplayAsync(tenantId, command.CommandId, requestHash,
+            id => GetOrderAsync(tenantId, command.StoreId, id, cancellationToken), cancellationToken);
+        if (replay is not null) return replay;
+        try
+        {
+            var order = await db.ServiceOrders.Include(x => x.Lines).SingleOrDefaultAsync(x =>
+                x.Id == command.OrderId && x.TenantId == tenantId && x.StoreId == command.StoreId,
+                cancellationToken);
+            if (order is null)
+                return await FailureAndRollback(transaction, "SERVICE_ORDER_NOT_FOUND", "消费单不存在",
+                    cancellationToken);
+            if (order.Version != command.ExpectedVersion)
+                return await FailureAndRollback(transaction, "VERSION_CONFLICT", "消费单已被修改，请刷新后重试",
+                    cancellationToken);
+            var previous = order.Status.ToString();
+            var now = clock.GetUtcNow();
+            await inventory.ReleaseOrderAsync(order, now, cancellationToken);
+            order.Void();
+            AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, order.Id, now);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "service_order.void", "ServiceOrder",
+                order.Id, previous, order.Status.ToString(), command.CommandId, now, reason);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ResultFactory.Success(ToDto(order));
+        }
+        catch (DomainRuleException exception)
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<ServiceOrderDto>(exception.Code, exception.Message);
+        }
+        catch (Exception exception) when (IsDatabaseConcurrencyConflict(exception))
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<ServiceOrderDto>("VERSION_CONFLICT", "消费单或库存状态已变化，请刷新后重试");
+        }
+    }
+
     private static ServiceOrderDto ToDto(ServiceOrder order) => new(order.Id, order.OrderNo, order.VisitId,
         order.CustomerId, order.Status.ToString(), order.PriceBookId, order.ReferenceAmountMinor, order.ReceivableMinor,
         order.RefundedMinor, order.Note, order.Version, order.CreatedAtUtc, order.Lines.OrderBy(x => x.CreatedAtUtc).Select(x =>
-            new ServiceOrderLineDto(x.Id, x.ServiceItemId, x.ItemCodeSnapshot, x.ItemNameSnapshot, x.Quantity,
-                x.ActualSeconds, x.ReferencePriceMinor, x.EnteredPriceMinor, x.LineAmountMinor, x.PriceOverrideReason)).ToList());
+            new ServiceOrderLineDto(x.Id, x.LineType.ToString(), x.ServiceItemId, x.ProductItemId,
+                x.ItemCodeSnapshot, x.ItemNameSnapshot, x.UnitNameSnapshot, x.Quantity, x.ReturnedQuantity,
+                x.ActualSeconds, x.ReferencePriceMinor, x.EnteredPriceMinor, x.LineAmountMinor,
+                x.PriceOverrideReason)).ToList());
+
+    private static bool TryGetLineType(CreateServiceOrderLineCommand line, out ServiceOrderLineType type)
+    {
+        type = ServiceOrderLineType.Service;
+        var explicitType = line.LineType?.Trim();
+        if (explicitType is not null &&
+            !Enum.TryParse<ServiceOrderLineType>(explicitType, ignoreCase: true, out type)) return false;
+        if (explicitType is null)
+            type = line.ProductItemId.HasValue ? ServiceOrderLineType.Product : ServiceOrderLineType.Service;
+        return type switch
+        {
+            ServiceOrderLineType.Service => line.ServiceItemId.HasValue && !line.ProductItemId.HasValue,
+            ServiceOrderLineType.Product => line.ProductItemId.HasValue && !line.ServiceItemId.HasValue,
+            _ => false,
+        };
+    }
 
     private async Task<Result<ServiceOrderDto>?> ReplayAsync(Guid tenantId, Guid commandId, byte[] requestHash,
         Func<Guid, Task<Result<ServiceOrderDto>>> load, CancellationToken cancellationToken)
@@ -217,9 +310,9 @@ internal sealed class CashierService(ErpDbContext db, TimeProvider clock, IHttpC
             ResponseBody = JsonSerializer.Serialize(new CommandReceipt(entityId)), CreatedAtUtc = now, CompletedAtUtc = now });
 
     private void AddAudit(Guid tenantId, Guid storeId, Guid operatorId, string action, string entityType, Guid entityId,
-        string? previous, string? current, Guid commandId, DateTimeOffset now) => db.AuditEvents.Add(new AuditEventRecord
+        string? previous, string? current, Guid commandId, DateTimeOffset now, string? reason = null) => db.AuditEvents.Add(new AuditEventRecord
         { TenantId = tenantId, StoreId = storeId, OperatorId = operatorId, Action = action, EntityType = entityType,
-            EntityId = entityId, PreviousState = previous, CurrentState = current, RequestId = commandId,
+            EntityId = entityId, PreviousState = previous, CurrentState = current, RequestId = commandId, Reason = reason,
             TraceId = httpContextAccessor.HttpContext?.TraceIdentifier ?? "background", OccurredAtUtc = now });
 
     private static async Task RollbackIfActiveAsync(IDbContextTransaction transaction, CancellationToken cancellationToken)

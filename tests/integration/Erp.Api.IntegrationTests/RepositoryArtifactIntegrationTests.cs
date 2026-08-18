@@ -164,6 +164,24 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void InventoryMigrationSeparatesReservationIssueReturnAndFinancialRefund()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180015__product_sales_and_inventory.sql"));
+        var inventory = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Inventory", "InventoryPostingService.cs"));
+
+        Assert.Contains("CREATE TABLE inventory_reservations", migration, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE inventory_movements", migration, StringComparison.Ordinal);
+        Assert.Contains("inventory movements are append-only", migration, StringComparison.Ordinal);
+        Assert.Contains("command_id uuid NOT NULL UNIQUE", migration, StringComparison.Ordinal);
+        Assert.Contains("ReserveOrderAsync", inventory, StringComparison.Ordinal);
+        Assert.Contains("ConsumeOrderAsync", inventory, StringComparison.Ordinal);
+        Assert.Contains("SalesReturn", inventory, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyRefund", inventory, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");
