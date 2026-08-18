@@ -14,7 +14,7 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
     SecureFileStorage fileStorage) : ICatalogService
 {
     public async Task<IReadOnlyList<ServiceItemDto>> ListServiceItemsAsync(Guid tenantId, string? query,
-        CatalogItemStatus? status, CancellationToken cancellationToken)
+        CatalogItemStatus? status, bool includeCommission, CancellationToken cancellationToken)
     {
         var normalizedQuery = query?.Trim();
         var items = dbContext.ServiceItems.AsNoTracking().Where(x => x.TenantId == tenantId);
@@ -23,7 +23,11 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
         if (status.HasValue) items = items.Where(x => x.Status == status.Value);
         return await items
             .OrderBy(x => x.Code)
-            .Select(x => new ServiceItemDto(x.Id, x.Code, x.Name, x.StandardDurationMinutes, x.Status.ToString().ToUpperInvariant(), x.Version))
+            .Select(x => new ServiceItemDto(x.Id, x.Code, x.Name, x.StandardDurationMinutes,
+                x.Status.ToString().ToUpperInvariant(), x.Version,
+                includeCommission ? x.CommissionMode.ToString() : null,
+                includeCommission ? x.CommissionRateBasisPoints : null,
+                includeCommission ? x.CommissionFixedMinor : null))
             .ToListAsync(cancellationToken);
     }
 
@@ -37,6 +41,8 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
         try
         {
             var item = new ServiceItem(tenantId, command.Code, command.Name, command.StandardDurationMinutes);
+            item.ConfigureCommission(command.CommissionMode, command.CommissionRateBasisPoints,
+                command.CommissionFixedMinor);
             dbContext.ServiceItems.Add(item);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.service_item.create", "ServiceItem", item.Id,
                 null, item.Status.ToString());
@@ -61,6 +67,8 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
         {
             var previous = JsonSerializer.Serialize(Map(item));
             item.Update(command.Name, command.StandardDurationMinutes);
+            item.ConfigureCommission(command.CommissionMode, command.CommissionRateBasisPoints,
+                command.CommissionFixedMinor);
             if (command.Status == CatalogItemStatus.Enabled) item.Enable(); else item.Disable();
             AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.service_item.update", "ServiceItem",
                 item.Id, previous, JsonSerializer.Serialize(Map(item)));
@@ -378,7 +386,9 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
                cancellationToken);
 
     private static ServiceItemDto Map(ServiceItem item)
-        => new(item.Id, item.Code, item.Name, item.StandardDurationMinutes, item.Status.ToString().ToUpperInvariant(), item.Version);
+        => new(item.Id, item.Code, item.Name, item.StandardDurationMinutes,
+            item.Status.ToString().ToUpperInvariant(), item.Version, item.CommissionMode.ToString(),
+            item.CommissionRateBasisPoints, item.CommissionFixedMinor);
 
     private static ProductItemDto Map(ProductItem item)
         => new(item.Id, item.Code, item.Name, item.UnitName, item.TrackInventory,

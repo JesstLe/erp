@@ -3,12 +3,15 @@ using Erp.Domain.Catalog;
 
 namespace Erp.Application.Catalog;
 
-public sealed record ServiceItemDto(Guid Id, string Code, string Name, int StandardDurationMinutes, string Status, uint Version);
+public sealed record ServiceItemDto(Guid Id, string Code, string Name, int StandardDurationMinutes, string Status,
+    uint Version, string? CommissionMode, int? CommissionRateBasisPoints, long? CommissionFixedMinor);
 
-public sealed record CreateServiceItemCommand(string Code, string Name, int StandardDurationMinutes, Guid OperatorId,
+public sealed record CreateServiceItemCommand(string Code, string Name, int StandardDurationMinutes,
+    CommissionMode CommissionMode, int? CommissionRateBasisPoints, long? CommissionFixedMinor, Guid OperatorId,
     Guid? StoreId);
 public sealed record UpdateServiceItemCommand(Guid Id, string Name, int StandardDurationMinutes,
-    CatalogItemStatus Status, uint ExpectedVersion, Guid OperatorId, Guid? StoreId);
+    CatalogItemStatus Status, CommissionMode CommissionMode, int? CommissionRateBasisPoints,
+    long? CommissionFixedMinor, uint ExpectedVersion, Guid OperatorId, Guid? StoreId);
 public sealed record DeleteCatalogItemCommand(Guid Id, uint ExpectedVersion, Guid OperatorId, Guid? StoreId);
 
 public sealed record ProductItemDto(Guid Id, string Code, string Name, string UnitName, bool TrackInventory,
@@ -40,7 +43,7 @@ public sealed record CreateProductPriceBookLineCommand(Guid ProductItemId, long 
 public interface ICatalogService
 {
     Task<IReadOnlyList<ServiceItemDto>> ListServiceItemsAsync(Guid tenantId, string? query, CatalogItemStatus? status,
-        CancellationToken cancellationToken);
+        bool includeCommission, CancellationToken cancellationToken);
 
     Task<Result<ServiceItemDto>> CreateServiceItemAsync(Guid tenantId, CreateServiceItemCommand command, CancellationToken cancellationToken);
     Task<Result<ServiceItemDto>> UpdateServiceItemAsync(Guid tenantId, UpdateServiceItemCommand command,

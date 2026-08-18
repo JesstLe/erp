@@ -270,6 +270,10 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(120);
             entity.Property(x => x.StandardDurationMinutes).HasColumnName("standard_duration_minutes");
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.CommissionMode).HasColumnName("commission_mode").HasConversion<string>()
+                .HasMaxLength(24);
+            entity.Property(x => x.CommissionRateBasisPoints).HasColumnName("commission_rate_basis_points");
+            entity.Property(x => x.CommissionFixedMinor).HasColumnName("commission_fixed_minor");
             entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         });
 
@@ -570,6 +574,15 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.LineAmountMinor).HasColumnName("line_amount_minor");
             entity.Property(x => x.PriceOverrideReason).HasColumnName("price_override_reason").HasMaxLength(500);
             entity.Property(x => x.ReturnedQuantity).HasColumnName("returned_quantity");
+            entity.Property(x => x.ServiceEmployeeId).HasColumnName("service_employee_id");
+            entity.Property(x => x.EmployeeNoSnapshot).HasColumnName("employee_no_snapshot").HasMaxLength(32);
+            entity.Property(x => x.EmployeeNameSnapshot).HasColumnName("employee_name_snapshot").HasMaxLength(100);
+            entity.Property(x => x.CommissionModeSnapshot).HasColumnName("commission_mode_snapshot")
+                .HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.CommissionRateBasisPoints).HasColumnName("commission_rate_basis_points");
+            entity.Property(x => x.CommissionFixedMinor).HasColumnName("commission_fixed_minor");
+            entity.Property(x => x.CommissionBasisMinor).HasColumnName("commission_basis_minor");
+            entity.Property(x => x.CommissionAmountMinor).HasColumnName("commission_amount_minor");
             entity.HasIndex(x => new { x.OrderId, x.ServiceItemId }).IsUnique()
                 .HasFilter("line_type = 'Service'");
             entity.HasIndex(x => new { x.OrderId, x.ProductItemId }).IsUnique()
@@ -577,6 +590,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasOne<ServiceItem>().WithMany().HasForeignKey(x => x.ServiceItemId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ProductItem>().WithMany().HasForeignKey(x => x.ProductItemId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Employee>().WithMany().HasForeignKey(x => x.ServiceEmployeeId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<PaymentMethod>(entity =>

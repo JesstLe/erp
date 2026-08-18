@@ -1,4 +1,5 @@
 using Erp.Domain.Common;
+using Erp.Domain.Catalog;
 
 namespace Erp.Domain.Cashier;
 
@@ -105,7 +106,10 @@ public sealed class ServiceOrder : Entity
 public sealed record ServiceOrderLineDraft
 {
     public ServiceOrderLineDraft(Guid serviceItemId, string itemCode, string itemName, int quantity,
-        int? actualSeconds, long referencePriceMinor, long enteredPriceMinor, string? priceOverrideReason)
+        int? actualSeconds, long referencePriceMinor, long enteredPriceMinor, string? priceOverrideReason,
+        Guid? serviceEmployeeId = null, string? employeeNo = null, string? employeeName = null,
+        CommissionMode commissionMode = CommissionMode.None, int? commissionRateBasisPoints = null,
+        long? commissionFixedMinor = null)
     {
         LineType = ServiceOrderLineType.Service;
         ServiceItemId = serviceItemId;
@@ -116,6 +120,12 @@ public sealed record ServiceOrderLineDraft
         ReferencePriceMinor = referencePriceMinor;
         EnteredPriceMinor = enteredPriceMinor;
         PriceOverrideReason = priceOverrideReason;
+        ServiceEmployeeId = serviceEmployeeId;
+        EmployeeNo = employeeNo;
+        EmployeeName = employeeName;
+        CommissionMode = commissionMode;
+        CommissionRateBasisPoints = commissionRateBasisPoints;
+        CommissionFixedMinor = commissionFixedMinor;
     }
 
     private ServiceOrderLineDraft(Guid productItemId, string itemCode, string itemName, string unitName,
@@ -148,6 +158,12 @@ public sealed record ServiceOrderLineDraft
     public long ReferencePriceMinor { get; }
     public long EnteredPriceMinor { get; }
     public string? PriceOverrideReason { get; }
+    public Guid? ServiceEmployeeId { get; }
+    public string? EmployeeNo { get; }
+    public string? EmployeeName { get; }
+    public CommissionMode CommissionMode { get; }
+    public int? CommissionRateBasisPoints { get; }
+    public long? CommissionFixedMinor { get; }
 }
 
 public sealed class ServiceOrderLine : Entity
@@ -192,6 +208,7 @@ public sealed class ServiceOrderLine : Entity
         PriceOverrideReason = reason;
         ReferenceAmountMinor = checked(referencePriceMinor * quantity);
         LineAmountMinor = checked(enteredPriceMinor * quantity);
+        SetCommissionSnapshot(draft);
     }
 
     public Guid OrderId { get; private set; }
@@ -209,6 +226,14 @@ public sealed class ServiceOrderLine : Entity
     public long LineAmountMinor { get; private set; }
     public string? PriceOverrideReason { get; private set; }
     public int ReturnedQuantity { get; private set; }
+    public Guid? ServiceEmployeeId { get; private set; }
+    public string? EmployeeNoSnapshot { get; private set; }
+    public string? EmployeeNameSnapshot { get; private set; }
+    public CommissionMode CommissionModeSnapshot { get; private set; }
+    public int? CommissionRateBasisPoints { get; private set; }
+    public long? CommissionFixedMinor { get; private set; }
+    public long CommissionBasisMinor { get; private set; }
+    public long CommissionAmountMinor { get; private set; }
 
     public void ApplyProductReturn(int quantity)
     {
@@ -216,5 +241,43 @@ public sealed class ServiceOrderLine : Entity
             throw new DomainRuleException("PRODUCT_RETURN_QUANTITY_EXCEEDED", "退货数量必须大于0且累计不超过原销售数量");
         ReturnedQuantity += quantity;
         Touch();
+    }
+
+    private void SetCommissionSnapshot(ServiceOrderLineDraft draft)
+    {
+        if (LineType == ServiceOrderLineType.Product)
+        {
+            if (draft.ServiceEmployeeId.HasValue || draft.CommissionMode != CommissionMode.None)
+                throw new DomainRuleException("VALIDATION_FAILED", "商品明细不能填写服务员工或服务提成");
+            CommissionModeSnapshot = CommissionMode.None;
+            return;
+        }
+
+        var employeeNo = string.IsNullOrWhiteSpace(draft.EmployeeNo) ? null : draft.EmployeeNo.Trim();
+        var employeeName = string.IsNullOrWhiteSpace(draft.EmployeeName) ? null : draft.EmployeeName.Trim();
+        if (draft.ServiceEmployeeId.HasValue != (employeeNo is not null && employeeName is not null) ||
+            employeeNo?.Length > 32 || employeeName?.Length > 100)
+            throw new DomainRuleException("VALIDATION_FAILED", "服务员工快照无效");
+        if (draft.CommissionMode != CommissionMode.None && !draft.ServiceEmployeeId.HasValue)
+            throw new DomainRuleException("SERVICE_EMPLOYEE_REQUIRED", "该服务项目已设置提成，必须选择服务员工");
+
+        ServiceEmployeeId = draft.ServiceEmployeeId;
+        EmployeeNoSnapshot = employeeNo;
+        EmployeeNameSnapshot = employeeName;
+        CommissionModeSnapshot = draft.CommissionMode;
+        CommissionRateBasisPoints = draft.CommissionRateBasisPoints;
+        CommissionFixedMinor = draft.CommissionFixedMinor;
+        CommissionBasisMinor = LineAmountMinor;
+        CommissionAmountMinor = draft.CommissionMode switch
+        {
+            CommissionMode.None when draft.CommissionRateBasisPoints is null && draft.CommissionFixedMinor is null => 0,
+            CommissionMode.Percentage when draft.CommissionRateBasisPoints is >= 1 and <= 10_000 &&
+                draft.CommissionFixedMinor is null => checked((LineAmountMinor * draft.CommissionRateBasisPoints.Value + 5_000) / 10_000),
+            CommissionMode.FixedAmount when draft.CommissionFixedMinor is >= 1 and <= 10_000_000_000 &&
+                draft.CommissionRateBasisPoints is null => checked(draft.CommissionFixedMinor.Value * Quantity),
+            _ => throw new DomainRuleException("VALIDATION_FAILED", "服务提成快照无效"),
+        };
+        if (CommissionAmountMinor > CommissionBasisMinor)
+            throw new DomainRuleException("COMMISSION_EXCEEDS_LINE_AMOUNT", "提成金额不能超过该服务明细的成交金额");
     }
 }

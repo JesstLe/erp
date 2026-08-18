@@ -97,6 +97,27 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
             .Select(group => new ServicePerformanceDto(group.Key.ServiceItemId!.Value, group.Key.ItemCodeSnapshot,
                 group.Key.ItemNameSnapshot, group.Sum(x => x.Line.Quantity), group.Sum(x => x.Line.LineAmountMinor),
                 group.Select(x => x.Id).Distinct().Count())).OrderByDescending(x => x.RevenueMinor).Take(20).ToList();
+        var employeeCommissions = orders.SelectMany(order => order.Lines
+                .Where(line => line.LineType == ServiceOrderLineType.Service && line.ServiceEmployeeId.HasValue)
+                .Select(line => new
+                {
+                    Order = order,
+                    Line = line,
+                    RefundDeduction = AllocateRefundDeduction(line.CommissionAmountMinor, order.RefundedMinor,
+                        order.ReceivableMinor),
+                }))
+            .GroupBy(x => new
+            {
+                EmployeeId = x.Line.ServiceEmployeeId!.Value,
+                EmployeeNo = x.Line.EmployeeNoSnapshot!,
+                EmployeeName = x.Line.EmployeeNameSnapshot!,
+            })
+            .Select(group => new EmployeeCommissionDto(group.Key.EmployeeId, group.Key.EmployeeNo,
+                group.Key.EmployeeName, group.Sum(x => x.Line.Quantity),
+                group.Select(x => x.Order.Id).Distinct().Count(), group.Sum(x => x.Line.LineAmountMinor),
+                group.Sum(x => x.Line.CommissionAmountMinor), group.Sum(x => x.RefundDeduction),
+                group.Sum(x => x.Line.CommissionAmountMinor - x.RefundDeduction)))
+            .OrderByDescending(x => x.NetCommissionMinor).ThenBy(x => x.EmployeeName).ToList();
         var usageRows = sessions.GroupBy(x => x.FacilityId).Select(group => new
         {
             FacilityId = group.Key,
@@ -117,7 +138,14 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
             settled - refunded, payments.Count, visits.Count,
             payments.Count == 0 ? 0 : settled / payments.Count, daily.Sum(x => x.FacilityActiveSeconds));
         return new OperationsReportDto(startDate, endDate, timeZoneId, summary, daily, paymentMix,
-            servicePerformance, facilityUsage);
+            servicePerformance, employeeCommissions, facilityUsage);
+    }
+
+    private static long AllocateRefundDeduction(long commissionMinor, long refundedMinor, long receivableMinor)
+    {
+        if (commissionMinor <= 0 || refundedMinor <= 0 || receivableMinor <= 0) return 0;
+        return Math.Min(commissionMinor, (long)decimal.Round(
+            (decimal)commissionMinor * refundedMinor / receivableMinor, 0, MidpointRounding.AwayFromZero));
     }
 
     private static DateTimeOffset ToUtc(DateOnly date, TimeZoneInfo timeZone)

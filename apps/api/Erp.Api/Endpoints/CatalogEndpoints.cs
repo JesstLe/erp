@@ -20,7 +20,7 @@ public static class CatalogEndpoints
             if (query?.Trim().Length > 100) return InvalidQuery();
             if (!TryParseStatus(status, out var parsedStatus)) return InvalidStatus();
             return Results.Ok(await catalog.ListServiceItemsAsync(current.TenantId, query, parsedStatus,
-                cancellationToken));
+                current.Roles.Contains(SystemRoles.Owner), cancellationToken));
         });
 
         group.MapPost("/service-items", async (CreateServiceItemRequest request, IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -30,10 +30,14 @@ public static class CatalogEndpoints
             {
                 return Results.Unauthorized();
             }
+            if (!TryParseCommissionMode(request.CommissionMode, out var commissionMode))
+                return InvalidCommissionMode();
 
             return EndpointResults.From(await catalog.CreateServiceItemAsync(current.TenantId,
                 new CreateServiceItemCommand(request.Code ?? string.Empty, request.Name ?? string.Empty,
-                    request.StandardDurationMinutes, current.Id, DefaultStoreId(current)), cancellationToken),
+                    request.StandardDurationMinutes, commissionMode,
+                    request.CommissionRateBasisPoints, request.CommissionFixedMinor, current.Id,
+                    DefaultStoreId(current)), cancellationToken),
                 value => Results.Created($"/api/v1/catalog/service-items/{value.Id}", value));
         }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
 
@@ -43,9 +47,13 @@ public static class CatalogEndpoints
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!TryParseRequiredStatus(request.Status, out var parsedStatus)) return InvalidStatus();
+            if (!TryParseCommissionMode(request.CommissionMode, out var commissionMode))
+                return InvalidCommissionMode();
             return EndpointResults.From(await catalog.UpdateServiceItemAsync(current.TenantId,
                 new UpdateServiceItemCommand(id, request.Name ?? string.Empty, request.StandardDurationMinutes,
-                    parsedStatus, request.ExpectedVersion, current.Id, DefaultStoreId(current)), cancellationToken));
+                    parsedStatus, commissionMode, request.CommissionRateBasisPoints,
+                    request.CommissionFixedMinor, request.ExpectedVersion, current.Id, DefaultStoreId(current)),
+                cancellationToken));
         }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
 
         group.MapDelete("/service-items/{id:guid}", async (Guid id, uint expectedVersion,
@@ -203,9 +211,26 @@ public static class CatalogEndpoints
         new { error = new { code = "VALIDATION_FAILED", message = "查询关键字不能超过100个字符" } },
         statusCode: StatusCodes.Status422UnprocessableEntity);
 
-    private sealed record CreateServiceItemRequest(string? Code, string? Name, int StandardDurationMinutes);
+    private static bool TryParseCommissionMode(string? value, out CommissionMode mode)
+    {
+        mode = CommissionMode.None;
+        switch (value?.Trim().ToUpperInvariant())
+        {
+            case null or "" or "NONE": return true;
+            case "PERCENTAGE": mode = CommissionMode.Percentage; return true;
+            case "FIXEDAMOUNT" or "FIXED_AMOUNT": mode = CommissionMode.FixedAmount; return true;
+            default: return false;
+        }
+    }
+
+    private static IResult InvalidCommissionMode() => Results.Json(
+        new { error = new { code = "VALIDATION_FAILED", message = "提成方式只能是不计提、按比例或固定金额" } },
+        statusCode: StatusCodes.Status422UnprocessableEntity);
+
+    private sealed record CreateServiceItemRequest(string? Code, string? Name, int StandardDurationMinutes,
+        string? CommissionMode, int? CommissionRateBasisPoints, long? CommissionFixedMinor);
     private sealed record UpdateServiceItemRequest(string? Name, int StandardDurationMinutes, string? Status,
-        uint ExpectedVersion);
+        string? CommissionMode, int? CommissionRateBasisPoints, long? CommissionFixedMinor, uint ExpectedVersion);
     private sealed record CreateProductItemRequest(string? Code, string? Name, string? UnitName, bool TrackInventory);
     private sealed record UpdateProductItemRequest(string? Name, string? UnitName, bool TrackInventory, string? Status,
         uint ExpectedVersion);

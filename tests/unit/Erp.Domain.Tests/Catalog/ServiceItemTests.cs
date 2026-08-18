@@ -43,4 +43,21 @@ public sealed class ServiceItemTests
         item.Enable();
         Assert.Equal(CatalogItemStatus.Enabled, item.Status);
     }
+
+    [Fact]
+    public void CommissionRuleAcceptsPercentageOrFixedAmountExclusively()
+    {
+        var item = new ServiceItem(Guid.CreateVersion7(), "SV001", "基础服务", 60);
+
+        item.ConfigureCommission(CommissionMode.Percentage, 1_250, null);
+        Assert.Equal(CommissionMode.Percentage, item.CommissionMode);
+        Assert.Equal(1_250, item.CommissionRateBasisPoints);
+
+        item.ConfigureCommission(CommissionMode.FixedAmount, null, 2_000);
+        Assert.Equal(CommissionMode.FixedAmount, item.CommissionMode);
+        Assert.Equal(2_000, item.CommissionFixedMinor);
+
+        Assert.Throws<DomainRuleException>(() =>
+            item.ConfigureCommission(CommissionMode.Percentage, 1_250, 2_000));
+    }
 }

@@ -1,4 +1,5 @@
 using Erp.Domain.Cashier;
+using Erp.Domain.Catalog;
 using Erp.Domain.Common;
 
 namespace Erp.Domain.Tests.Cashier;
@@ -114,6 +115,46 @@ public sealed class ServiceOrderTests
         settled.BeginCheckout();
         settled.Settle(DateTimeOffset.UtcNow);
         Assert.Throws<DomainRuleException>(() => settled.Void());
+    }
+
+    [Fact]
+    public void PercentageCommissionUsesEnteredLineAmountAndKeepsEmployeeSnapshot()
+    {
+        var employeeId = Guid.CreateVersion7();
+        var order = CreateOrder([new ServiceOrderLineDraft(Guid.CreateVersion7(), "S01", "标准服务", 2,
+            3600, 10_000, 8_000, "现场折扣", employeeId, "E001", "王技师",
+            CommissionMode.Percentage, 1_250)]);
+        var line = order.Lines.Single();
+
+        Assert.Equal(employeeId, line.ServiceEmployeeId);
+        Assert.Equal("王技师", line.EmployeeNameSnapshot);
+        Assert.Equal(16_000, line.CommissionBasisMinor);
+        Assert.Equal(2_000, line.CommissionAmountMinor);
+    }
+
+    [Fact]
+    public void FixedCommissionIsPerServiceUnitAndCannotExceedLineAmount()
+    {
+        var employeeId = Guid.CreateVersion7();
+        var order = CreateOrder([new ServiceOrderLineDraft(Guid.CreateVersion7(), "S01", "标准服务", 2,
+            null, 10_000, 10_000, null, employeeId, "E001", "王技师",
+            CommissionMode.FixedAmount, null, 3_000)]);
+
+        Assert.Equal(6_000, order.Lines.Single().CommissionAmountMinor);
+        var error = Assert.Throws<DomainRuleException>(() => CreateOrder([new ServiceOrderLineDraft(
+            Guid.CreateVersion7(), "S02", "低价服务", 1, null, 1_000, 1_000, null, employeeId, "E001",
+            "王技师", CommissionMode.FixedAmount, null, 2_000)]));
+        Assert.Equal("COMMISSION_EXCEEDS_LINE_AMOUNT", error.Code);
+    }
+
+    [Fact]
+    public void ConfiguredCommissionRequiresServiceEmployee()
+    {
+        var error = Assert.Throws<DomainRuleException>(() => CreateOrder([new ServiceOrderLineDraft(
+            Guid.CreateVersion7(), "S01", "标准服务", 1, null, 10_000, 10_000, null,
+            commissionMode: CommissionMode.Percentage, commissionRateBasisPoints: 1_000)]));
+
+        Assert.Equal("SERVICE_EMPLOYEE_REQUIRED", error.Code);
     }
 
     private static ServiceOrder CreateOrder(IEnumerable<ServiceOrderLineDraft> lines) => new(Guid.CreateVersion7(),
