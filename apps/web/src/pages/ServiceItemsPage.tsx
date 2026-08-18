@@ -1,10 +1,11 @@
-import { DeleteOutlined, EditOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
+import { DeleteOutlined, EditOutlined, LoadingOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { apiRequest, ApiError } from '../api/client'
 import type { ServiceItem } from '../api/types'
 import { useAuth } from '../auth/useAuth'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 interface ItemForm { code?: string; name: string; standardDurationMinutes: number; status: string; commissionMode: string; commissionRatePercent?: number; commissionFixedYuan?: number }
 
@@ -15,12 +16,13 @@ function requestError(error: unknown): string {
 export function ServiceItemsPage() {
   const auth = useAuth(); const canManage = auth.user?.roles.includes('OWNER') ?? false
   const [open, setOpen] = useState(false); const [editing, setEditing] = useState<ServiceItem>()
-  const [queryText, setQueryText] = useState(''); const [appliedQuery, setAppliedQuery] = useState(''); const [status, setStatus] = useState<string>()
+  const [queryText, setQueryText] = useState(''); const [status, setStatus] = useState<string>()
+  const normalizedQuery = queryText.trim(); const appliedQuery = useDebouncedValue(normalizedQuery)
   const [form] = Form.useForm<ItemForm>(); const queryClient = useQueryClient()
   const commissionMode = Form.useWatch('commissionMode', form)
   const params = new URLSearchParams(); if (appliedQuery) params.set('query', appliedQuery); if (status) params.set('status', status)
   const path = `/api/v1/catalog/service-items${params.size ? `?${params}` : ''}`
-  const query = useQuery({ queryKey: ['service-items', appliedQuery, status], queryFn: () => apiRequest<ServiceItem[]>(path) })
+  const query = useQuery({ queryKey: ['service-items', appliedQuery, status], queryFn: ({ signal }) => apiRequest<ServiceItem[]>(path, { signal }) })
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['service-items'] })
   const save = useMutation({
     mutationFn: (values: ItemForm) => { const body = commissionBody(values); return editing
@@ -41,15 +43,14 @@ export function ServiceItemsPage() {
   })
   const showCreate = () => { setEditing(undefined); form.resetFields(); form.setFieldsValue({ standardDurationMinutes: 60, status: 'ENABLED', commissionMode: 'None' }); setOpen(true) }
   const showEdit = (item: ServiceItem) => { setEditing(item); form.setFieldsValue({ code: item.code, name: item.name, standardDurationMinutes: item.standardDurationMinutes, status: item.status, commissionMode: item.commissionMode ?? 'None', commissionRatePercent: item.commissionRateBasisPoints === undefined ? undefined : item.commissionRateBasisPoints / 100, commissionFixedYuan: item.commissionFixedMinor === undefined ? undefined : item.commissionFixedMinor / 100 }); setOpen(true) }
-  const search = () => setAppliedQuery(queryText.trim())
-  const reset = () => { setQueryText(''); setAppliedQuery(''); setStatus(undefined) }
+  const reset = () => { setQueryText(''); setStatus(undefined) }
 
   return <div className="page-stack">
     <div className="page-heading"><div><Typography.Title level={2}>服务项目</Typography.Title><Typography.Paragraph>支持查询、修改、停用与恢复；项目编码创建后不变，最终收费由价格版本决定。</Typography.Paragraph></div>{canManage && <Button type="primary" icon={<PlusOutlined />} onClick={showCreate}>新建项目</Button>}</div>
     <Alert type="info" showIcon title="删除仅用于从未进入价格、接待或订单的误建项目；已有业务记录的项目请停用，以保留历史账目。" />
-    <Card variant="borderless"><Space wrap><Input value={queryText} onChange={(event) => setQueryText(event.target.value)} onPressEnter={search} allowClear placeholder="输入项目编码或名称" maxLength={100} style={{ width: 280 }} /><Select value={status} onChange={setStatus} allowClear placeholder="全部状态" style={{ width: 140 }} options={[{ value: 'ENABLED', label: '启用' }, { value: 'DISABLED', label: '停用' }]} /><Button type="primary" icon={<SearchOutlined />} onClick={search}>查询</Button><Button onClick={reset}>重置</Button></Space></Card>
+    <Card variant="borderless"><Space wrap><Input value={queryText} onChange={(event) => setQueryText(event.target.value)} allowClear placeholder="输入项目编码或名称，自动匹配" maxLength={100} style={{ width: 300 }} prefix={<SearchOutlined />} suffix={normalizedQuery !== appliedQuery || query.isFetching ? <LoadingOutlined spin /> : null} aria-label="实时查询服务项目" /><Select value={status} onChange={setStatus} allowClear placeholder="全部状态" style={{ width: 140 }} options={[{ value: 'ENABLED', label: '启用' }, { value: 'DISABLED', label: '停用' }]} /><Button onClick={reset}>重置</Button><Typography.Text type="secondary">输入后自动加载，无需点击查询</Typography.Text></Space></Card>
     {query.error && <Alert type="error" showIcon title={requestError(query.error)} />}
-    <Card variant="borderless"><Table<ServiceItem> rowKey="id" loading={query.isLoading} dataSource={query.data ?? []} pagination={{ pageSize: 10, showSizeChanger: false }} locale={{ emptyText: '没有符合条件的服务项目' }} columns={[
+    <Card variant="borderless"><Table<ServiceItem> rowKey="id" loading={query.isFetching} dataSource={query.data ?? []} pagination={{ pageSize: 10, showSizeChanger: false }} locale={{ emptyText: '没有符合条件的服务项目' }} columns={[
       { title: '项目编码', dataIndex: 'code', width: 130 }, { title: '项目名称', dataIndex: 'name' }, { title: '标准时长', dataIndex: 'standardDurationMinutes', width: 110, render: (value: number) => value ? `${value} 分钟` : '未设置' }, { title: '提成规则', key: 'commission', width: 170, render: (_: unknown, item: ServiceItem) => !canManage ? '仅负责人可见' : item.commissionMode === 'Percentage' ? `成交金额 × ${(item.commissionRateBasisPoints ?? 0) / 100}%` : item.commissionMode === 'FixedAmount' ? `每次 ¥${((item.commissionFixedMinor ?? 0) / 100).toFixed(2)}` : '不计提' }, { title: '状态', dataIndex: 'status', width: 80, render: (value: string) => <Tag color={value === 'ENABLED' ? 'green' : 'default'}>{value === 'ENABLED' ? '启用' : '停用'}</Tag> },
       { title: '操作', key: 'actions', width: 260, render: (_: unknown, item: ServiceItem) => canManage ? <Space size="small"><Button size="small" icon={<EditOutlined />} onClick={() => showEdit(item)}>编辑</Button><Popconfirm title={item.status === 'ENABLED' ? '确认停用这个项目？' : '确认恢复这个项目？'} description={item.status === 'ENABLED' ? '停用后不能用于新业务，历史记录不受影响。' : '恢复后可重新用于新业务。'} onConfirm={() => updateStatus.mutateAsync({ item, nextStatus: item.status === 'ENABLED' ? 'DISABLED' : 'ENABLED' })}><Button size="small">{item.status === 'ENABLED' ? '停用' : '恢复'}</Button></Popconfirm><Popconfirm title="永久删除这个项目？" description="只有从未被业务引用的项目可以删除。" okButtonProps={{ danger: true }} onConfirm={() => remove.mutateAsync(item)}><Button size="small" danger icon={<DeleteOutlined />}>删除</Button></Popconfirm></Space> : null },
     ]} /></Card>

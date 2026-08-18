@@ -2,8 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$')][string]$Version,
     [Parameter(Mandatory)][string]$OutputDirectory,
-    [string]$SchemaMin = '202608180020',
-    [string]$SchemaMax = '202608180020',
+    [string]$SchemaMin = '202608180021',
+    [string]$SchemaMax = '202608180021',
     [string]$GitCommit
 )
 

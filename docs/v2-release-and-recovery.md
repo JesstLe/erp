@@ -20,7 +20,7 @@ V2-07 解决“代码更新不能直接覆盖运行目录、数据库变更不�
 - `db/migrations` 是唯一结构来源；共享环境禁止手工改表和 EF 自动迁移。
 - Flyway 明确设置 `baselineOnMigrate=false`、`cleanDisabled=true`，脚本不调用 `repair`。
 - 新系统从空库开始。已有非空库若没有 Flyway 历史，必须人工盘点，不能自动 baseline。
-- `/health/ready` 同时检查数据库可连接及 V20 关键表存在，并返回应用要求的 schema 版本。
+- `/health/ready` 同时检查数据库可连接、V20关键业务表及V21实时检索索引存在，并返回应用要求的 schema 版本。
 - 应用回退从当前活动记录读取 schema，再检查目标版本兼容范围；不接受操作员手工声称的版本，不执行 SQL 降级。
 
 ## 备份与恢复链

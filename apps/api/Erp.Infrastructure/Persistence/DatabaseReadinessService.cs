@@ -6,7 +6,7 @@ namespace Erp.Infrastructure.Persistence;
 
 internal sealed class DatabaseReadinessService(ErpDbContext db) : IDatabaseReadinessService
 {
-    public const string RequiredSchemaVersion = "202608180020";
+    public const string RequiredSchemaVersion = "202608180021";
 
     public async Task<DatabaseReadinessDto> CheckAsync(CancellationToken cancellationToken)
     {
@@ -21,6 +21,9 @@ internal sealed class DatabaseReadinessService(ErpDbContext db) : IDatabaseReadi
                    AND to_regclass('public.price_override_approvals') IS NOT NULL
                    AND to_regclass('public.customer_service_records') IS NOT NULL
                    AND to_regclass('public.inventory_movements') IS NOT NULL
+                   AND to_regclass('public.ix_customers_name_trgm') IS NOT NULL
+                   AND to_regclass('public.ix_organization_employees_name_trgm') IS NOT NULL
+                   AND EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')
                 """;
             command.CommandType = CommandType.Text;
             var result = await command.ExecuteScalarAsync(cancellationToken);

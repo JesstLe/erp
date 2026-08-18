@@ -1,10 +1,11 @@
-import { PlusOutlined, SafetyCertificateOutlined, StopOutlined, UserOutlined } from '@ant-design/icons'
+import { LoadingOutlined, PlusOutlined, SafetyCertificateOutlined, SearchOutlined, StopOutlined, UserOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Checkbox, Descriptions, Drawer, Empty, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { apiRequest, ApiError } from '../api/client'
 import type { Employee, EmployeeRole } from '../api/types'
 import { useAuth } from '../auth/useAuth'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
 
 interface EmployeeValues { employeeNo: string; displayName: string; positionCode: string; storeIds: string[]; createLoginAccount: boolean; account?: string; initialPassword?: string; roles?: string[] }
 const positionOptions = [
@@ -17,7 +18,10 @@ const roleColor: Record<string, string> = { OWNER: 'purple', STORE_MANAGER: 'blu
 export function EmployeesPage() {
   const auth = useAuth(); const queryClient = useQueryClient(); const [form] = Form.useForm<EmployeeValues>()
   const [createOpen, setCreateOpen] = useState(false); const [selected, setSelected] = useState<Employee>()
-  const employees = useQuery({ queryKey: ['employees'], queryFn: () => apiRequest<Employee[]>('/api/v1/employees') })
+  const [queryText, setQueryText] = useState(''); const appliedQuery = useDebouncedValue(queryText.trim())
+  const employeeParams = new URLSearchParams(); if (appliedQuery) employeeParams.set('query', appliedQuery)
+  const employeePath = `/api/v1/employees${employeeParams.size ? `?${employeeParams}` : ''}`
+  const employees = useQuery({ queryKey: ['employees', appliedQuery], queryFn: ({ signal }) => apiRequest<Employee[]>(employeePath, { signal }) })
   const roles = useQuery({ queryKey: ['employee-roles'], queryFn: () => apiRequest<EmployeeRole[]>('/api/v1/employees/roles') })
   const loginEnabled = Form.useWatch('createLoginAccount', form)
   const onError = (error: unknown) => message.error(error instanceof ApiError ? error.message : '操作失败')
@@ -34,7 +38,9 @@ export function EmployeesPage() {
   return <div className="page-stack">
     <div className="page-heading"><div><Typography.Title level={2}>员工与登录账号</Typography.Title><Typography.Paragraph>员工档案、登录凭据、角色和门店范围分别管理，停用账号不会删除历史业务。</Typography.Paragraph></div><Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新增员工</Button></div>
     <Alert type="info" showIcon title="只有最高权限账号可以创建登录账号和分配角色。新账号首次登录必须先修改初始密码。" />
-    <Card variant="borderless" className="table-card"><Table<Employee> rowKey="id" columns={columns} dataSource={employees.data} loading={employees.isLoading} pagination={{ pageSize: 10 }} locale={{ emptyText: <Empty description="还没有员工档案" /> }} onRow={(record) => ({ onClick: () => setSelected(record), className: 'clickable-row' })} /></Card>
+    <Card variant="borderless"><Space wrap><Input value={queryText} onChange={(event) => setQueryText(event.target.value)} allowClear maxLength={100} placeholder="输入姓名、工号、账号、岗位或门店，自动匹配" prefix={<SearchOutlined />} suffix={queryText.trim() !== appliedQuery || employees.isFetching ? <LoadingOutlined spin /> : null} aria-label="实时查询员工" style={{ width: 420 }} /><Button onClick={() => setQueryText('')}>重置</Button><Typography.Text type="secondary">输入后自动加载，无需点击查询</Typography.Text></Space></Card>
+    {employees.error && <Alert type="error" showIcon title={employees.error instanceof Error ? employees.error.message : '员工查询失败'} />}
+    <Card variant="borderless" className="table-card"><Table<Employee> rowKey="id" columns={columns} dataSource={employees.data} loading={employees.isFetching} pagination={{ pageSize: 10 }} locale={{ emptyText: <Empty description="没有匹配的员工档案" /> }} onRow={(record) => ({ onClick: () => setSelected(record), className: 'clickable-row' })} /></Card>
 
     <Modal title="新增员工" width={720} open={createOpen} onCancel={() => setCreateOpen(false)} onOk={() => form.submit()} okText="创建员工" confirmLoading={create.isPending} destroyOnHidden>
       <Alert type="warning" showIcon title="初始密码仅用于本次提交，保存后不会再次显示。请通过安全方式单独告知员工。" className="modal-alert" />
