@@ -189,7 +189,7 @@ internal sealed class CashierService(ErpDbContext db, TimeProvider clock, IHttpC
 
     private static ServiceOrderDto ToDto(ServiceOrder order) => new(order.Id, order.OrderNo, order.VisitId,
         order.CustomerId, order.Status.ToString(), order.PriceBookId, order.ReferenceAmountMinor, order.ReceivableMinor,
-        order.Note, order.Version, order.CreatedAtUtc, order.Lines.OrderBy(x => x.CreatedAtUtc).Select(x =>
+        order.RefundedMinor, order.Note, order.Version, order.CreatedAtUtc, order.Lines.OrderBy(x => x.CreatedAtUtc).Select(x =>
             new ServiceOrderLineDto(x.Id, x.ServiceItemId, x.ItemCodeSnapshot, x.ItemNameSnapshot, x.Quantity,
                 x.ActualSeconds, x.ReferencePriceMinor, x.EnteredPriceMinor, x.LineAmountMinor, x.PriceOverrideReason)).ToList());
 

@@ -2,7 +2,7 @@ using Erp.Domain.Common;
 
 namespace Erp.Domain.Cashier;
 
-public enum ServiceOrderStatus { Draft, PendingPayment, PaymentProcessing, Settled, Voided }
+public enum ServiceOrderStatus { Draft, PendingPayment, PaymentProcessing, Settled, PartiallyRefunded, Refunded, Voided }
 
 public sealed class ServiceOrder : Entity
 {
@@ -42,6 +42,7 @@ public sealed class ServiceOrder : Entity
     public long ReceivableMinor { get; private set; }
     public DateTimeOffset? ConfirmedAtUtc { get; private set; }
     public DateTimeOffset? SettledAtUtc { get; private set; }
+    public long RefundedMinor { get; private set; }
     public IReadOnlyCollection<ServiceOrderLine> Lines => _lines;
 
     public void Confirm(DateTimeOffset now)
@@ -64,6 +65,17 @@ public sealed class ServiceOrder : Entity
         if (Status != ServiceOrderStatus.PaymentProcessing) throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "消费单当前不能完成结算");
         Status = ServiceOrderStatus.Settled;
         SettledAtUtc = now;
+        Touch();
+    }
+
+    public void ApplyRefund(long amountMinor)
+    {
+        if (Status is not (ServiceOrderStatus.Settled or ServiceOrderStatus.PartiallyRefunded))
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前消费单不可退款");
+        if (amountMinor <= 0 || RefundedMinor + amountMinor > ReceivableMinor)
+            throw new DomainRuleException("REFUND_AMOUNT_EXCEEDED", "退款累计金额不能超过消费单应收金额");
+        RefundedMinor += amountMinor;
+        Status = RefundedMinor == ReceivableMinor ? ServiceOrderStatus.Refunded : ServiceOrderStatus.PartiallyRefunded;
         Touch();
     }
 

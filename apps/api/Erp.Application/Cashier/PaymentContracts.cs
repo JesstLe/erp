@@ -9,7 +9,8 @@ public sealed record PaymentAllocationDto(Guid Id, Guid MethodId, string MethodC
     string ReconciliationStatus, Guid? ShiftId, Guid? MemberAccountId);
 public sealed record PaymentDto(Guid Id, string PaymentNo, Guid? OrderId, string BusinessType, Guid BusinessId,
     string Status, string Currency,
-    long ReceivableMinor, long PaidMinor, DateTimeOffset? PaidAtUtc, IReadOnlyList<PaymentAllocationDto> Allocations);
+    long ReceivableMinor, long PaidMinor, long RefundedMinor, DateTimeOffset? PaidAtUtc, uint Version,
+    IReadOnlyList<PaymentAllocationDto> Allocations);
 public sealed record CashierShiftDto(Guid Id, string ShiftNo, Guid OperatorId, string Status, long OpeningCashMinor,
     long? ExpectedCashMinor, long? SubmittedCashMinor, long? CashDifferenceMinor, long? PendingReconciliationMinor,
     string? HandoverNote, DateTimeOffset OpenedAtUtc, DateTimeOffset? SubmittedAtUtc, Guid? ReviewedBy,

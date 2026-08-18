@@ -81,6 +81,18 @@ public sealed class CustomerMembershipTests
     }
 
     [Fact]
+    public void TopupCanOnlyBeFullyRefundedOnce()
+    {
+        var order = new MemberTopupOrder(TenantId, StoreId, Guid.CreateVersion7(), Guid.CreateVersion7(),
+            "TU202608180003", 10_000, 2_000, "误操作冲正", DateTimeOffset.UtcNow);
+
+        order.ApplyFullRefund();
+
+        Assert.Equal(MemberTopupStatus.Refunded, order.Status);
+        Assert.Throws<DomainRuleException>(order.ApplyFullRefund);
+    }
+
+    [Fact]
     public void MemberDebitRejectsInsufficientBalanceAndWritesAReverseDirectionLedger()
     {
         var account = new MemberAccount(TenantId, Guid.CreateVersion7(), Guid.CreateVersion7(),
@@ -98,6 +110,20 @@ public sealed class CustomerMembershipTests
         Assert.Equal(12_000, ledger.BalanceAfter);
         Assert.Throws<DomainRuleException>(() => account.Debit("ServiceOrder", orderId, 12_001,
             Guid.CreateVersion7(), now));
+    }
+
+    [Fact]
+    public void MemberDeductionMustExhaustPaidPrincipalBeforeUsingBonus()
+    {
+        MemberDeductionPolicy.EnsurePrincipalFirst(50_000, 5_000, 0);
+        MemberDeductionPolicy.EnsurePrincipalFirst(50_000, 50_000, 10_000);
+        MemberDeductionPolicy.EnsurePrincipalFirst(0, 0, 5_000);
+
+        var exception = Assert.Throws<DomainRuleException>(() =>
+            MemberDeductionPolicy.EnsurePrincipalFirst(50_000, 0, 5_000));
+        Assert.Equal("MEMBER_PRINCIPAL_MUST_BE_USED_FIRST", exception.Code);
+        Assert.Throws<DomainRuleException>(() =>
+            MemberDeductionPolicy.EnsurePrincipalFirst(50_000, 49_999, 1));
     }
 
     [Fact]

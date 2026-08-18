@@ -25,9 +25,20 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
         var now = clock.GetUtcNow();
 
         var payments = await db.Payments.AsNoTracking().Include(x => x.Allocations).Where(x =>
-            x.TenantId == tenantId && x.StoreId == storeId && x.Status == PaymentStatus.Paid &&
+            x.TenantId == tenantId && x.StoreId == storeId &&
+            (x.Status == PaymentStatus.Paid || x.Status == PaymentStatus.PartiallyRefunded ||
+             x.Status == PaymentStatus.Refunded) &&
             x.BusinessType == PaymentBusinessType.ServiceOrder &&
             x.PaidAtUtc >= fromUtc && x.PaidAtUtc < toUtc).ToListAsync(cancellationToken);
+        var refunds = await db.Refunds.AsNoTracking().Include(x => x.Lines).Where(x =>
+            x.TenantId == tenantId && x.StoreId == storeId && x.Status == RefundStatus.Completed &&
+            db.Payments.Any(payment => payment.Id == x.PaymentId &&
+                payment.BusinessType == PaymentBusinessType.ServiceOrder) &&
+            x.CompletedAtUtc >= fromUtc && x.CompletedAtUtc < toUtc).ToListAsync(cancellationToken);
+        var refundedAllocationIds = refunds.SelectMany(x => x.Lines).Select(x => x.OriginalAllocationId)
+            .Distinct().ToList();
+        var refundedAllocations = await db.PaymentAllocations.AsNoTracking().Where(x =>
+            refundedAllocationIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
         var orderIds = payments.Where(x => x.OrderId.HasValue).Select(x => x.OrderId!.Value).ToList();
         var orders = await db.ServiceOrders.AsNoTracking().Include(x => x.Lines)
             .Where(x => orderIds.Contains(x.Id)).ToListAsync(cancellationToken);
@@ -47,18 +58,37 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
             var dayEnd = ToUtc(date.AddDays(1), timeZone);
             var dayPayments = payments.Where(x => x.PaidAtUtc >= dayStart && x.PaidAtUtc < dayEnd).ToList();
             var allocations = dayPayments.SelectMany(x => x.Allocations).ToList();
-            return new DailyOperationsDto(date, dayPayments.Sum(x => x.PaidMinor),
-                allocations.Where(x => x.ConfirmationStatus != PaymentConfirmationStatus.ManualPendingReconciliation).Sum(x => x.AmountMinor),
+            var dayRefunds = refunds.Where(x => x.CompletedAtUtc >= dayStart && x.CompletedAtUtc < dayEnd)
+                .SelectMany(x => x.Lines).ToList();
+            var gross = dayPayments.Sum(x => x.PaidMinor);
+            var refundAmount = dayRefunds.Sum(x => x.AmountMinor);
+            return new DailyOperationsDto(date, gross,
+                allocations.Where(x => x.ConfirmationStatus != PaymentConfirmationStatus.ManualPendingReconciliation).Sum(x => x.AmountMinor) -
+                    dayRefunds.Sum(x => x.AmountMinor),
                 allocations.Where(x => x.ReconciliationStatus == ReconciliationStatus.Pending).Sum(x => x.AmountMinor),
+                refundAmount, gross - refundAmount,
                 dayPayments.Count, visits.Count(x => x.ArrivedAtUtc >= dayStart && x.ArrivedAtUtc < dayEnd),
                 sessions.Sum(x => x.GetActiveSecondsInRange(dayStart, dayEnd, now)));
         }).ToList();
 
         var allAllocations = payments.SelectMany(x => x.Allocations).ToList();
-        var paymentMix = allAllocations.GroupBy(x => new { x.MethodCodeSnapshot, x.MethodNameSnapshot })
+        var paymentMix = allAllocations.Select(x => new
+            {
+                x.MethodCodeSnapshot, x.MethodNameSnapshot, Gross = x.AmountMinor,
+                Pending = x.ReconciliationStatus == ReconciliationStatus.Pending ? x.AmountMinor : 0L,
+                Refund = 0L, Count = 1
+            }).Concat(refunds.SelectMany(x => x.Lines).Select(line =>
+            {
+                var allocation = refundedAllocations[line.OriginalAllocationId];
+                return new
+                {
+                    allocation.MethodCodeSnapshot, allocation.MethodNameSnapshot, Gross = 0L,
+                    Pending = 0L, Refund = line.AmountMinor, Count = 0
+                };
+            })).GroupBy(x => new { x.MethodCodeSnapshot, x.MethodNameSnapshot })
             .Select(group => new PaymentMixDto(group.Key.MethodCodeSnapshot, group.Key.MethodNameSnapshot,
-                group.Sum(x => x.AmountMinor), group.Where(x => x.ReconciliationStatus == ReconciliationStatus.Pending)
-                    .Sum(x => x.AmountMinor), group.Count()))
+                group.Sum(x => x.Gross), group.Sum(x => x.Pending), group.Sum(x => x.Refund),
+                group.Sum(x => x.Gross) - group.Sum(x => x.Refund), group.Sum(x => x.Count)))
             .OrderByDescending(x => x.AmountMinor).ToList();
         var servicePerformance = orders.SelectMany(order => order.Lines.Select(line => new { order.Id, Line = line }))
             .GroupBy(x => new { x.Line.ServiceItemId, x.Line.ItemCodeSnapshot, x.Line.ItemNameSnapshot })
@@ -76,11 +106,13 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
                 totalUsage == 0 ? 0 : decimal.Round((decimal)x.Seconds / totalUsage, 4)))
             .OrderByDescending(x => x.ActiveSeconds).ToList();
         var settled = payments.Sum(x => x.PaidMinor);
+        var refunded = refunds.Sum(x => x.AmountMinor);
         var recorded = allAllocations.Where(x => x.ConfirmationStatus != PaymentConfirmationStatus.ManualPendingReconciliation)
             .Sum(x => x.AmountMinor);
         var pending = allAllocations.Where(x => x.ReconciliationStatus == ReconciliationStatus.Pending)
             .Sum(x => x.AmountMinor);
-        var summary = new OperationsSummaryDto(settled, recorded, pending, payments.Count, visits.Count,
+        var summary = new OperationsSummaryDto(settled, recorded - refunded, pending, refunded,
+            settled - refunded, payments.Count, visits.Count,
             payments.Count == 0 ? 0 : settled / payments.Count, daily.Sum(x => x.FacilityActiveSeconds));
         return new OperationsReportDto(startDate, endDate, timeZoneId, summary, daily, paymentMix,
             servicePerformance, facilityUsage);

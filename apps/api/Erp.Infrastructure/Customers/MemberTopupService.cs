@@ -160,7 +160,8 @@ internal sealed class MemberTopupService(ErpDbContext db, TimeProvider clock,
     private static MemberTopupDto ToDto(MemberTopupOrder order, Payment payment) => new(order.Id,
         order.TopupNo, order.StoreId, order.CustomerId, order.CardId, order.PrincipalMinor,
         order.BonusMinor, order.ReceivableMinor, order.Status.ToString(), order.Note, order.PaidAtUtc,
-        payment.Id, payment.PaymentNo, payment.Allocations.OrderBy(x => x.CreatedAtUtc)
+        payment.Id, payment.PaymentNo, payment.Status.ToString(), payment.RefundedMinor, payment.Version,
+        payment.Allocations.OrderBy(x => x.CreatedAtUtc)
             .Select(x => new PaymentAllocationDto(x.Id, x.MethodId, x.MethodCodeSnapshot,
                 x.MethodNameSnapshot, x.Category.ToString(), x.AmountMinor, x.ExternalReference,
                 x.ConfirmationStatus.ToString(), x.ReconciliationStatus.ToString(), x.ShiftId,

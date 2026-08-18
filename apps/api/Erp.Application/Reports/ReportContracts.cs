@@ -1,12 +1,13 @@
 namespace Erp.Application.Reports;
 
 public sealed record OperationsSummaryDto(long SettledRevenueMinor, long RecordedFundsMinor,
-    long PendingReconciliationMinor, int SettledOrderCount, int VisitCount, long AverageTicketMinor,
-    long FacilityActiveSeconds);
+    long PendingReconciliationMinor, long RefundMinor, long NetRevenueMinor, int SettledOrderCount,
+    int VisitCount, long AverageTicketMinor, long FacilityActiveSeconds);
 public sealed record DailyOperationsDto(DateOnly Date, long SettledRevenueMinor, long RecordedFundsMinor,
-    long PendingReconciliationMinor, int OrderCount, int VisitCount, long FacilityActiveSeconds);
+    long PendingReconciliationMinor, long RefundMinor, long NetRevenueMinor, int OrderCount, int VisitCount,
+    long FacilityActiveSeconds);
 public sealed record PaymentMixDto(string MethodCode, string MethodName, long AmountMinor,
-    long PendingReconciliationMinor, int AllocationCount);
+    long PendingReconciliationMinor, long RefundMinor, long NetAmountMinor, int AllocationCount);
 public sealed record ServicePerformanceDto(Guid ServiceItemId, string ItemCode, string ItemName,
     int Quantity, long RevenueMinor, int OrderCount);
 public sealed record FacilityUsageDto(Guid FacilityId, string FacilityName, long ActiveSeconds, decimal UsageShare);

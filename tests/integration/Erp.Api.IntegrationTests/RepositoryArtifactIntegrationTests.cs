@@ -71,6 +71,22 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void RefundMigrationPreservesOriginalRecordsAndTracksBoundReverseLines()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180010__service_payment_refunds.sql"));
+        var refundService = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api",
+            "Erp.Infrastructure", "Cashier", "RefundService.cs"));
+
+        Assert.Contains("REFERENCES payment_allocations(id) ON DELETE RESTRICT", migration,
+            StringComparison.Ordinal);
+        Assert.Contains("refunded_minor BETWEEN 0 AND paid_minor", migration, StringComparison.Ordinal);
+        Assert.Contains("status = 'PendingApproval'", migration, StringComparison.Ordinal);
+        Assert.Contains("account.Credit(\"PaymentRefund\"", refundService, StringComparison.Ordinal);
+        Assert.DoesNotContain("Remove(", refundService, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");

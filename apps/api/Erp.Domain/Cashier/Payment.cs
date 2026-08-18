@@ -4,7 +4,7 @@ using Erp.Domain.Customers;
 namespace Erp.Domain.Cashier;
 
 public enum PaymentMethodCategory { Cash, ManualExternal, InternalAccount }
-public enum PaymentStatus { Processing, Paid, Cancelled, ReversalRequired }
+public enum PaymentStatus { Processing, Paid, PartiallyRefunded, Refunded, Cancelled, ReversalRequired }
 public enum PaymentConfirmationStatus { CashRecorded, ManualPendingReconciliation, InternalConfirmed, ChannelConfirmed, Failed, Cancelled }
 public enum ReconciliationStatus { NotRequired, Pending, Matched, Difference, Resolved }
 public enum PaymentBusinessType { ServiceOrder, MemberTopup }
@@ -91,8 +91,20 @@ public sealed class Payment : Entity
     public string Currency { get; private set; } = "CNY";
     public long ReceivableMinor { get; private set; }
     public long PaidMinor { get; private set; }
+    public long RefundedMinor { get; private set; }
     public DateTimeOffset? PaidAtUtc { get; private set; }
     public IReadOnlyCollection<PaymentAllocation> Allocations => _allocations;
+
+    public void ApplyRefund(long amountMinor)
+    {
+        if (Status is not (PaymentStatus.Paid or PaymentStatus.PartiallyRefunded))
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前支付单不可退款");
+        if (amountMinor <= 0 || RefundedMinor + amountMinor > PaidMinor)
+            throw new DomainRuleException("REFUND_AMOUNT_EXCEEDED", "退款累计金额不能超过原支付金额");
+        RefundedMinor += amountMinor;
+        Status = RefundedMinor == PaidMinor ? PaymentStatus.Refunded : PaymentStatus.PartiallyRefunded;
+        Touch();
+    }
 
     private static string Required(string value, int max, string field)
     {

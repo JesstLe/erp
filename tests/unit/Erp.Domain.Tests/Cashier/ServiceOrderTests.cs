@@ -64,6 +64,22 @@ public sealed class ServiceOrderTests
         Assert.Equal(ServiceOrderStatus.Settled, order.Status);
     }
 
+    [Fact]
+    public void RefundTotalsAdvanceSettledOrderAndRejectExcess()
+    {
+        var order = CreateOrder([new(Guid.CreateVersion7(), "S01", "标准服务", 1, null, 10_000, 10_000, null)]);
+        order.Confirm(DateTimeOffset.UtcNow);
+        order.BeginCheckout();
+        order.Settle(DateTimeOffset.UtcNow);
+
+        order.ApplyRefund(4_000);
+        Assert.Equal(ServiceOrderStatus.PartiallyRefunded, order.Status);
+        order.ApplyRefund(6_000);
+        Assert.Equal(ServiceOrderStatus.Refunded, order.Status);
+        Assert.Equal(10_000, order.RefundedMinor);
+        Assert.Throws<DomainRuleException>(() => order.ApplyRefund(1));
+    }
+
     private static ServiceOrder CreateOrder(IEnumerable<ServiceOrderLineDraft> lines) => new(Guid.CreateVersion7(),
         Guid.CreateVersion7(), Guid.CreateVersion7(), null, "SO202608180001", Guid.CreateVersion7(), null, lines);
 }

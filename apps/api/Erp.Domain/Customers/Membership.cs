@@ -9,6 +9,20 @@ public enum MemberAccountStatus { Active, Frozen, Closed }
 public enum LedgerDirection { Credit, Debit }
 public enum MemberTopupStatus { Paid, Cancelled, PartiallyRefunded, Refunded }
 
+public static class MemberDeductionPolicy
+{
+    public static void EnsurePrincipalFirst(long principalBalance, long principalDebit, long bonusDebit)
+    {
+        if (principalBalance < 0 || principalDebit < 0 || bonusDebit < 0)
+            throw new DomainRuleException("VALIDATION_FAILED", "会员账户余额和扣款金额不能为负");
+        if (principalDebit > principalBalance)
+            throw new DomainRuleException("INSUFFICIENT_MEMBER_BALANCE", "会员储值本金余额不足");
+        if (bonusDebit > 0 && principalDebit != principalBalance)
+            throw new DomainRuleException("MEMBER_PRINCIPAL_MUST_BE_USED_FIRST",
+                "使用赠送奖励前，必须先扣完同一会员卡的储值本金");
+    }
+}
+
 public sealed class MemberCardType : Entity
 {
     private MemberCardType() { }
@@ -191,6 +205,14 @@ public sealed class MemberTopupOrder : Entity
     public MemberTopupStatus Status { get; private set; }
     public string? Note { get; private set; }
     public DateTimeOffset PaidAtUtc { get; private set; }
+
+    public void ApplyFullRefund()
+    {
+        if (Status != MemberTopupStatus.Paid)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "只有已入账且未冲正的储值单可以全额冲正");
+        Status = MemberTopupStatus.Refunded;
+        Touch();
+    }
 
     private static string Required(string value, int max, string field)
     {
