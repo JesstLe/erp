@@ -4,7 +4,7 @@ export interface EmployeeStore { id: string; code: string; name: string; isPrima
 export interface Employee { id: string; employeeNo: string; displayName: string; positionCode: string; status: string; userId?: string; account?: string; accountEnabled?: boolean; mustChangePassword?: boolean; roles: string[]; stores: EmployeeStore[]; createdAtUtc: string }
 export interface EmployeeRole { id: string; code: string; name: string }
 export interface ServiceItem { id: string; code: string; name: string; standardDurationMinutes: number; status: string; version: number }
-export interface ProductItem { id: string; code: string; name: string; unitName: string; trackInventory: boolean; status: string; version: number }
+export interface ProductItem { id: string; code: string; name: string; unitName: string; trackInventory: boolean; imageFileId?: string; status: string; version: number }
 export interface PriceBookLine { serviceItemId: string; serviceItemName: string; unitPriceMinor: number }
 export interface ProductPriceBookLine { productItemId: string; productItemName: string; unitName: string; unitPriceMinor: number }
 export interface PriceBook { id: string; name: string; status: string; effectiveFrom: string; publishedAtUtc?: string; lines: PriceBookLine[]; productLines: ProductPriceBookLine[] }
@@ -24,6 +24,9 @@ export interface MemberCardType { id: string; code: string; name: string; validi
 export interface MemberAccount { id: string; accountType: string; balanceUnits: number; status: string }
 export interface MemberCard { id: string; cardTypeName: string; maskedCardNo: string; status: string; validFrom: string; validTo?: string; accounts: MemberAccount[] }
 export interface CustomerDetail { id: string; displayName: string; maskedMobile: string; gender: string; sourceCode?: string; serviceNotificationConsent: boolean; marketingConsent: boolean; status: string; homeStoreId: string; version: number; cards: MemberCard[] }
+export interface ServiceRecordAttachment { fileId: string; fileName: string; contentType: string; sizeBytes: number }
+export interface ServiceRecord { id: string; storeId: string; customerId: string; serviceOrderId?: string; serviceOrderNo?: string; serviceOccurredAtUtc: string; conditionNotes?: string; serviceContent?: string; followUpNotes?: string; createdBy: string; createdByName: string; createdAtUtc: string; attachments: ServiceRecordAttachment[] }
+export interface ServiceRecordOrderOption { id: string; orderNo: string; status: string; createdAtUtc: string }
 export interface CashierVisit { id: string; visitNo: string; status: string; customerId?: string; arrivedAtUtc: string; serviceEndedAtUtc?: string; facilitySeconds: number; note?: string }
 export interface ServiceOrderLine { id: string; lineType: 'Service' | 'Product'; serviceItemId?: string; productItemId?: string; itemCode: string; itemName: string; unitName?: string; quantity: number; returnedQuantity: number; actualSeconds?: number; referencePriceMinor: number; enteredPriceMinor: number; lineAmountMinor: number; priceOverrideReason?: string }
 export interface ServiceOrder { id: string; orderNo: string; visitId: string; customerId?: string; status: string; priceBookId: string; referenceAmountMinor: number; receivableMinor: number; refundedMinor: number; note?: string; version: number; createdAtUtc: string; lines: ServiceOrderLine[] }

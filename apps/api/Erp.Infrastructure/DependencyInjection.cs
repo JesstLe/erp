@@ -12,6 +12,7 @@ using Erp.Infrastructure.Cashier;
 using Erp.Infrastructure.Auditing;
 using Erp.Infrastructure.Reports;
 using Erp.Infrastructure.Inventory;
+using Erp.Infrastructure.Files;
 using Erp.Infrastructure.Facilities;
 using Erp.Infrastructure.Identity;
 using Erp.Infrastructure.Persistence;
@@ -33,6 +34,8 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException("缺少 ConnectionStrings:ErpDatabase 配置");
         var customerLookupPepper = configuration["CustomerPrivacy:LookupPepper"];
         var memberVerificationPepper = configuration["MemberVerification:CodePepper"];
+        var fileStorageRoot = configuration["FileStorage:RootPath"];
+        var dataProtectionKeyRingPath = configuration["DataProtection:KeyRingPath"];
         if (!environment.IsDevelopment() && (string.IsNullOrWhiteSpace(customerLookupPepper) || customerLookupPepper.Length < 32 ||
             customerLookupPepper.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("生产环境必须配置至少32字符的 CustomerPrivacy:LookupPepper，且不能使用模板占位值");
@@ -40,9 +43,15 @@ public static class DependencyInjection
             memberVerificationPepper.Length < 32 ||
             memberVerificationPepper.StartsWith("CHANGE_ME", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("生产环境必须配置至少32字符的 MemberVerification:CodePepper，且不能使用模板占位值");
+        if (!environment.IsDevelopment() && string.IsNullOrWhiteSpace(fileStorageRoot))
+            throw new InvalidOperationException("生产环境必须配置独立持久化目录 FileStorage:RootPath");
+        if (!environment.IsDevelopment() && string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
+            throw new InvalidOperationException("生产环境必须配置持久化 DataProtection:KeyRingPath");
 
         services.AddDbContext<ErpDbContext>(options => options.UseNpgsql(connectionString));
-        services.AddDataProtection().SetApplicationName("Erp");
+        var dataProtection = services.AddDataProtection().SetApplicationName("Erp");
+        if (!string.IsNullOrWhiteSpace(dataProtectionKeyRingPath))
+            dataProtection.PersistKeysToFileSystem(new DirectoryInfo(Path.GetFullPath(dataProtectionKeyRingPath)));
         services.AddHttpContextAccessor();
         services.AddScoped<IPasswordHasher<ApplicationUser>, Argon2IdPasswordHasher>();
         services.AddIdentity<ApplicationUser, ApplicationRole>(options =>
@@ -82,11 +91,13 @@ public static class DependencyInjection
 
         services.AddScoped<IIdentityService, IdentityService>();
         services.AddScoped<IEmployeeService, EmployeeService>();
+        services.AddSingleton<SecureFileStorage>();
         services.AddScoped<ICatalogService, CatalogService>();
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IFacilityService, FacilityService>();
         services.AddScoped<CustomerPrivacyService>();
         services.AddScoped<ICustomerService, CustomerService>();
+        services.AddScoped<IServiceRecordService, ServiceRecordService>();
         services.AddScoped<IMemberTopupService, MemberTopupService>();
         services.AddScoped<MemberVerificationCodeService>();
         services.AddScoped<IMemberVerificationService, MemberVerificationService>();

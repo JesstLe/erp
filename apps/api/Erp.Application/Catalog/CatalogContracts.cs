@@ -8,7 +8,7 @@ public sealed record CreateServiceItemCommand(string Code, string Name, int Stan
     Guid? StoreId);
 
 public sealed record ProductItemDto(Guid Id, string Code, string Name, string UnitName, bool TrackInventory,
-    string Status, uint Version);
+    Guid? ImageFileId, string Status, uint Version);
 
 public sealed record CreateProductItemCommand(string Code, string Name, string UnitName, bool TrackInventory,
     Guid OperatorId, Guid? StoreId);
@@ -40,6 +40,10 @@ public interface ICatalogService
     Task<IReadOnlyList<ProductItemDto>> ListProductItemsAsync(Guid tenantId, CancellationToken cancellationToken);
 
     Task<Result<ProductItemDto>> CreateProductItemAsync(Guid tenantId, CreateProductItemCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<ProductItemDto>> SetProductImageAsync(Guid tenantId, Guid productItemId, Guid operatorId,
+        Guid? storeId, FileUploadInput image, CancellationToken cancellationToken);
+    Task<Result<StoredFileContent>> ReadProductImageAsync(Guid tenantId, Guid productItemId,
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<PriceBookDto>> ListPriceBooksAsync(Guid tenantId, CancellationToken cancellationToken);

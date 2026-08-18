@@ -39,4 +39,15 @@ public sealed class ProductItemTests
         Assert.Equal(6_800, book.ProductLines.Single().UnitPriceMinor);
         Assert.Equal(PriceBookStatus.Published, book.Status);
     }
+
+    [Fact]
+    public void OptionalImageCanBeAssignedAfterProductCreation()
+    {
+        var product = new ProductItem(Guid.CreateVersion7(), "PD001", "护理套装", "套", false);
+        var fileId = Guid.CreateVersion7();
+
+        product.SetImage(fileId);
+
+        Assert.Equal(fileId, product.ImageFileId);
+    }
 }

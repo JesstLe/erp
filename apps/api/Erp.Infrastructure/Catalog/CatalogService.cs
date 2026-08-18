@@ -3,12 +3,14 @@ using Erp.Application.Common;
 using Erp.Domain.Catalog;
 using Erp.Domain.Common;
 using Erp.Infrastructure.Persistence;
+using Erp.Infrastructure.Files;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 
 namespace Erp.Infrastructure.Catalog;
 
-public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor httpContextAccessor) : ICatalogService
+public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor httpContextAccessor,
+    SecureFileStorage fileStorage) : ICatalogService
 {
     public async Task<IReadOnlyList<ServiceItemDto>> ListServiceItemsAsync(Guid tenantId, CancellationToken cancellationToken)
         => await dbContext.ServiceItems
@@ -43,7 +45,7 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
     public async Task<IReadOnlyList<ProductItemDto>> ListProductItemsAsync(Guid tenantId, CancellationToken cancellationToken)
         => await dbContext.Set<ProductItem>().AsNoTracking().Where(x => x.TenantId == tenantId).OrderBy(x => x.Code)
             .Select(x => new ProductItemDto(x.Id, x.Code, x.Name, x.UnitName, x.TrackInventory,
-                x.Status.ToString().ToUpperInvariant(), x.Version)).ToListAsync(cancellationToken);
+                x.ImageFileId, x.Status.ToString().ToUpperInvariant(), x.Version)).ToListAsync(cancellationToken);
 
     public async Task<Result<ProductItemDto>> CreateProductItemAsync(Guid tenantId, CreateProductItemCommand command,
         CancellationToken cancellationToken)
@@ -64,6 +66,57 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
         {
             return ResultFactory.Failure<ProductItemDto>(exception.Code, exception.Message);
         }
+    }
+
+    public async Task<Result<ProductItemDto>> SetProductImageAsync(Guid tenantId, Guid productItemId, Guid operatorId,
+        Guid? storeId, FileUploadInput image, CancellationToken cancellationToken)
+    {
+        var product = await dbContext.ProductItems.SingleOrDefaultAsync(x => x.TenantId == tenantId &&
+            x.Id == productItemId, cancellationToken);
+        if (product is null)
+            return ResultFactory.Failure<ProductItemDto>("PRODUCT_NOT_FOUND", "产品不存在");
+        StoredFileRecord? stored = null;
+        try
+        {
+            stored = await fileStorage.StoreImageAsync(tenantId, null, StoredFilePurposes.ProductImage, operatorId,
+                image, cancellationToken);
+            dbContext.StoredFiles.Add(stored);
+            product.SetImage(stored.Id);
+            AddAudit(tenantId, storeId, operatorId, "catalog.product_image.set", "ProductItem", product.Id,
+                null, "ImageSet");
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(Map(product));
+        }
+        catch (DomainRuleException exception)
+        {
+            if (stored is not null) await fileStorage.TryDeleteUncommittedAsync(stored);
+            return ResultFactory.Failure<ProductItemDto>(exception.Code, exception.Message);
+        }
+        catch (SecureFileStorageException exception)
+        {
+            if (stored is not null) await fileStorage.TryDeleteUncommittedAsync(stored);
+            return ResultFactory.Failure<ProductItemDto>(exception.Code, exception.Message);
+        }
+        catch
+        {
+            if (stored is not null) await fileStorage.TryDeleteUncommittedAsync(stored);
+            throw;
+        }
+    }
+
+    public async Task<Result<StoredFileContent>> ReadProductImageAsync(Guid tenantId, Guid productItemId,
+        CancellationToken cancellationToken)
+    {
+        var file = await dbContext.ProductItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.Id == productItemId && x.ImageFileId.HasValue)
+            .Join(dbContext.StoredFiles.AsNoTracking(), product => product.ImageFileId!.Value, stored => stored.Id,
+                (_, stored) => stored)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (file is null || file.Purpose != StoredFilePurposes.ProductImage)
+            return ResultFactory.Failure<StoredFileContent>("FILE_NOT_FOUND", "产品图片不存在");
+        try { return ResultFactory.Success(await fileStorage.ReadAsync(file, cancellationToken)); }
+        catch (SecureFileStorageException exception)
+        { return ResultFactory.Failure<StoredFileContent>(exception.Code, exception.Message); }
     }
 
     public async Task<IReadOnlyList<PriceBookDto>> ListPriceBooksAsync(Guid tenantId, CancellationToken cancellationToken)
@@ -174,7 +227,7 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
 
     private static ProductItemDto Map(ProductItem item)
         => new(item.Id, item.Code, item.Name, item.UnitName, item.TrackInventory,
-            item.Status.ToString().ToUpperInvariant(), item.Version);
+            item.ImageFileId, item.Status.ToString().ToUpperInvariant(), item.Version);
 
     private static PriceBookDto Map(PriceBook book, IReadOnlyDictionary<Guid, string> names,
         IReadOnlyDictionary<Guid, (string Name, string UnitName)> products)

@@ -84,12 +84,22 @@ D:\erp\app\current
 D:\erp\app\releases
 D:\erp\logs\app
 D:\erp\data\attachments
+D:\erp\data\data-protection-keys
 D:\erp\backup\staging
 D:\postgresql\data
 D:\postgresql\logs
 ```
 
-如果服务器只有C盘，也保持同样的逻辑目录隔离。应用服务账号不能读取数据库数据目录、备份密钥或其他服务密钥；PostgreSQL服务账号不能修改应用发布目录。
+如果服务器只有C盘，也保持同样的逻辑目录隔离。应用服务账号只能读写附件目录和 Data Protection 密钥目录，不能读取数据库数据目录、备份密钥或其他服务密钥；PostgreSQL服务账号不能修改应用发布目录。附件和密钥目录必须位于 `releases` 之外，A/B 两个站点使用同一受控目录。
+
+生产/验收环境至少配置：
+
+```text
+FileStorage__RootPath=D:\erp\data\attachments
+DataProtection__KeyRingPath=D:\erp\data\data-protection-keys
+```
+
+Data Protection 密钥用于解密顾客手机号和上传图片。丢失密钥会导致历史敏感数据及附件无法读取；密钥备份必须加密、限制访问并与附件备份保持一致的恢复点。
 
 ## 5. 网络安全
 
@@ -132,7 +142,9 @@ current -> releases\2026.08.25.1
 - 归档切换和传输策略必须经过演练，满足15分钟RPO目标，同时监控额外WAL量和 `pg_wal` 积压。
 - 发布前：数据库备份或云盘快照，并记录备份编号。
 - 每日：检查备份大小、校验值、上传结果和WAL归档积压。
+- 每日：增量备份加密附件目录；Data Protection 密钥变化后立即生成受控加密备份。
 - 每月：恢复到隔离数据库并运行金额、余额、库存和schema校验。
+- 每月：联合恢复数据库、附件和密钥目录，并抽查产品图片及服务档案图片可解密、摘要一致且权限仍有效。
 
 本机 `backup\staging` 只用于小文件和短期上传缓冲；较大的逻辑备份和基础备份应直接流式传输或生成后立即传出。异地校验成功后按策略清理，防止占满70GB磁盘。
 
@@ -174,6 +186,7 @@ current -> releases\2026.08.25.1
 - [ ] 数据库端口未暴露公网。
 - [ ] 应用、迁移、备份和只读账号完成最小授权。
 - [ ] 自动备份已上传异地且成功恢复过。
+- [ ] 附件目录与 Data Protection 密钥目录位于发布目录之外，NTFS权限、联合备份和解密抽查通过。
 - [ ] 磁盘、WAL、备份和应用健康告警可用。
 - [ ] 应用发布与程序回退演练完成。
 - [ ] 数据库扩展—迁移—收缩演练完成。
