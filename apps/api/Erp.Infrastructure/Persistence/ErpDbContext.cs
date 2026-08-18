@@ -365,12 +365,14 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.StoreId).HasColumnName("store_id");
             entity.Property(x => x.VisitNo).HasColumnName("visit_no").HasMaxLength(40);
             entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.PlannedServiceItemId).HasColumnName("planned_service_item_id");
             entity.Property(x => x.ExpectedDurationMinutes).HasColumnName("expected_duration_minutes");
             entity.Property(x => x.Note).HasColumnName("note").HasMaxLength(500);
             entity.Property(x => x.ArrivedAtUtc).HasColumnName("arrived_at_utc");
             entity.Property(x => x.ServiceEndedAtUtc).HasColumnName("service_ended_at_utc");
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(32);
             entity.HasIndex(x => new { x.TenantId, x.VisitNo }).IsUnique();
+            entity.HasOne<ServiceItem>().WithMany().HasForeignKey(x => x.PlannedServiceItemId).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<FacilitySession>(entity =>
         {

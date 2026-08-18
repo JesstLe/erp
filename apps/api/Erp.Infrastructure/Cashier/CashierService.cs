@@ -9,6 +9,7 @@ using Erp.Domain.Catalog;
 using Erp.Domain.Common;
 using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
+using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Persistence;
 using Erp.Infrastructure.Inventory;
 using Microsoft.AspNetCore.Http;
@@ -30,10 +31,29 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
         var visitIds = visits.Select(x => x.Id).ToList();
         var sessions = await db.FacilitySessions.AsNoTracking().Include(x => x.Pauses)
             .Where(x => visitIds.Contains(x.VisitId)).ToListAsync(cancellationToken);
+        var customerIds = visits.Where(x => x.CustomerId.HasValue).Select(x => x.CustomerId!.Value).Distinct().ToList();
+        var rawCustomerNames = await db.Customers.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && customerIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
+        var customerNames = rawCustomerNames.ToDictionary(x => x.Key, x => CustomerPrivacyService.MaskName(x.Value));
+        var plannedServiceIds = visits.Where(x => x.PlannedServiceItemId.HasValue)
+            .Select(x => x.PlannedServiceItemId!.Value).Distinct().ToList();
+        var plannedServiceNames = await db.ServiceItems.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && plannedServiceIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
+        var facilityIds = sessions.Select(x => x.FacilityId).Distinct().ToList();
+        var facilityNames = await db.Facilities.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.StoreId == storeId && facilityIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
         var now = clock.GetUtcNow();
         return visits.Select(visit => new CashierVisitDto(visit.Id, visit.VisitNo, visit.Status.ToString(), visit.CustomerId,
-            visit.ArrivedAtUtc, visit.ServiceEndedAtUtc, sessions.Where(x => x.VisitId == visit.Id).Sum(x => x.GetActiveSeconds(now)),
-            visit.Note)).ToList();
+            visit.CustomerId is Guid customerId ? customerNames.GetValueOrDefault(customerId, "匿名顾客") : "匿名顾客",
+            visit.PlannedServiceItemId,
+            visit.PlannedServiceItemId is Guid serviceItemId ? plannedServiceNames.GetValueOrDefault(serviceItemId) : null,
+            string.Join(" → ", sessions.Where(x => x.VisitId == visit.Id).OrderBy(x => x.StartedAtUtc)
+                .Select(x => facilityNames.GetValueOrDefault(x.FacilityId, "未知设施")).Distinct()),
+            visit.ArrivedAtUtc, visit.ServiceEndedAtUtc,
+            sessions.Where(x => x.VisitId == visit.Id).Sum(x => x.GetActiveSeconds(now)), visit.Note)).ToList();
     }
 
     public async Task<IReadOnlyList<ServiceOrderDto>> ListOrdersAsync(Guid tenantId, Guid storeId, CancellationToken cancellationToken)

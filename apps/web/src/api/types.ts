@@ -20,6 +20,8 @@ export interface FacilityBoardItem {
   sessionId?: string; visitId?: string; visitNo?: string; sessionStatus?: string; startedAtUtc?: string
   activeSeconds: number; pausedSeconds: number; expectedDurationMinutes?: number; note?: string
   serviceName?: string | null; equipmentName?: string | null; referencePriceMinor?: number | null
+  customerId?: string | null; customerDisplayName?: string | null
+  plannedServiceItemId?: string | null; plannedServiceItemName?: string | null
 }
 export interface FacilityBoardGroup { id: string; displayName: string; facilities: FacilityBoardItem[] }
 export interface FacilityBoard { serverNowUtc: string; groups: FacilityBoardGroup[] }
@@ -32,7 +34,7 @@ export interface CustomerDetail { id: string; displayName: string; maskedMobile:
 export interface ServiceRecordAttachment { fileId: string; fileName: string; contentType: string; sizeBytes: number }
 export interface ServiceRecord { id: string; storeId: string; customerId: string; serviceOrderId?: string; serviceOrderNo?: string; serviceOccurredAtUtc: string; conditionNotes?: string; serviceContent?: string; followUpNotes?: string; createdBy: string; createdByName: string; createdAtUtc: string; attachments: ServiceRecordAttachment[] }
 export interface ServiceRecordOrderOption { id: string; orderNo: string; status: string; createdAtUtc: string }
-export interface CashierVisit { id: string; visitNo: string; status: string; customerId?: string; arrivedAtUtc: string; serviceEndedAtUtc?: string; facilitySeconds: number; note?: string }
+export interface CashierVisit { id: string; visitNo: string; status: string; customerId?: string; customerDisplayName: string; plannedServiceItemId?: string; plannedServiceItemName?: string; facilityNames: string; arrivedAtUtc: string; serviceEndedAtUtc?: string; facilitySeconds: number; note?: string }
 export interface ServiceOrderLine { id: string; lineType: 'Service' | 'Product'; serviceItemId?: string; productItemId?: string; itemCode: string; itemName: string; unitName?: string; quantity: number; returnedQuantity: number; actualSeconds?: number; referencePriceMinor: number; enteredPriceMinor: number; lineAmountMinor: number; priceOverrideReason?: string }
 export interface ServiceOrder { id: string; orderNo: string; visitId: string; customerId?: string; status: string; priceBookId: string; referenceAmountMinor: number; receivableMinor: number; refundedMinor: number; note?: string; version: number; createdAtUtc: string; lines: ServiceOrderLine[] }
 export interface PaymentMethod { id: string; code: string; name: string; category: string; requiresOpenShift: boolean; internalAccountType?: string; channelProvider?: string }

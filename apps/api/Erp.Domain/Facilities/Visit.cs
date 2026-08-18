@@ -8,7 +8,8 @@ public sealed class Visit : Entity
 {
     private Visit() { }
 
-    public Visit(Guid tenantId, Guid storeId, string visitNo, int? expectedDurationMinutes, string? note, DateTimeOffset arrivedAtUtc)
+    public Visit(Guid tenantId, Guid storeId, string visitNo, int? expectedDurationMinutes, string? note,
+        DateTimeOffset arrivedAtUtc, Guid? plannedServiceItemId = null)
         : base(tenantId)
     {
         StoreId = storeId;
@@ -17,6 +18,9 @@ public sealed class Visit : Entity
         if (note?.Trim().Length > 500) throw new DomainRuleException("VALIDATION_FAILED", "备注最多500个字符");
         ExpectedDurationMinutes = expectedDurationMinutes;
         Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        if (plannedServiceItemId == Guid.Empty)
+            throw new DomainRuleException("VALIDATION_FAILED", "预计服务项目无效");
+        PlannedServiceItemId = plannedServiceItemId;
         ArrivedAtUtc = arrivedAtUtc;
         Status = VisitStatus.InService;
     }
@@ -24,6 +28,7 @@ public sealed class Visit : Entity
     public Guid StoreId { get; private set; }
     public string VisitNo { get; private set; } = string.Empty;
     public Guid? CustomerId { get; private set; }
+    public Guid? PlannedServiceItemId { get; private set; }
     public int? ExpectedDurationMinutes { get; private set; }
     public string? Note { get; private set; }
     public DateTimeOffset ArrivedAtUtc { get; private set; }

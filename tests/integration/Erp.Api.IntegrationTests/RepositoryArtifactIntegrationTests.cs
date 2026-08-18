@@ -217,7 +217,26 @@ public sealed partial class RepositoryArtifactIntegrationTests
         Assert.Contains("ConfigurationOperators = [SystemRoles.Owner, SystemRoles.StoreManager]", endpoints,
             StringComparison.Ordinal);
         Assert.Contains("RequireRole(SystemRoles.Owner)", endpoints, StringComparison.Ordinal);
-        Assert.DoesNotContain("db.Facilities", cashier, StringComparison.Ordinal);
+        Assert.DoesNotContain("facility.ReferencePriceMinor", cashier, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VisitRecognitionContextIsOptionalScopedAndNeverAutomaticPricing()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180018__recognizable_visit_context.sql"));
+        var facilityService = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Facilities", "FacilityService.cs"));
+        var cashierPage = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "web", "src", "pages",
+            "CashierPage.tsx"));
+
+        Assert.Contains("planned_service_item_id uuid", migration, StringComparison.Ordinal);
+        Assert.Contains("ON DELETE RESTRICT", migration, StringComparison.Ordinal);
+        Assert.Contains("never creates a charge", migration, StringComparison.Ordinal);
+        Assert.Contains("x.HomeStoreId == command.StoreId", facilityService, StringComparison.Ordinal);
+        Assert.Contains("CustomerPrivacyService.MaskName", facilityService, StringComparison.Ordinal);
+        Assert.Contains("带入预计服务", cashierPage, StringComparison.Ordinal);
+        Assert.Contains("预计服务都不会自动形成费用", cashierPage, StringComparison.Ordinal);
     }
 
     [Fact]

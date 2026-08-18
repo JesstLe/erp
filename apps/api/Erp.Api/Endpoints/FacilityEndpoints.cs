@@ -114,8 +114,9 @@ public static class FacilityEndpoints
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, request.StoreId)) return Results.Forbid();
             return EndpointResults.From(await facilities.StartAsync(current.TenantId,
-                new StartFacilitySessionCommand(request.StoreId, request.FacilityId, request.ExpectedDurationMinutes,
-                    request.Note, request.CommandId, current.Id), cancellationToken));
+                new StartFacilitySessionCommand(request.StoreId, request.FacilityId, request.CustomerId,
+                    request.PlannedServiceItemId, request.ExpectedDurationMinutes, request.Note,
+                    request.CommandId, current.Id), cancellationToken));
         }).RequireAuthorization(policy => policy.RequireRole(Operators));
 
         group.MapPost("/sessions/{sessionId:guid}/pause", (Guid sessionId, SessionCommandRequest request, IIdentityService identity,
@@ -181,7 +182,8 @@ public static class FacilityEndpoints
         string? DisplayName, string? ServiceName, string? EquipmentName, long? ReferencePriceMinor,
         int SortOrder, int DefaultCleaningMinutes, bool AllowReservation, string? LifecycleStatus,
         uint ExpectedVersion);
-    private sealed record StartSessionRequest(Guid StoreId, Guid FacilityId, int? ExpectedDurationMinutes, string? Note, Guid CommandId);
+    private sealed record StartSessionRequest(Guid StoreId, Guid FacilityId, Guid? CustomerId,
+        Guid? PlannedServiceItemId, int? ExpectedDurationMinutes, string? Note, Guid CommandId);
     private sealed record SessionCommandRequest(Guid StoreId, Guid CommandId);
     private sealed record SwitchSessionRequest(Guid StoreId, Guid TargetFacilityId, string? Reason, Guid CommandId);
 }
