@@ -96,12 +96,13 @@ public static class DependencyInjection
             client.BaseAddress = new Uri("https://api.mch.weixin.qq.com");
             client.Timeout = TimeSpan.FromSeconds(15);
         });
-        services.AddScoped<AlipayGateway>();
+        services.AddHttpClient<AlipayGateway>(client => client.Timeout = TimeSpan.FromSeconds(30));
         services.AddScoped<IPaymentChannelGateway>(provider => provider.GetRequiredService<WechatPayGateway>());
         services.AddScoped<IPaymentChannelGateway>(provider => provider.GetRequiredService<AlipayGateway>());
         services.AddScoped<PaymentChannelGatewayRegistry>();
         services.AddScoped<IPaymentChannelConfigurationService, PaymentChannelConfigurationService>();
         services.AddScoped<IPaymentChannelPaymentService, PaymentChannelPaymentService>();
+        services.AddScoped<IPaymentChannelReconciliationService, PaymentChannelReconciliationService>();
         services.AddScoped<IRefundService, RefundService>();
         services.AddScoped<IAuditQueryService, AuditQueryService>();
         services.AddScoped<IReportService, ReportService>();

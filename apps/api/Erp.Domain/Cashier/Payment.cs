@@ -248,6 +248,17 @@ public sealed class PaymentAllocation : Entity
         Touch();
     }
 
+    public void MarkReconciled(ReconciliationStatus status)
+    {
+        if (Category != PaymentMethodCategory.ChannelExternal ||
+            status is not (ReconciliationStatus.Matched or ReconciliationStatus.Difference or
+                ReconciliationStatus.Resolved))
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前支付分摊不能更新渠道对账状态");
+        if (ReconciliationStatus == status) return;
+        ReconciliationStatus = status;
+        Touch();
+    }
+
     internal void CancelChannel()
     {
         if (Category != PaymentMethodCategory.ChannelExternal ||

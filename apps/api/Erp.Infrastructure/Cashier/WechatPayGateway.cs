@@ -115,6 +115,46 @@ internal sealed class WechatPayGateway(HttpClient httpClient, TimeProvider clock
         return ParseRefundResponse(response, request);
     }
 
+    public async Task<PaymentChannelBillResult> DownloadBillAsync(
+        PaymentChannelCredentialProfile credentials, DateOnly businessDate,
+        CancellationToken cancellationToken)
+    {
+        var path = $"/v3/bill/tradebill?bill_date={businessDate:yyyy-MM-dd}&bill_type=ALL";
+        var linkResponse = await SendAsync(credentials, HttpMethod.Get, path, string.Empty, cancellationToken);
+        if (!linkResponse.IsTrusted || !linkResponse.IsSuccess)
+            return BillFailure(linkResponse.ErrorCode, linkResponse.ErrorMessage);
+        try
+        {
+            using var document = JsonDocument.Parse(linkResponse.Body);
+            var root = document.RootElement;
+            var hashType = root.GetProperty("hash_type").GetString();
+            var expectedHash = root.GetProperty("hash_value").GetString();
+            var downloadUrl = root.GetProperty("download_url").GetString();
+            if (!string.Equals(hashType, "SHA1", StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(expectedHash) ||
+                !TryWechatBillUri(downloadUrl, out var uri))
+                return BillFailure("CHANNEL_BILL_INVALID_RESPONSE", "微信账单下载信息无效");
+            var raw = await DownloadRawBillAsync(credentials, uri!, cancellationToken);
+            if (!raw.IsSuccess || raw.Content is null)
+                return BillFailure(raw.ErrorCode, raw.ErrorMessage);
+            // WeChat publishes SHA-1 for this protocol-level file-integrity comparison.
+            // It is not used for credentials or signatures; SHA-256 is retained for our audit record.
+#pragma warning disable CA5350
+            var actualHash = Convert.ToHexString(SHA1.HashData(raw.Content));
+#pragma warning restore CA5350
+            if (!string.Equals(actualHash, expectedHash, StringComparison.OrdinalIgnoreCase))
+                return BillFailure("CHANNEL_BILL_HASH_MISMATCH", "微信账单文件摘要校验失败");
+            var content = new UTF8Encoding(false, true).GetString(raw.Content);
+            var entries = PaymentChannelBillCsv.ParseWechat(content);
+            return new PaymentChannelBillResult(true, entries, SHA256.HashData(raw.Content), null, null);
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or
+            FormatException or DecoderFallbackException or CryptographicException)
+        {
+            return BillFailure("CHANNEL_BILL_INVALID_RESPONSE", "微信账单格式无效");
+        }
+    }
+
     public PaymentChannelNotification VerifyNotification(PaymentChannelCredentialProfile credentials,
         PaymentChannelNotificationEnvelope notification)
     {
@@ -209,6 +249,46 @@ internal sealed class WechatPayGateway(HttpClient httpClient, TimeProvider clock
         }
     }
 
+    private async Task<RawBillDownload> DownloadRawBillAsync(PaymentChannelCredentialProfile credentials,
+        Uri uri, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var privateKey = await File.ReadAllTextAsync(credentials.MerchantPrivateKeyPath, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            request.Headers.TryAddWithoutValidation("Authorization", WechatPayV3Crypto.CreateAuthorization(
+                HttpMethod.Get.Method, uri.PathAndQuery, string.Empty, credentials.MerchantId!,
+                credentials.MerchantCertificateSerial!, privateKey, clock.GetUtcNow()));
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/plain"));
+            using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return new RawBillDownload(false, null, "CHANNEL_BILL_DOWNLOAD_FAILED",
+                    "微信账单文件下载失败");
+            const int maximumBytes = 20 * 1024 * 1024;
+            if (response.Content.Headers.ContentLength is > maximumBytes)
+                return new RawBillDownload(false, null, "CHANNEL_BILL_TOO_LARGE", "微信账单文件超过20MB限制");
+            await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var target = new MemoryStream();
+            var buffer = new byte[64 * 1024];
+            while (true)
+            {
+                var read = await source.ReadAsync(buffer, cancellationToken);
+                if (read == 0) break;
+                if (target.Length + read > maximumBytes)
+                    return new RawBillDownload(false, null, "CHANNEL_BILL_TOO_LARGE",
+                        "微信账单文件超过20MB限制");
+                await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            }
+            return new RawBillDownload(true, target.ToArray(), null, null);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or
+            IOException or CryptographicException)
+        {
+            return new RawBillDownload(false, null, "CHANNEL_UNAVAILABLE", "微信账单服务暂时不可用");
+        }
+    }
+
     private static bool MatchesMerchant(PaymentChannelCredentialProfile credentials, JsonElement root) =>
         root.TryGetProperty("mchid", out var merchant) &&
         string.Equals(merchant.GetString(), credentials.MerchantId, StringComparison.Ordinal) &&
@@ -273,6 +353,20 @@ internal sealed class WechatPayGateway(HttpClient httpClient, TimeProvider clock
         return result.ToString();
     }
 
+    private static bool TryWechatBillUri(string? value, out Uri? uri)
+    {
+        uri = null;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps ||
+            parsed.UserInfo.Length > 0 || parsed.Host is not ("api.mch.weixin.qq.com" or
+                "api2.mch.weixin.qq.com"))
+            return false;
+        uri = parsed;
+        return true;
+    }
+
+    private static PaymentChannelBillResult BillFailure(string? code, string? message) =>
+        new(false, [], null, code ?? "CHANNEL_BILL_UNAVAILABLE", message ?? "微信账单暂时不可用");
+
     private static PaymentChannelNotification Invalid(byte[] digest, string code) =>
         new(false, null, null, null, null, PaymentChannelTradeState.Unknown, null, null, digest, code);
 
@@ -305,6 +399,8 @@ internal sealed class WechatPayGateway(HttpClient httpClient, TimeProvider clock
     }
 
     private sealed record SignedResponse(bool IsTrusted, bool IsSuccess, string Body, string? ErrorCode,
+        string? ErrorMessage);
+    private sealed record RawBillDownload(bool IsSuccess, byte[]? Content, string? ErrorCode,
         string? ErrorMessage);
 }
 

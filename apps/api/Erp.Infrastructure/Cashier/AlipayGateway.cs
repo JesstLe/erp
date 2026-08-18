@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using Aop.Api;
@@ -9,7 +10,7 @@ using Erp.Domain.Cashier;
 
 namespace Erp.Infrastructure.Cashier;
 
-internal sealed class AlipayGateway : IPaymentChannelGateway
+internal sealed class AlipayGateway(HttpClient httpClient) : IPaymentChannelGateway
 {
     public PaymentChannelProvider Provider => PaymentChannelProvider.Alipay;
 
@@ -169,6 +170,39 @@ internal sealed class AlipayGateway : IPaymentChannelGateway
         }
     }
 
+    public async Task<PaymentChannelBillResult> DownloadBillAsync(
+        PaymentChannelCredentialProfile credentials, DateOnly businessDate,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var client = await CreateClient(credentials, cancellationToken);
+            var sdkRequest = new AlipayDataDataserviceBillDownloadurlQueryRequest();
+            sdkRequest.SetBizModel(new AlipayDataDataserviceBillDownloadurlQueryModel
+            {
+                BillType = "trade",
+                BillDate = businessDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            });
+            var response = await Task.Run(() => client.Execute(sdkRequest), cancellationToken);
+            if (response.Code != "10000")
+                return BillFailure(AlipayError(response.SubCode, response.Code),
+                    response.SubMsg ?? response.Msg ?? "支付宝账单地址查询失败");
+            if (!TryAlipayBillUri(response.BillDownloadUrl, out var uri))
+                return BillFailure("CHANNEL_BILL_INVALID_RESPONSE", "支付宝账单下载地址无效");
+            var archiveBytes = await DownloadBoundedAsync(uri!, 20 * 1024 * 1024, cancellationToken);
+            var csvBytes = ExtractCsv(archiveBytes, 20 * 1024 * 1024);
+            var content = DecodeBill(csvBytes);
+            var entries = PaymentChannelBillCsv.ParseAlipay(content);
+            return new PaymentChannelBillResult(true, entries, SHA256.HashData(archiveBytes), null, null);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or
+            TaskCanceledException or InvalidDataException or DecoderFallbackException or FormatException or
+            CryptographicException or InvalidOperationException or AopException)
+        {
+            return BillFailure("CHANNEL_BILL_UNAVAILABLE", "支付宝账单暂时不可用或格式无效");
+        }
+    }
+
     public PaymentChannelNotification VerifyNotification(PaymentChannelCredentialProfile credentials,
         PaymentChannelNotificationEnvelope notification)
     {
@@ -249,4 +283,82 @@ internal sealed class AlipayGateway : IPaymentChannelGateway
 
     private static PaymentChannelNotification Invalid(byte[] digest, string code) =>
         new(false, null, null, null, null, PaymentChannelTradeState.Unknown, null, null, digest, code);
+
+    private static bool TryAlipayBillUri(string? value, out Uri? uri)
+    {
+        uri = null;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var parsed) || parsed.Scheme != Uri.UriSchemeHttps ||
+            parsed.UserInfo.Length > 0 || parsed.Host is not ("dwbillcenter.alipay.com" or
+                "dwbillcenter.alipaydev.com"))
+            return false;
+        uri = parsed;
+        return true;
+    }
+
+    private async Task<byte[]> DownloadBoundedAsync(Uri uri, int maximumBytes,
+        CancellationToken cancellationToken)
+    {
+        using var response = await httpClient.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+        if (response.Content.Headers.ContentLength is long length && length > maximumBytes)
+            throw new InvalidDataException("支付宝账单文件超过大小限制");
+        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var target = new MemoryStream();
+        var buffer = new byte[64 * 1024];
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer, cancellationToken);
+            if (read == 0) break;
+            if (target.Length + read > maximumBytes)
+                throw new InvalidDataException("支付宝账单文件超过大小限制");
+            await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+        return target.ToArray();
+    }
+
+    private static byte[] ExtractCsv(byte[] archiveBytes, int maximumBytes)
+    {
+        if (archiveBytes.Length < 4 || archiveBytes[0] != (byte)'P' || archiveBytes[1] != (byte)'K')
+            return archiveBytes;
+        using var source = new MemoryStream(archiveBytes, writable: false);
+        using var archive = new ZipArchive(source, ZipArchiveMode.Read, leaveOpen: false);
+        var candidates = archive.Entries.Where(entry => entry.Name.EndsWith(".csv",
+                StringComparison.OrdinalIgnoreCase) && !entry.Name.Contains("汇总", StringComparison.Ordinal))
+            .OrderByDescending(entry => entry.Name.Contains("业务明细", StringComparison.Ordinal))
+            .ThenByDescending(entry => entry.Length).ToList();
+        var selected = candidates.FirstOrDefault() ??
+            throw new InvalidDataException("支付宝账单压缩包缺少交易明细CSV");
+        if (selected.Length > maximumBytes)
+            throw new InvalidDataException("支付宝账单明细超过大小限制");
+        using var target = new MemoryStream();
+        using var entryStream = selected.Open();
+        var buffer = new byte[64 * 1024];
+        while (true)
+        {
+            var read = entryStream.Read(buffer, 0, buffer.Length);
+            if (read == 0) break;
+            if (target.Length + read > maximumBytes)
+                throw new InvalidDataException("支付宝账单明细超过大小限制");
+            target.Write(buffer, 0, read);
+        }
+        return target.ToArray();
+    }
+
+    private static string DecodeBill(byte[] content)
+    {
+        try
+        {
+            return new UTF8Encoding(false, true).GetString(content);
+        }
+        catch (DecoderFallbackException)
+        {
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+            return Encoding.GetEncoding("GB18030", EncoderFallback.ExceptionFallback,
+                DecoderFallback.ExceptionFallback).GetString(content);
+        }
+    }
+
+    private static PaymentChannelBillResult BillFailure(string? code, string? message) =>
+        new(false, [], null, code ?? "CHANNEL_BILL_UNAVAILABLE", message ?? "支付宝账单暂时不可用");
 }

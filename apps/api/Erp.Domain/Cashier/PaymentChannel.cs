@@ -244,6 +244,7 @@ public sealed class PaymentChannelRefund : Entity
         ProviderTradeNo = Required(providerTradeNo, 128, "原渠道交易号");
         AmountMinor = amountMinor;
         Status = PaymentChannelRefundStatus.Created;
+        ReconciliationStatus = ReconciliationStatus.Pending;
     }
 
     public Guid ConfigurationId { get; private set; }
@@ -256,6 +257,7 @@ public sealed class PaymentChannelRefund : Entity
     public string? ProviderRefundNo { get; private set; }
     public long AmountMinor { get; private set; }
     public PaymentChannelRefundStatus Status { get; private set; }
+    public ReconciliationStatus ReconciliationStatus { get; private set; }
     public string? FailureCode { get; private set; }
     public DateTimeOffset? LastQueriedAtUtc { get; private set; }
     public DateTimeOffset? SucceededAtUtc { get; private set; }
@@ -301,6 +303,16 @@ public sealed class PaymentChannelRefund : Entity
     public void RecordQuery(DateTimeOffset now)
     {
         LastQueriedAtUtc = now;
+        Touch();
+    }
+
+    public void MarkReconciled(ReconciliationStatus status)
+    {
+        if (status is not (ReconciliationStatus.Matched or ReconciliationStatus.Difference or
+                ReconciliationStatus.Resolved))
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "渠道退款对账状态无效");
+        if (ReconciliationStatus == status) return;
+        ReconciliationStatus = status;
         Touch();
     }
 

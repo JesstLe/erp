@@ -23,6 +23,11 @@ internal sealed record PaymentChannelRefundRequest(string OutTradeNo, string Pro
     string OutRefundNo, long RefundAmountMinor, long TotalAmountMinor, string Reason);
 internal sealed record PaymentChannelRefundResult(bool IsSuccess, PaymentChannelRefundState State,
     string? ProviderRefundNo, long? RefundAmountMinor, string? ErrorCode, string? ErrorMessage);
+internal sealed record PaymentChannelBillEntry(PaymentChannelReconciliationItemType ItemType,
+    string MatchKey, string? OutTradeNo, string? OutRefundNo, string? ProviderTradeNo,
+    long AmountMinor, long FeeMinor, string ChannelStatus);
+internal sealed record PaymentChannelBillResult(bool IsSuccess, IReadOnlyList<PaymentChannelBillEntry> Entries,
+    byte[]? SourceSha256, string? ErrorCode, string? ErrorMessage);
 
 internal interface IPaymentChannelGateway
 {
@@ -37,6 +42,8 @@ internal interface IPaymentChannelGateway
         PaymentChannelRefundRequest request, CancellationToken cancellationToken);
     Task<PaymentChannelRefundResult> QueryRefundAsync(PaymentChannelCredentialProfile credentials,
         PaymentChannelRefundRequest request, CancellationToken cancellationToken);
+    Task<PaymentChannelBillResult> DownloadBillAsync(PaymentChannelCredentialProfile credentials,
+        DateOnly businessDate, CancellationToken cancellationToken);
     PaymentChannelNotification VerifyNotification(PaymentChannelCredentialProfile credentials,
         PaymentChannelNotificationEnvelope notification);
 }
