@@ -22,7 +22,10 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
 {
     public async Task<IReadOnlyList<PaymentMethodDto>> ListMethodsAsync(Guid tenantId, CancellationToken cancellationToken) =>
         await db.PaymentMethods.AsNoTracking().Where(x => x.TenantId == tenantId && x.IsEnabled)
-            .OrderBy(x => x.Code).Select(x => new PaymentMethodDto(x.Id, x.Code, x.Name, x.Category.ToString(),
+            .OrderBy(x => x.Category == PaymentMethodCategory.Cash ? 0 :
+                x.Category == PaymentMethodCategory.ManualExternal ? 1 :
+                x.InternalAccountType == MemberAccountType.Principal ? 2 : 3)
+            .ThenBy(x => x.Code).Select(x => new PaymentMethodDto(x.Id, x.Code, x.Name, x.Category.ToString(),
                 x.RequiresOpenShift, x.InternalAccountType == null ? null : x.InternalAccountType.ToString()))
             .ToListAsync(cancellationToken);
 
@@ -108,13 +111,15 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
             var cashReceipts = await db.PaymentAllocations.Where(x => x.ShiftId == shift.Id &&
                 x.Category == PaymentMethodCategory.Cash && x.ConfirmationStatus == PaymentConfirmationStatus.CashRecorded)
                 .SumAsync(x => (long?)x.AmountMinor, cancellationToken) ?? 0;
+            var cashRefunds = await db.RefundLines.Where(x => x.CashShiftId == shift.Id &&
+                x.CompletedAtUtc != null).SumAsync(x => (long?)x.AmountMinor, cancellationToken) ?? 0;
             var pendingExternal = await db.PaymentAllocations.Where(x => x.ShiftId == shift.Id &&
                 x.Category == PaymentMethodCategory.ManualExternal &&
                 x.ConfirmationStatus == PaymentConfirmationStatus.ManualPendingReconciliation)
                 .SumAsync(x => (long?)x.AmountMinor, cancellationToken) ?? 0;
             var now = clock.GetUtcNow();
             var previous = shift.Status.ToString();
-            shift.Submit(cashReceipts, pendingExternal, command.SubmittedCashMinor, command.Note, now);
+            shift.Submit(cashReceipts - cashRefunds, pendingExternal, command.SubmittedCashMinor, command.Note, now);
             AddReceipt(tenantId, command.CommandId, command.OperatorId, hash, shift.Id, now);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "cashier_shift.submit", "CashierShift", shift.Id,
                 previous, shift.Status.ToString(), command.CommandId, command.Note, now);
@@ -245,6 +250,25 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                         return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_ACCOUNT_TYPE_MISMATCH",
                             "会员支付方式与所选账户类型不一致", cancellationToken);
                 }
+                var memberCardIds = memberAccounts.Values.Select(x => x.CardId).Distinct().ToList();
+                if (memberCardIds.Count != 1)
+                    return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_CARD_MIX_NOT_ALLOWED",
+                        "同一消费单的会员资金只能使用一张会员卡", cancellationToken);
+                var principalAccount = await db.MemberAccounts.SingleOrDefaultAsync(x =>
+                    x.TenantId == tenantId && x.CardId == memberCardIds[0] &&
+                    x.AccountType == MemberAccountType.Principal && x.Status == MemberAccountStatus.Active,
+                    cancellationToken);
+                if (principalAccount is null)
+                    return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_ACCOUNT_NOT_FOUND",
+                        "会员储值本金账户不存在或不可用", cancellationToken);
+                var principalDebit = memberLines.Where(line =>
+                        memberAccounts[line.MemberAccountId!.Value].AccountType == MemberAccountType.Principal)
+                    .Sum(x => x.AmountMinor);
+                var bonusDebit = memberLines.Where(line =>
+                        memberAccounts[line.MemberAccountId!.Value].AccountType == MemberAccountType.Bonus)
+                    .Sum(x => x.AmountMinor);
+                MemberDeductionPolicy.EnsurePrincipalFirst(principalAccount.BalanceUnits,
+                    principalDebit, bonusDebit);
                 memberAmountMinor = checked(memberLines.Sum(x => x.AmountMinor));
                 if (memberAmountMinor >= 50_000)
                 {
@@ -281,7 +305,9 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
             order.BeginCheckout();
             var payment = new Payment(tenantId, command.StoreId, order.Id, CreatePaymentNo(localTime.Value),
                 order.ReceivableMinor, drafts, now);
-            foreach (var line in memberLines)
+            foreach (var line in memberLines.OrderBy(line =>
+                         memberAccounts[line.MemberAccountId!.Value].AccountType == MemberAccountType.Principal
+                             ? 0 : 1))
             {
                 var account = memberAccounts[line.MemberAccountId!.Value];
                 db.MemberAccountLedgers.Add(account.Debit("ServiceOrder", order.Id, line.AmountMinor,
@@ -379,7 +405,7 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
 
     private static PaymentDto ToDto(Payment payment) => new(payment.Id, payment.PaymentNo, payment.OrderId,
         payment.BusinessType.ToString(), payment.BusinessId, payment.Status.ToString(), payment.Currency,
-        payment.ReceivableMinor, payment.PaidMinor, payment.PaidAtUtc,
+        payment.ReceivableMinor, payment.PaidMinor, payment.RefundedMinor, payment.PaidAtUtc, payment.Version,
         payment.Allocations.OrderBy(x => x.CreatedAtUtc).Select(x => new PaymentAllocationDto(x.Id, x.MethodId,
             x.MethodCodeSnapshot, x.MethodNameSnapshot, x.Category.ToString(), x.AmountMinor, x.ExternalReference,
             x.ConfirmationStatus.ToString(), x.ReconciliationStatus.ToString(), x.ShiftId,

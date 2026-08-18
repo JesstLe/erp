@@ -38,13 +38,13 @@ public sealed class CashierShift : Entity
     public string? ReviewReason { get; private set; }
     public DateTimeOffset? ClosedAtUtc { get; private set; }
 
-    public void Submit(long cashReceiptsMinor, long pendingReconciliationMinor, long submittedCashMinor,
+    public void Submit(long netCashMovementMinor, long pendingReconciliationMinor, long submittedCashMinor,
         string? note, DateTimeOffset now)
     {
         if (Status != CashierShiftStatus.Open) throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前班次不能提交交班");
-        if (cashReceiptsMinor < 0 || pendingReconciliationMinor < 0 || submittedCashMinor < 0)
+        if (netCashMovementMinor < -OpeningCashMinor || pendingReconciliationMinor < 0 || submittedCashMinor < 0)
             throw new DomainRuleException("VALIDATION_FAILED", "交班金额不能为负数");
-        ExpectedCashMinor = checked(OpeningCashMinor + cashReceiptsMinor);
+        ExpectedCashMinor = checked(OpeningCashMinor + netCashMovementMinor);
         SubmittedCashMinor = submittedCashMinor;
         CashDifferenceMinor = submittedCashMinor - ExpectedCashMinor;
         PendingReconciliationMinor = pendingReconciliationMinor;

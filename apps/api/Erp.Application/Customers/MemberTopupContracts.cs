@@ -5,7 +5,8 @@ namespace Erp.Application.Customers;
 
 public sealed record MemberTopupDto(Guid Id, string TopupNo, Guid StoreId, Guid CustomerId, Guid CardId,
     long PrincipalMinor, long BonusMinor, long ReceivableMinor, string Status, string? Note,
-    DateTimeOffset PaidAtUtc, Guid PaymentId, string PaymentNo,
+    DateTimeOffset PaidAtUtc, Guid PaymentId, string PaymentNo, string PaymentStatus,
+    long PaymentRefundedMinor, uint PaymentVersion,
     IReadOnlyList<PaymentAllocationDto> Allocations);
 
 public sealed record CreateMemberTopupCommand(Guid StoreId, Guid CustomerId, Guid CardId,

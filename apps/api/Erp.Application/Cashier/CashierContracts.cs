@@ -8,7 +8,7 @@ public sealed record ServiceOrderLineDto(Guid Id, Guid ServiceItemId, string Ite
     int Quantity, int? ActualSeconds, long ReferencePriceMinor, long EnteredPriceMinor,
     long LineAmountMinor, string? PriceOverrideReason);
 public sealed record ServiceOrderDto(Guid Id, string OrderNo, Guid VisitId, Guid? CustomerId, string Status,
-    Guid PriceBookId, long ReferenceAmountMinor, long ReceivableMinor, string? Note, uint Version,
+    Guid PriceBookId, long ReferenceAmountMinor, long ReceivableMinor, long RefundedMinor, string? Note, uint Version,
     DateTimeOffset CreatedAtUtc, IReadOnlyList<ServiceOrderLineDto> Lines);
 public sealed record CreateServiceOrderLineCommand(Guid ServiceItemId, int Quantity, int? ActualSeconds,
     long EnteredPriceMinor, string? PriceOverrideReason);

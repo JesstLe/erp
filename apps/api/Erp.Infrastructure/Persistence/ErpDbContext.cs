@@ -58,6 +58,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<PaymentMethod> PaymentMethods => Set<PaymentMethod>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<PaymentAllocation> PaymentAllocations => Set<PaymentAllocation>();
+    public DbSet<Refund> Refunds => Set<Refund>();
+    public DbSet<RefundLine> RefundLines => Set<RefundLine>();
     public DbSet<CashierShift> CashierShifts => Set<CashierShift>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
@@ -512,6 +514,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(32);
             entity.Property(x => x.ReferenceAmountMinor).HasColumnName("reference_amount_minor");
             entity.Property(x => x.ReceivableMinor).HasColumnName("receivable_minor");
+            entity.Property(x => x.RefundedMinor).HasColumnName("refunded_minor");
             entity.Property(x => x.ConfirmedAtUtc).HasColumnName("confirmed_at_utc");
             entity.Property(x => x.SettledAtUtc).HasColumnName("settled_at_utc");
             entity.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.OrderId).OnDelete(DeleteBehavior.Restrict);
@@ -584,6 +587,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.Currency).HasColumnName("currency").HasMaxLength(3);
             entity.Property(x => x.ReceivableMinor).HasColumnName("receivable_minor");
             entity.Property(x => x.PaidMinor).HasColumnName("paid_minor");
+            entity.Property(x => x.RefundedMinor).HasColumnName("refunded_minor");
             entity.Property(x => x.PaidAtUtc).HasColumnName("paid_at_utc");
             entity.HasMany(x => x.Allocations).WithOne().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
             entity.Navigation(x => x.Allocations).UsePropertyAccessMode(PropertyAccessMode.Field);
@@ -612,6 +616,43 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasIndex(x => x.MemberAccountId);
             entity.HasOne<MemberAccount>().WithMany().HasForeignKey(x => x.MemberAccountId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<Refund>(entity =>
+        {
+            entity.ToTable("payment_refunds");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.PaymentId).HasColumnName("payment_id");
+            entity.Property(x => x.RefundNo).HasColumnName("refund_no").HasMaxLength(40);
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.AmountMinor).HasColumnName("amount_minor");
+            entity.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500);
+            entity.Property(x => x.RequestedBy).HasColumnName("requested_by");
+            entity.Property(x => x.RequestedAtUtc).HasColumnName("requested_at_utc");
+            entity.Property(x => x.ApprovedBy).HasColumnName("approved_by");
+            entity.Property(x => x.CompletedAtUtc).HasColumnName("completed_at_utc");
+            entity.Property(x => x.RejectionReason).HasColumnName("rejection_reason").HasMaxLength(500);
+            entity.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.RefundId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasIndex(x => new { x.TenantId, x.RefundNo }).IsUnique();
+            entity.HasIndex(x => new { x.PaymentId, x.Status });
+        });
+        builder.Entity<RefundLine>(entity =>
+        {
+            entity.ToTable("payment_refund_lines");
+            ConfigureBase(entity);
+            entity.Property(x => x.RefundId).HasColumnName("refund_id");
+            entity.Property(x => x.OriginalAllocationId).HasColumnName("original_allocation_id");
+            entity.Property(x => x.AmountMinor).HasColumnName("amount_minor");
+            entity.Property(x => x.Category).HasColumnName("category").HasConversion<string>().HasMaxLength(32);
+            entity.Property(x => x.MemberAccountId).HasColumnName("member_account_id");
+            entity.Property(x => x.Route).HasColumnName("route").HasConversion<string>().HasMaxLength(32);
+            entity.Property(x => x.CashShiftId).HasColumnName("cash_shift_id");
+            entity.Property(x => x.CompletedAtUtc).HasColumnName("completed_at_utc");
+            entity.HasIndex(x => new { x.RefundId, x.OriginalAllocationId }).IsUnique();
+            entity.HasIndex(x => x.OriginalAllocationId);
+            entity.HasIndex(x => x.CashShiftId);
         });
     }
 

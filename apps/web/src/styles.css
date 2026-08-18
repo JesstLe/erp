@@ -106,6 +106,8 @@ button, input { font: inherit; }
 .payment-line-fields .ant-input-number { width: 100%; }
 .payment-allocation { margin-top: 10px; border-color: #dbeafe; }
 .payment-allocation > .ant-card-body > div:first-child { display: flex; justify-content: space-between; margin-bottom: 10px; }
+.refund-review-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.refund-review-row > div { display: flex; flex-direction: column; gap: 4px; }
 .audit-entity-select { min-width: 170px; }
 .audit-action { display: flex; flex-direction: column; gap: 2px; }
 .audit-action .ant-typography { font-size: 11px; }

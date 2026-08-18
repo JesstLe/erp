@@ -38,6 +38,18 @@ public sealed class CashierShiftTests
         Assert.Equal(CashierShiftStatus.Closed, shift.Status);
     }
 
+    [Fact]
+    public void CashRefundReducesExpectedCashButCannotExceedOpeningCashAndReceipts()
+    {
+        var shift = CreateShift(5_000);
+
+        shift.Submit(-2_000, 0, 3_000, "当班现金退款", Now.AddHours(8));
+
+        Assert.Equal(3_000, shift.ExpectedCashMinor);
+        Assert.Throws<DomainRuleException>(() => CreateShift(5_000)
+            .Submit(-5_001, 0, 0, null, Now.AddHours(8)));
+    }
+
     private static readonly DateTimeOffset Now = new(2026, 8, 18, 0, 0, 0, TimeSpan.Zero);
     private static CashierShift CreateShift(long openingCash) => new(Guid.CreateVersion7(), Guid.CreateVersion7(),
         Guid.CreateVersion7(), "SH202608180001", openingCash, Now);

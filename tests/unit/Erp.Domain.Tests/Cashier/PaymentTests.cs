@@ -79,6 +79,23 @@ public sealed class PaymentTests
         Assert.Equal(PaymentConfirmationStatus.InternalConfirmed, allocation.ConfirmationStatus);
     }
 
+    [Fact]
+    public void RefundTotalsAdvancePaymentWithoutOverwritingOriginalPaidAmount()
+    {
+        var payment = CreatePayment(10_000,
+            [new(Guid.CreateVersion7(), "CASH", "现金", PaymentMethodCategory.Cash, 10_000, null,
+                Guid.CreateVersion7())]);
+
+        payment.ApplyRefund(4_000);
+        Assert.Equal(PaymentStatus.PartiallyRefunded, payment.Status);
+        Assert.Equal(4_000, payment.RefundedMinor);
+        Assert.Equal(10_000, payment.PaidMinor);
+
+        payment.ApplyRefund(6_000);
+        Assert.Equal(PaymentStatus.Refunded, payment.Status);
+        Assert.Throws<DomainRuleException>(() => payment.ApplyRefund(1));
+    }
+
     private static Payment CreatePayment(long receivable, IEnumerable<PaymentAllocationDraft> allocations) =>
         new(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(), "PAY202608180001", receivable,
             allocations, new DateTimeOffset(2026, 8, 18, 8, 0, 0, TimeSpan.Zero));

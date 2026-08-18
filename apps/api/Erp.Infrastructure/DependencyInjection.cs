@@ -90,6 +90,7 @@ public static class DependencyInjection
         services.AddScoped<IMemberVerificationService, MemberVerificationService>();
         services.AddScoped<ICashierService, CashierService>();
         services.AddScoped<IPaymentService, PaymentService>();
+        services.AddScoped<IRefundService, RefundService>();
         services.AddScoped<IAuditQueryService, AuditQueryService>();
         services.AddScoped<IReportService, ReportService>();
         services.AddScoped<Seed.DevelopmentSeeder>();
