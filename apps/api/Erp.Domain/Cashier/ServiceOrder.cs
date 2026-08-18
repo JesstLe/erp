@@ -29,6 +29,7 @@ public sealed class ServiceOrder : Entity
         ReferenceAmountMinor = _lines.Sum(x => x.ReferenceAmountMinor);
         ReceivableMinor = _lines.Sum(x => x.LineAmountMinor);
         Status = ServiceOrderStatus.Draft;
+        PriceAuthorizationStatus = PriceAuthorizationState.NotRequired;
     }
 
     public Guid StoreId { get; private set; }
@@ -43,11 +44,71 @@ public sealed class ServiceOrder : Entity
     public DateTimeOffset? ConfirmedAtUtc { get; private set; }
     public DateTimeOffset? SettledAtUtc { get; private set; }
     public long RefundedMinor { get; private set; }
+    public PriceAuthorizationState PriceAuthorizationStatus { get; private set; }
+    public Guid? PricePolicyId { get; private set; }
+    public int? PricePolicyVersion { get; private set; }
+    public Guid? PriceAuthorizedBy { get; private set; }
+    public DateTimeOffset? PriceAuthorizedAtUtc { get; private set; }
     public IReadOnlyCollection<ServiceOrderLine> Lines => _lines;
+    public bool HasPriceOverride => _lines.Any(x => x.EnteredPriceMinor != x.ReferencePriceMinor);
+    public long TotalDiscountMinor => _lines.Sum(x => Math.Max(0, x.ReferenceAmountMinor - x.LineAmountMinor));
+    public int MaximumLineDiscountBasisPoints => _lines
+        .Where(x => x.EnteredPriceMinor < x.ReferencePriceMinor && x.ReferencePriceMinor > 0)
+        .Select(x => (int)Math.Ceiling((x.ReferencePriceMinor - x.EnteredPriceMinor) * 10_000m /
+            x.ReferencePriceMinor)).DefaultIfEmpty(0).Max();
+
+    public void AuthorizePriceDirectly(Guid policyId, int policyVersion, Guid authorizedBy, DateTimeOffset now)
+    {
+        EnsureDraftOverride();
+        if (policyId == Guid.Empty || policyVersion < 1 || authorizedBy == Guid.Empty)
+            throw new DomainRuleException("VALIDATION_FAILED", "改价授权快照无效");
+        PricePolicyId = policyId;
+        PricePolicyVersion = policyVersion;
+        PriceAuthorizationStatus = PriceAuthorizationState.DirectAuthorized;
+        PriceAuthorizedBy = authorizedBy;
+        PriceAuthorizedAtUtc = now;
+        Touch();
+    }
+
+    public void RequestPriceApproval(Guid policyId, int policyVersion)
+    {
+        EnsureDraftOverride();
+        if (policyId == Guid.Empty || policyVersion < 1)
+            throw new DomainRuleException("VALIDATION_FAILED", "改价审批策略快照无效");
+        PricePolicyId = policyId;
+        PricePolicyVersion = policyVersion;
+        PriceAuthorizationStatus = PriceAuthorizationState.PendingApproval;
+        PriceAuthorizedBy = null;
+        PriceAuthorizedAtUtc = null;
+        Touch();
+    }
+
+    public void ApprovePriceOverride(Guid authorizedBy, DateTimeOffset now)
+    {
+        if (Status != ServiceOrderStatus.Draft || PriceAuthorizationStatus != PriceAuthorizationState.PendingApproval)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前消费单没有待审批改价");
+        if (authorizedBy == Guid.Empty)
+            throw new DomainRuleException("VALIDATION_FAILED", "改价审批人无效");
+        PriceAuthorizationStatus = PriceAuthorizationState.Approved;
+        PriceAuthorizedBy = authorizedBy;
+        PriceAuthorizedAtUtc = now;
+        Touch();
+    }
+
+    public void RejectPriceOverride()
+    {
+        if (Status != ServiceOrderStatus.Draft || PriceAuthorizationStatus != PriceAuthorizationState.PendingApproval)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前消费单没有待审批改价");
+        PriceAuthorizationStatus = PriceAuthorizationState.Rejected;
+        Touch();
+    }
 
     public void Confirm(DateTimeOffset now)
     {
         if (Status != ServiceOrderStatus.Draft) throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "只有草稿消费单可以确认");
+        if (HasPriceOverride && PriceAuthorizationStatus is not (PriceAuthorizationState.DirectAuthorized or
+            PriceAuthorizationState.Approved))
+            throw new DomainRuleException("PRICE_APPROVAL_REQUIRED", "成交价尚未获得有效授权，不能确认收款金额");
         Status = ServiceOrderStatus.PendingPayment;
         ConfirmedAtUtc = now;
         Touch();
@@ -58,7 +119,16 @@ public sealed class ServiceOrder : Entity
         if (Status is not (ServiceOrderStatus.Draft or ServiceOrderStatus.PendingPayment))
             throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "只有草稿或待支付消费单可以作废");
         Status = ServiceOrderStatus.Voided;
+        if (PriceAuthorizationStatus == PriceAuthorizationState.PendingApproval)
+            PriceAuthorizationStatus = PriceAuthorizationState.Cancelled;
         Touch();
+    }
+
+    private void EnsureDraftOverride()
+    {
+        if (Status != ServiceOrderStatus.Draft || !HasPriceOverride ||
+            PriceAuthorizationStatus != PriceAuthorizationState.NotRequired)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前消费单不能设置改价授权");
     }
 
     public void BeginCheckout()

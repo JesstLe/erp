@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Erp.Application.Cashier;
 using Erp.Application.Common;
+using Erp.Application.Security;
 using Erp.Domain.Cashier;
 using Erp.Domain.Catalog;
 using Erp.Domain.Common;
@@ -90,7 +91,11 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
         if (command.Lines.Count is 0 or > 100) return ResultFactory.Failure<ServiceOrderDto>("VALIDATION_FAILED", "消费单需要1到100行项目或产品");
         if (command.Lines.Any(line => !TryGetLineType(line, out _)))
             return ResultFactory.Failure<ServiceOrderDto>("VALIDATION_FAILED", "每行必须且只能选择一个服务项目或产品");
-        var requestHash = RequestHash(JsonSerializer.Serialize(command with { OperatorId = Guid.Empty }));
+        var requestHash = RequestHash(JsonSerializer.Serialize(command with
+        {
+            OperatorId = Guid.Empty,
+            OperatorRoles = [],
+        }));
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var replay = await ReplayAsync(tenantId, command.CommandId, requestHash,
             id => GetOrderAsync(tenantId, command.StoreId, id, cancellationToken), cancellationToken);
@@ -202,6 +207,39 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             var order = new ServiceOrder(tenantId, command.StoreId, visit.Id, customer?.Id ?? visit.CustomerId,
                 CreateOrderNo(localTime), priceBook.Id, command.Note, drafts);
             db.ServiceOrders.Add(order);
+            if (order.HasPriceOverride)
+            {
+                var role = ResolvePriceRole(command.OperatorRoles);
+                if (role is null)
+                    return await FailureAndRollback(transaction, "PRICE_OVERRIDE_FORBIDDEN",
+                        "当前角色无权提交改价消费单", cancellationToken);
+                var policy = await GetOrAddActivePricePolicyAsync(tenantId, command.OperatorId, now,
+                    cancellationToken);
+                var canAuthorizeDirectly = role == SystemRoles.Owner ||
+                    role == SystemRoles.StoreManager && !policy.ManagerRequiresApproval(order);
+                if (canAuthorizeDirectly)
+                {
+                    order.AuthorizePriceDirectly(policy.Id, policy.PolicyVersion, command.OperatorId, now);
+                    AddAudit(tenantId, command.StoreId, command.OperatorId,
+                        "service_order.price.direct_authorized", "ServiceOrder", order.Id, null,
+                        order.PriceAuthorizationStatus.ToString(), command.CommandId, now,
+                        PriceAuditReason(order, policy, role));
+                }
+                else
+                {
+                    order.RequestPriceApproval(policy.Id, policy.PolicyVersion);
+                    var approval = new PriceOverrideApproval(tenantId, command.StoreId, order.Id,
+                        command.OperatorId, role, policy.Id, policy.PolicyVersion, order.ReferenceAmountMinor,
+                        order.ReceivableMinor, order.MaximumLineDiscountBasisPoints,
+                        policy.ManagerLineDiscountBasisPoints, policy.ManagerOrderDiscountMinor,
+                        policy.AllowManagerPriceIncrease, now);
+                    db.PriceOverrideApprovals.Add(approval);
+                    AddAudit(tenantId, command.StoreId, command.OperatorId,
+                        "service_order.price.approval_requested", "PriceOverrideApproval", approval.Id,
+                        null, approval.Status.ToString(), command.CommandId, now,
+                        PriceAuditReason(order, policy, role));
+                }
+            }
             AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, order.Id, now);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "service_order.create", "ServiceOrder", order.Id,
                 null, order.Status.ToString(), command.CommandId, now);
@@ -243,6 +281,10 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             if (order.Version != command.ExpectedVersion) return await FailureAndRollback(transaction, "VERSION_CONFLICT", "消费单已被修改，请刷新后重试", cancellationToken);
             var previous = order.Status.ToString();
             var now = clock.GetUtcNow();
+            if (order.HasPriceOverride && order.PriceAuthorizationStatus is not
+                (PriceAuthorizationState.DirectAuthorized or PriceAuthorizationState.Approved))
+                return await FailureAndRollback(transaction, "PRICE_APPROVAL_REQUIRED",
+                    "成交价尚未获得有效授权，不能确认收款金额", cancellationToken);
             await inventory.ReserveOrderAsync(order, now, cancellationToken);
             order.Confirm(now);
             AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, order.Id, now);
@@ -292,6 +334,9 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             var previous = order.Status.ToString();
             var now = clock.GetUtcNow();
             await inventory.ReleaseOrderAsync(order, now, cancellationToken);
+            var approval = await db.PriceOverrideApprovals.SingleOrDefaultAsync(x =>
+                x.ServiceOrderId == order.Id && x.TenantId == tenantId, cancellationToken);
+            approval?.Cancel(now);
             order.Void();
             AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, order.Id, now);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "service_order.void", "ServiceOrder",
@@ -312,14 +357,195 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
         }
     }
 
+    public async Task<PriceOverridePolicyDto> GetPriceOverridePolicyAsync(Guid tenantId, Guid operatorId,
+        CancellationToken cancellationToken)
+    {
+        var policy = await db.PriceOverridePolicies.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.TenantId == tenantId && x.IsActive, cancellationToken);
+        if (policy is not null) return ToDto(policy);
+        var baseline = PriceOverridePolicy.Default(tenantId, operatorId, clock.GetUtcNow());
+        db.PriceOverridePolicies.Add(baseline);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            return ToDto(baseline);
+        }
+        catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+        {
+            db.ChangeTracker.Clear();
+            policy = await db.PriceOverridePolicies.AsNoTracking().SingleAsync(x =>
+                x.TenantId == tenantId && x.IsActive, cancellationToken);
+            return ToDto(policy);
+        }
+    }
+
+    public async Task<Result<PriceOverridePolicyDto>> UpdatePriceOverridePolicyAsync(Guid tenantId,
+        UpdatePriceOverridePolicyCommand command, CancellationToken cancellationToken)
+    {
+        if (command.CommandId == Guid.Empty || command.ManagerLineDiscountBasisPoints is < 0 or > 10_000 ||
+            command.ManagerOrderDiscountMinor is < 0 or > 10_000_000_000)
+            return ResultFactory.Failure<PriceOverridePolicyDto>("VALIDATION_FAILED", "改价策略参数不完整");
+        var requestHash = RequestHash($"PRICE_POLICY_UPDATE|{command.StoreId}|" +
+            $"{command.ManagerLineDiscountBasisPoints}|{command.ManagerOrderDiscountMinor}|" +
+            $"{command.AllowManagerPriceIncrease}|{command.ExpectedVersion}");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable,
+            cancellationToken);
+        var replay = await ReplayPolicyAsync(tenantId, command.CommandId, requestHash, cancellationToken);
+        if (replay is not null) return replay;
+        try
+        {
+            var current = await GetOrAddActivePricePolicyAsync(tenantId, command.OperatorId, clock.GetUtcNow(),
+                cancellationToken);
+            if (current.Version != command.ExpectedVersion)
+                return await FailureAndRollback<PriceOverridePolicyDto>(transaction, "VERSION_CONFLICT",
+                    "改价策略已变化，请刷新后重试", cancellationToken);
+            var now = clock.GetUtcNow();
+            var previousState = PolicyAuditState(current);
+            current.Retire();
+            var next = new PriceOverridePolicy(tenantId, current.PolicyVersion + 1,
+                command.ManagerLineDiscountBasisPoints, command.ManagerOrderDiscountMinor,
+                command.AllowManagerPriceIncrease, command.OperatorId, now);
+            db.PriceOverridePolicies.Add(next);
+            AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, next.Id, now);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "price_override_policy.publish",
+                "PriceOverridePolicy", next.Id, previousState, PolicyAuditState(next),
+                command.CommandId, now, "发布新版本后只影响新建消费单，历史审批继续使用原策略快照");
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ResultFactory.Success(ToDto(next));
+        }
+        catch (DomainRuleException exception)
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<PriceOverridePolicyDto>(exception.Code, exception.Message);
+        }
+        catch (Exception exception) when (IsDatabaseConcurrencyConflict(exception) || IsUniqueViolation(exception))
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<PriceOverridePolicyDto>("VERSION_CONFLICT",
+                "改价策略已由其他终端更新，请刷新后重试");
+        }
+    }
+
+    public async Task<IReadOnlyList<PriceOverrideApprovalDto>> ListPriceOverrideApprovalsAsync(Guid tenantId,
+        Guid storeId, string? status, CancellationToken cancellationToken)
+    {
+        var query = db.PriceOverrideApprovals.AsNoTracking().Where(x =>
+            x.TenantId == tenantId && x.StoreId == storeId);
+        if (!string.IsNullOrWhiteSpace(status) &&
+            Enum.TryParse<PriceOverrideApprovalStatus>(status, true, out var parsed))
+            query = query.Where(x => x.Status == parsed);
+        var approvals = await query.OrderByDescending(x => x.RequestedAtUtc).Take(100)
+            .ToListAsync(cancellationToken);
+        return await ToApprovalDtosAsync(approvals, cancellationToken);
+    }
+
+    public Task<Result<PriceOverrideApprovalDto>> ApprovePriceOverrideAsync(Guid tenantId,
+        DecidePriceOverrideApprovalCommand command, CancellationToken cancellationToken) =>
+        DecidePriceOverrideAsync(tenantId, command, approve: true, cancellationToken);
+
+    public Task<Result<PriceOverrideApprovalDto>> RejectPriceOverrideAsync(Guid tenantId,
+        DecidePriceOverrideApprovalCommand command, CancellationToken cancellationToken) =>
+        DecidePriceOverrideAsync(tenantId, command, approve: false, cancellationToken);
+
+    private async Task<Result<PriceOverrideApprovalDto>> DecidePriceOverrideAsync(Guid tenantId,
+        DecidePriceOverrideApprovalCommand command, bool approve, CancellationToken cancellationToken)
+    {
+        if (command.CommandId == Guid.Empty || !approve && command.Note?.Trim().Length is not (>= 2 and <= 500))
+            return ResultFactory.Failure<PriceOverrideApprovalDto>("VALIDATION_FAILED",
+                approve ? "缺少幂等请求号" : "驳回原因必须为2到500字");
+        var action = approve ? "APPROVE" : "REJECT";
+        var requestHash = RequestHash($"PRICE_APPROVAL_{action}|{command.StoreId}|{command.ApprovalId}|" +
+            $"{command.ExpectedVersion}|{command.Note?.Trim()}");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable,
+            cancellationToken);
+        var replay = await ReplayApprovalAsync(tenantId, command.CommandId, requestHash, cancellationToken);
+        if (replay is not null) return replay;
+        try
+        {
+            var approval = await db.PriceOverrideApprovals.SingleOrDefaultAsync(x =>
+                x.Id == command.ApprovalId && x.TenantId == tenantId && x.StoreId == command.StoreId,
+                cancellationToken);
+            if (approval is null)
+                return await FailureAndRollback<PriceOverrideApprovalDto>(transaction,
+                    "PRICE_APPROVAL_NOT_FOUND", "改价审批不存在", cancellationToken);
+            if (approval.Version != command.ExpectedVersion)
+                return await FailureAndRollback<PriceOverrideApprovalDto>(transaction, "VERSION_CONFLICT",
+                    "改价审批已被处理，请刷新后重试", cancellationToken);
+            var order = await db.ServiceOrders.Include(x => x.Lines).SingleOrDefaultAsync(x =>
+                x.Id == approval.ServiceOrderId && x.TenantId == tenantId && x.StoreId == command.StoreId,
+                cancellationToken);
+            if (order is null)
+                return await FailureAndRollback<PriceOverrideApprovalDto>(transaction,
+                    "SERVICE_ORDER_NOT_FOUND", "关联消费单不存在", cancellationToken);
+            var now = clock.GetUtcNow();
+            var previous = approval.Status.ToString();
+            if (approve)
+            {
+                approval.Approve(command.ApproverId, command.Note, now);
+                order.ApprovePriceOverride(command.ApproverId, now);
+            }
+            else
+            {
+                approval.Reject(command.ApproverId, command.Note!, now);
+                order.RejectPriceOverride();
+            }
+            AddReceipt(tenantId, command.CommandId, command.ApproverId, requestHash, approval.Id, now);
+            AddAudit(tenantId, command.StoreId, command.ApproverId,
+                approve ? "service_order.price.approval_approved" : "service_order.price.approval_rejected",
+                "PriceOverrideApproval", approval.Id, previous, approval.Status.ToString(), command.CommandId,
+                now, command.Note);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ResultFactory.Success((await ToApprovalDtosAsync([approval], cancellationToken)).Single());
+        }
+        catch (DomainRuleException exception)
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<PriceOverrideApprovalDto>(exception.Code, exception.Message);
+        }
+        catch (Exception exception) when (IsDatabaseConcurrencyConflict(exception))
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<PriceOverrideApprovalDto>("VERSION_CONFLICT",
+                "改价审批或消费单状态已变化，请刷新后重试");
+        }
+    }
+
     private static ServiceOrderDto ToDto(ServiceOrder order) => new(order.Id, order.OrderNo, order.VisitId,
         order.CustomerId, order.Status.ToString(), order.PriceBookId, order.ReferenceAmountMinor, order.ReceivableMinor,
-        order.RefundedMinor, order.Note, order.Version, order.CreatedAtUtc, order.Lines.OrderBy(x => x.CreatedAtUtc).Select(x =>
+        order.RefundedMinor, order.Note, order.Version, order.CreatedAtUtc,
+        order.PriceAuthorizationStatus.ToString(), order.PricePolicyId, order.PricePolicyVersion,
+        order.PriceAuthorizedBy, order.PriceAuthorizedAtUtc, order.Lines.OrderBy(x => x.CreatedAtUtc).Select(x =>
             new ServiceOrderLineDto(x.Id, x.LineType.ToString(), x.ServiceItemId, x.ProductItemId,
                 x.ItemCodeSnapshot, x.ItemNameSnapshot, x.UnitNameSnapshot, x.Quantity, x.ReturnedQuantity,
                 x.ActualSeconds, x.ReferencePriceMinor, x.EnteredPriceMinor, x.LineAmountMinor,
                 x.PriceOverrideReason, x.ServiceEmployeeId, x.EmployeeNoSnapshot,
                 x.EmployeeNameSnapshot)).ToList());
+
+    private static PriceOverridePolicyDto ToDto(PriceOverridePolicy policy) => new(policy.Id,
+        policy.PolicyVersion, policy.ManagerLineDiscountBasisPoints, policy.ManagerOrderDiscountMinor,
+        policy.AllowManagerPriceIncrease, policy.EffectiveFromUtc, policy.Version);
+
+    private async Task<IReadOnlyList<PriceOverrideApprovalDto>> ToApprovalDtosAsync(
+        IReadOnlyList<PriceOverrideApproval> approvals, CancellationToken cancellationToken)
+    {
+        var orderIds = approvals.Select(x => x.ServiceOrderId).Distinct().ToList();
+        var userIds = approvals.Select(x => x.RequesterId).Concat(approvals.Where(x => x.DecidedBy.HasValue)
+            .Select(x => x.DecidedBy!.Value)).Distinct().ToList();
+        var orderNos = await db.ServiceOrders.AsNoTracking().Where(x => orderIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.OrderNo, cancellationToken);
+        var userNames = await db.Users.AsNoTracking().Where(x => userIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
+        return approvals.Select(x => new PriceOverrideApprovalDto(x.Id, x.ServiceOrderId,
+            orderNos.GetValueOrDefault(x.ServiceOrderId, "未知消费单"), x.Status.ToString(), x.RequesterId,
+            userNames.GetValueOrDefault(x.RequesterId, "未知员工"), x.RequesterRoleSnapshot, x.PolicyId,
+            x.PolicyVersion, x.ReferenceAmountMinor, x.ReceivableMinor, x.DifferenceMinor,
+            x.MaximumLineDiscountBasisPoints, x.ManagerLineDiscountBasisPoints,
+            x.ManagerOrderDiscountMinor, x.AllowManagerPriceIncrease, x.RequestedAtUtc, x.DecidedBy,
+            x.DecidedBy.HasValue ? userNames.GetValueOrDefault(x.DecidedBy.Value, "未知员工") : null,
+            x.DecidedAtUtc, x.DecisionNote, x.Version)).ToList();
+    }
 
     private static bool TryGetLineType(CreateServiceOrderLineCommand line, out ServiceOrderLineType type)
     {
@@ -348,11 +574,106 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
         return receipt is null ? ResultFactory.Failure<ServiceOrderDto>("COMMAND_IN_PROGRESS", "请求正在处理，请稍后刷新") : await load(receipt.EntityId);
     }
 
+    private async Task<Result<PriceOverridePolicyDto>?> ReplayPolicyAsync(Guid tenantId, Guid commandId,
+        byte[] requestHash, CancellationToken cancellationToken)
+    {
+        var existing = await db.IdempotencyCommands.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.CommandId == commandId, cancellationToken);
+        if (existing is null) return null;
+        if (existing.TenantId != tenantId ||
+            !CryptographicOperations.FixedTimeEquals(existing.RequestHash, requestHash))
+            return ResultFactory.Failure<PriceOverridePolicyDto>("IDEMPOTENCY_CONFLICT",
+                "幂等请求号已被其他请求使用");
+        var receipt = existing.ResponseBody is null
+            ? null
+            : JsonSerializer.Deserialize<CommandReceipt>(existing.ResponseBody);
+        if (receipt is null)
+            return ResultFactory.Failure<PriceOverridePolicyDto>("COMMAND_IN_PROGRESS", "请求正在处理，请稍后刷新");
+        var policy = await db.PriceOverridePolicies.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.Id == receipt.EntityId && x.TenantId == tenantId, cancellationToken);
+        return policy is null
+            ? ResultFactory.Failure<PriceOverridePolicyDto>("PRICE_POLICY_NOT_FOUND", "改价策略不存在")
+            : ResultFactory.Success(ToDto(policy));
+    }
+
+    private async Task<Result<PriceOverrideApprovalDto>?> ReplayApprovalAsync(Guid tenantId, Guid commandId,
+        byte[] requestHash, CancellationToken cancellationToken)
+    {
+        var existing = await db.IdempotencyCommands.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.CommandId == commandId, cancellationToken);
+        if (existing is null) return null;
+        if (existing.TenantId != tenantId ||
+            !CryptographicOperations.FixedTimeEquals(existing.RequestHash, requestHash))
+            return ResultFactory.Failure<PriceOverrideApprovalDto>("IDEMPOTENCY_CONFLICT",
+                "幂等请求号已被其他请求使用");
+        var receipt = existing.ResponseBody is null
+            ? null
+            : JsonSerializer.Deserialize<CommandReceipt>(existing.ResponseBody);
+        if (receipt is null)
+            return ResultFactory.Failure<PriceOverrideApprovalDto>("COMMAND_IN_PROGRESS", "请求正在处理，请稍后刷新");
+        var approval = await db.PriceOverrideApprovals.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.Id == receipt.EntityId && x.TenantId == tenantId, cancellationToken);
+        return approval is null
+            ? ResultFactory.Failure<PriceOverrideApprovalDto>("PRICE_APPROVAL_NOT_FOUND", "改价审批不存在")
+            : ResultFactory.Success((await ToApprovalDtosAsync([approval], cancellationToken)).Single());
+    }
+
+    private async Task<PriceOverridePolicy> GetOrAddActivePricePolicyAsync(Guid tenantId, Guid createdBy,
+        DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var policy = await db.PriceOverridePolicies.SingleOrDefaultAsync(x =>
+            x.TenantId == tenantId && x.IsActive, cancellationToken);
+        if (policy is not null) return policy;
+        policy = PriceOverridePolicy.Default(tenantId, createdBy, now);
+        db.PriceOverridePolicies.Add(policy);
+        return policy;
+    }
+
+    private static string? ResolvePriceRole(IReadOnlyList<string> roles)
+    {
+        if (roles.Contains(SystemRoles.Owner, StringComparer.OrdinalIgnoreCase)) return SystemRoles.Owner;
+        if (roles.Contains(SystemRoles.StoreManager, StringComparer.OrdinalIgnoreCase)) return SystemRoles.StoreManager;
+        if (roles.Contains(SystemRoles.Cashier, StringComparer.OrdinalIgnoreCase)) return SystemRoles.Cashier;
+        return null;
+    }
+
+    private static string PriceAuditReason(ServiceOrder order, PriceOverridePolicy policy, string role) =>
+        JsonSerializer.Serialize(new
+        {
+            role,
+            policyId = policy.Id,
+            policyVersion = policy.PolicyVersion,
+            referenceAmountMinor = order.ReferenceAmountMinor,
+            receivableMinor = order.ReceivableMinor,
+            differenceMinor = order.ReceivableMinor - order.ReferenceAmountMinor,
+            maximumLineDiscountBasisPoints = order.MaximumLineDiscountBasisPoints,
+            managerLineDiscountBasisPoints = policy.ManagerLineDiscountBasisPoints,
+            managerOrderDiscountMinor = policy.ManagerOrderDiscountMinor,
+            policy.AllowManagerPriceIncrease,
+        });
+
+    private static string PolicyAuditState(PriceOverridePolicy policy) => JsonSerializer.Serialize(new
+    {
+        policy.Id,
+        policy.PolicyVersion,
+        policy.ManagerLineDiscountBasisPoints,
+        policy.ManagerOrderDiscountMinor,
+        policy.AllowManagerPriceIncrease,
+        policy.IsActive,
+    });
+
     private static async Task<Result<ServiceOrderDto>> FailureAndRollback(IDbContextTransaction transaction, string code,
         string message, CancellationToken cancellationToken)
     {
         await RollbackIfActiveAsync(transaction, cancellationToken);
         return ResultFactory.Failure<ServiceOrderDto>(code, message);
+    }
+
+    private static async Task<Result<T>> FailureAndRollback<T>(IDbContextTransaction transaction, string code,
+        string message, CancellationToken cancellationToken)
+    {
+        await RollbackIfActiveAsync(transaction, cancellationToken);
+        return ResultFactory.Failure<T>(code, message);
     }
 
     private void AddReceipt(Guid tenantId, Guid commandId, Guid operatorId, byte[] requestHash, Guid entityId, DateTimeOffset now) =>

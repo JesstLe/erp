@@ -85,6 +85,13 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
             }
         }
 
+        if (!await dbContext.PriceOverridePolicies.AnyAsync(x => x.TenantId == tenant.Id && x.IsActive,
+                cancellationToken))
+        {
+            dbContext.PriceOverridePolicies.Add(PriceOverridePolicy.Default(tenant.Id, owner.Id,
+                DateTimeOffset.UtcNow));
+        }
+
         var facilityGroup = await dbContext.FacilityGroups.SingleOrDefaultAsync(x => x.StoreId == store.Id && x.DisplayName == "服务区 A", cancellationToken);
         if (facilityGroup is null)
         {

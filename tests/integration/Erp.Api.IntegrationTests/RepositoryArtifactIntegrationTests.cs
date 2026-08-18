@@ -311,6 +311,33 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void PriceOverrideApprovalIsVersionedServerAuthorizedAndBlocksPaymentUntilApproved()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180020__price_override_policy_and_approval.sql"));
+        var service = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Cashier", "CashierService.cs"));
+        var endpoints = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Api", "Endpoints",
+            "CashierEndpoints.cs"));
+        var order = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Domain", "Cashier",
+            "ServiceOrder.cs"));
+
+        Assert.Contains("CREATE TABLE price_override_policies", migration, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE price_override_approvals", migration, StringComparison.Ordinal);
+        Assert.Contains("ck_price_override_approvals_no_self_review", migration, StringComparison.Ordinal);
+        Assert.Contains("manager_line_discount_basis_points BETWEEN 0 AND 10000", migration,
+            StringComparison.Ordinal);
+        Assert.Contains("current.Roles", endpoints, StringComparison.Ordinal);
+        Assert.Contains("RequireRole(SystemRoles.Owner)", endpoints, StringComparison.Ordinal);
+        Assert.Contains("ResolvePriceRole(command.OperatorRoles)", service, StringComparison.Ordinal);
+        Assert.Contains("service_order.price.approval_requested", service, StringComparison.Ordinal);
+        Assert.Contains("PRICE_APPROVAL_REQUIRED", order, StringComparison.Ordinal);
+        Assert.Contains("PRICE_APPROVAL_SELF_REVIEW_FORBIDDEN", File.ReadAllText(Path.Combine(RepositoryRoot,
+            "apps", "api", "Erp.Domain", "Cashier", "PriceOverrideApproval.cs")),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryModuleManualReferencesExistingScreenshots()
     {
         var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");

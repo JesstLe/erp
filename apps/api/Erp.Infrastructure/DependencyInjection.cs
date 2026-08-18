@@ -6,6 +6,7 @@ using Erp.Application.Cashier;
 using Erp.Application.Auditing;
 using Erp.Application.Reports;
 using Erp.Application.Inventory;
+using Erp.Application.Notifications;
 using Erp.Infrastructure.Catalog;
 using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Cashier;
@@ -15,6 +16,7 @@ using Erp.Infrastructure.Inventory;
 using Erp.Infrastructure.Files;
 using Erp.Infrastructure.Facilities;
 using Erp.Infrastructure.Identity;
+using Erp.Infrastructure.Notifications;
 using Erp.Infrastructure.Persistence;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -121,6 +123,7 @@ public static class DependencyInjection
         services.AddScoped<IRefundService, RefundService>();
         services.AddScoped<IAuditQueryService, AuditQueryService>();
         services.AddScoped<IReportService, ReportService>();
+        services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<Seed.DevelopmentSeeder>();
         return services;
     }

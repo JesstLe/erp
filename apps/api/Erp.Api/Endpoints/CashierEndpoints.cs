@@ -60,7 +60,7 @@ public static class CashierEndpoints
                     (request.Lines ?? []).Select(x => new CreateServiceOrderLineCommand(x.LineType, x.ServiceItemId,
                         x.ProductItemId, x.ServiceEmployeeId, x.Quantity, x.ActualSeconds, x.EnteredPriceMinor,
                         x.PriceOverrideReason)).ToList(), request.CommandId,
-                    current.Id), cancellationToken));
+                    current.Id, current.Roles), cancellationToken));
         });
 
         group.MapPost("/orders/{orderId:guid}/void", async (Guid orderId, VoidOrderRequest request,
@@ -85,6 +85,62 @@ public static class CashierEndpoints
                     current.Id), cancellationToken));
         });
 
+        group.MapGet("/price-policy", async (IIdentityService identity, ICashierService cashier,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            return Results.Ok(await cashier.GetPriceOverridePolicyAsync(current.TenantId, current.Id,
+                cancellationToken));
+        });
+
+        group.MapPut("/price-policy", async (UpdatePricePolicyRequest request, IIdentityService identity,
+            ICashierService cashier, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await cashier.UpdatePriceOverridePolicyAsync(current.TenantId,
+                new UpdatePriceOverridePolicyCommand(request.StoreId,
+                    request.ManagerLineDiscountBasisPoints, request.ManagerOrderDiscountMinor,
+                    request.AllowManagerPriceIncrease, request.ExpectedVersion, request.CommandId, current.Id),
+                cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
+        group.MapGet("/price-approvals", async (Guid storeId, string? status, IIdentityService identity,
+            ICashierService cashier, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, storeId)) return Results.Forbid();
+            return Results.Ok(await cashier.ListPriceOverrideApprovalsAsync(current.TenantId, storeId, status,
+                cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
+        group.MapPost("/price-approvals/{approvalId:guid}/approve", async (Guid approvalId,
+            DecidePriceApprovalRequest request, IIdentityService identity, ICashierService cashier,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await cashier.ApprovePriceOverrideAsync(current.TenantId,
+                new DecidePriceOverrideApprovalCommand(request.StoreId, approvalId, request.ExpectedVersion,
+                    request.Note, request.CommandId, current.Id), cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
+        group.MapPost("/price-approvals/{approvalId:guid}/reject", async (Guid approvalId,
+            DecidePriceApprovalRequest request, IIdentityService identity, ICashierService cashier,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await cashier.RejectPriceOverrideAsync(current.TenantId,
+                new DecidePriceOverrideApprovalCommand(request.StoreId, approvalId, request.ExpectedVersion,
+                    request.Note, request.CommandId, current.Id), cancellationToken));
+        }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
+
         return endpoints;
     }
 
@@ -96,4 +152,8 @@ public static class CashierEndpoints
         IReadOnlyList<CreateOrderLineRequest>? Lines, Guid CommandId);
     private sealed record ConfirmOrderRequest(Guid StoreId, uint ExpectedVersion, Guid CommandId);
     private sealed record VoidOrderRequest(Guid StoreId, uint ExpectedVersion, string Reason, Guid CommandId);
+    private sealed record UpdatePricePolicyRequest(Guid StoreId, int ManagerLineDiscountBasisPoints,
+        long ManagerOrderDiscountMinor, bool AllowManagerPriceIncrease, uint ExpectedVersion, Guid CommandId);
+    private sealed record DecidePriceApprovalRequest(Guid StoreId, uint ExpectedVersion, string? Note,
+        Guid CommandId);
 }
