@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <system.webServer>
+    <rewrite>
+      <rules>
+        <rule name="ERP active slot" stopProcessing="true">
+          <match url="(.*)" />
+          <action type="Rewrite" url="http://127.0.0.1:__TARGET_PORT__/{R:1}" />
+        </rule>
+      </rules>
+    </rewrite>
+    <proxy enabled="true" preserveHostHeader="true" />
+  </system.webServer>
+</configuration>

@@ -4,6 +4,7 @@ using Erp.Api.Endpoints;
 using Erp.Infrastructure;
 using Erp.Infrastructure.Seed;
 using Erp.Application.Identity;
+using Erp.Application.Common;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
@@ -174,6 +175,14 @@ if (app.Environment.IsDevelopment())
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "ok", version = typeof(Program).Assembly.GetName().Version?.ToString() }))
     .AllowAnonymous();
+app.MapGet("/health/ready", async (IDatabaseReadinessService readiness, CancellationToken cancellationToken) =>
+{
+    var result = await readiness.CheckAsync(cancellationToken);
+    return result.IsReady
+        ? Results.Ok(new { status = "ready", schemaVersion = result.RequiredSchemaVersion })
+        : Results.Json(new { status = "not-ready", schemaVersion = result.RequiredSchemaVersion },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+}).AllowAnonymous();
 app.MapSecurityEndpoints();
 app.MapIdentityEndpoints();
 app.MapEmployeeEndpoints();
@@ -190,6 +199,14 @@ app.MapRefundEndpoints();
 app.MapAuditEndpoints();
 app.MapReportEndpoints();
 app.MapNotificationEndpoints();
+app.Map("/api/{**path}", () => Results.NotFound(new
+{
+    error = new { code = "API_ROUTE_NOT_FOUND", message = "接口不存在" },
+}));
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
+app.MapFallbackToFile("index.html");
 
 app.Run();
 
