@@ -23,6 +23,13 @@ public sealed class Tenant : Entity
 
     public TenantStatus Status { get; private set; }
 
+    public void UpdateProfile(string code, string name)
+    {
+        Code = Require(code, 32, nameof(code)).ToUpperInvariant();
+        Name = Require(name, 100, nameof(name));
+        Touch();
+    }
+
     private static string Require(string value, int maxLength, string field)
     {
         var normalized = value.Trim();
@@ -40,4 +47,3 @@ public enum TenantStatus
     Enabled = 1,
     Disabled = 2,
 }
-

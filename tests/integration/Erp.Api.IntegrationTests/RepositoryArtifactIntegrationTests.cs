@@ -368,7 +368,7 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
-    public void WindowsReleaseAutomationIsLockedIntegrityCheckedAndFailClosed()
+    public void LinuxReleaseAutomationIsLockedIntegrityCheckedAndFailClosed()
     {
         var migrations = Directory.GetFiles(Path.Combine(RepositoryRoot, "db", "migrations"), "V*.sql")
             .Select(Path.GetFileName).Order(StringComparer.Ordinal).ToList();
@@ -376,45 +376,54 @@ public sealed partial class RepositoryArtifactIntegrationTests
         var readiness = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
             "Persistence", "DatabaseReadinessService.cs"));
         var program = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Api", "Program.cs"));
-        var build = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows", "Build-Release.ps1"));
-        var common = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows", "Common.ps1"));
-        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows",
-            "Invoke-DatabaseMigration.ps1"));
-        var deploy = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows", "Deploy-Erp.ps1"));
-        var rollback = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows", "Rollback-Erp.ps1"));
-        var backup = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows", "Backup-Erp.ps1"));
-        var restore = File.ReadAllText(Path.Combine(RepositoryRoot, "deploy", "windows", "Test-Restore.ps1"));
+        var linuxRoot = Path.Combine(RepositoryRoot, "deploy", "linux");
+        var build = File.ReadAllText(Path.Combine(linuxRoot, "Build-Release.sh"));
+        var common = File.ReadAllText(Path.Combine(linuxRoot, "common.sh"));
+        var deploy = File.ReadAllText(Path.Combine(linuxRoot, "Deploy-Release.sh"));
+        var rollback = File.ReadAllText(Path.Combine(linuxRoot, "rollback.sh"));
+        var backup = File.ReadAllText(Path.Combine(linuxRoot, "backup.sh"));
+        var restore = File.ReadAllText(Path.Combine(linuxRoot, "verify-backup.sh"));
+        var initialize = File.ReadAllText(Path.Combine(linuxRoot, "Initialize-Host.sh"));
         var workflow = File.ReadAllText(Path.Combine(RepositoryRoot, ".github", "workflows", "release.yml"));
 
         Assert.Contains($"RequiredSchemaVersion = \"{latestVersion}\"", readiness, StringComparison.Ordinal);
-        Assert.Contains($"SchemaMin = '{latestVersion}'", build, StringComparison.Ordinal);
-        Assert.Contains($"SchemaMax = '{latestVersion}'", build, StringComparison.Ordinal);
+        Assert.Contains("schema_version=$(find", build, StringComparison.Ordinal);
+        Assert.Contains("\"schema\": {\"min\": schema, \"max\": schema}", build, StringComparison.Ordinal);
+        Assert.Contains("linux-x64-framework-dependent", build, StringComparison.Ordinal);
+        Assert.Contains("VITE_APP_VERSION=\"$version\" VITE_APP_ENVIRONMENT=Production", build,
+            StringComparison.Ordinal);
         Assert.Contains("MapGet(\"/health/ready\"", program, StringComparison.Ordinal);
         Assert.Contains("UseStaticFiles", program, StringComparison.Ordinal);
         Assert.Contains("MapFallbackToFile(\"index.html\")", program, StringComparison.Ordinal);
         Assert.Contains("/api/{**path}", program, StringComparison.Ordinal);
-        Assert.Contains("发布清单与实际文件不一致", common, StringComparison.Ordinal);
-        Assert.Contains("StartsWith", common, StringComparison.Ordinal);
-        Assert.Contains("-baselineOnMigrate=false", migration, StringComparison.Ordinal);
-        Assert.Contains("-cleanDisabled=true", migration, StringComparison.Ordinal);
-        Assert.DoesNotContain(" repair", migration, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain(" clean", migration, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("$proxySwitched", deploy, StringComparison.Ordinal);
-        Assert.Contains("$previousProxyContent", deploy, StringComparison.Ordinal);
-        Assert.Contains("ExpectedPackageSha256", deploy, StringComparison.Ordinal);
-        Assert.Contains("发布前备份失败", deploy, StringComparison.Ordinal);
-        Assert.DoesNotContain("SkipBackup", deploy, StringComparison.Ordinal);
-        Assert.Contains("current.schemaVersion", rollback, StringComparison.Ordinal);
-        Assert.Contains("$previousProxyContent", rollback, StringComparison.Ordinal);
-        Assert.Contains("目标 IIS 站点未指向受控 releases 版本目录", rollback, StringComparison.Ordinal);
+        Assert.Contains("sha256_file", common, StringComparison.Ordinal);
+        Assert.Contains("safe_absolute_directory", common, StringComparison.Ordinal);
+        Assert.Contains("archive path escapes root", deploy, StringComparison.Ordinal);
+        Assert.Contains("manifest mismatch", deploy, StringComparison.Ordinal);
+        Assert.Contains("expected_hash", deploy, StringComparison.Ordinal);
+        Assert.Contains("-baselineOnMigrate=false", deploy, StringComparison.Ordinal);
+        Assert.Contains("-cleanDisabled=true", deploy, StringComparison.Ordinal);
+        Assert.DoesNotContain(" repair", deploy, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("flyway clean", deploy, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/usr/local/sbin/erp-backup", deploy, StringComparison.Ordinal);
+        Assert.Contains("previous_upstream", deploy, StringComparison.Ordinal);
+        Assert.Contains("current_schema", rollback, StringComparison.Ordinal);
+        Assert.Contains("schema_min", rollback, StringComparison.Ordinal);
+        Assert.Contains("previous_upstream", rollback, StringComparison.Ordinal);
         Assert.Contains("--no-restore", build, StringComparison.Ordinal);
-        Assert.Contains("--recipient $AgeRecipient", backup, StringComparison.Ordinal);
-        Assert.Contains("Remove-Item -LiteralPath $plainArchive", backup, StringComparison.Ordinal);
-        Assert.Contains("_restore_", restore, StringComparison.Ordinal);
-        Assert.Contains("恢复目标数据库已存在，拒绝覆盖", restore, StringComparison.Ordinal);
-        Assert.Contains("备份清单包含越界路径", restore, StringComparison.Ordinal);
+        Assert.Contains("age --recipient", backup, StringComparison.Ordinal);
+        Assert.Contains("schemaVersion", backup, StringComparison.Ordinal);
+        Assert.Contains("erp_restore_verify_", restore, StringComparison.Ordinal);
+        Assert.Contains("隔离恢复目标已经存在，拒绝覆盖", restore, StringComparison.Ordinal);
+        Assert.Contains("backup path escapes root", restore, StringComparison.Ordinal);
+        Assert.Contains("PasswordAuthentication no", initialize, StringComparison.Ordinal);
+        Assert.Contains("listen_addresses = '127.0.0.1,::1'", initialize, StringComparison.Ordinal);
+        Assert.Contains("ASPNETCORE_URLS=http://127.0.0.1", initialize, StringComparison.Ordinal);
+        Assert.Contains("ufw default deny incoming", initialize, StringComparison.Ordinal);
+        Assert.Contains("ubuntu && ${VERSION_ID:-} == 24.04", initialize, StringComparison.Ordinal);
         Assert.Contains("dotnet restore ERP.slnx --locked-mode", workflow, StringComparison.Ordinal);
         Assert.Contains("npm audit --audit-level=moderate", workflow, StringComparison.Ordinal);
+        Assert.Contains("runs-on: ubuntu-24.04", workflow, StringComparison.Ordinal);
         Assert.Contains("actions/upload-artifact@v4", workflow, StringComparison.Ordinal);
 
         var projects = Directory.GetFiles(RepositoryRoot, "*.csproj", SearchOption.AllDirectories)
@@ -457,6 +466,27 @@ public sealed partial class RepositoryArtifactIntegrationTests
             Assert.Contains("自动加载，无需点击查询", page, StringComparison.Ordinal);
             Assert.DoesNotContain(">查询</Button>", page, StringComparison.Ordinal);
         });
+    }
+
+    [Fact]
+    public void SupplyChainMigrationKeepsPostedFactsAndLotAllocationsImmutable()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608180028__supply_chain_advanced_inventory.sql"));
+        var service = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Inventory", "SupplyChainService.cs"));
+
+        Assert.Contains("CREATE TABLE suppliers", migration, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE purchase_receipts", migration, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE inventory_lots", migration, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE stocktakes", migration, StringComparison.Ordinal);
+        Assert.Contains("CREATE TABLE inventory_transfers", migration, StringComparison.Ordinal);
+        Assert.Contains("trg_inventory_lot_allocations_immutable", migration, StringComparison.Ordinal);
+        Assert.Contains("trg_purchase_receipts_immutable", migration, StringComparison.Ordinal);
+        Assert.Contains("trg_stocktake_lines_immutable", migration, StringComparison.Ordinal);
+        Assert.Contains("trg_inventory_transfer_lots_immutable", migration, StringComparison.Ordinal);
+        Assert.Contains("IsolationLevel.Serializable", service, StringComparison.Ordinal);
+        Assert.Contains("INVENTORY_LOT_INSUFFICIENT", service, StringComparison.Ordinal);
     }
 
     [Fact]

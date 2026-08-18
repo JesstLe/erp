@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiRequest, ApiError } from '../api/client'
-import type { CustomerSummary, FacilityBoard, FacilityBoardItem, ServiceItem } from '../api/types'
+import type { CustomerSummary, FacilityBoard, FacilityBoardItem, PageResult, ServiceItem } from '../api/types'
 import { useAuth } from '../auth/useAuth'
 
 const statusMeta: Record<string, { label: string; color: string }> = {
@@ -24,7 +24,7 @@ export function FacilitiesPage() {
   const [startForm] = Form.useForm<StartValues>(); const [switchForm] = Form.useForm<SwitchValues>()
   useEffect(() => { const timer = window.setInterval(() => setTick(Date.now()), 1000); return () => window.clearInterval(timer) }, [])
   const board = useQuery({ queryKey: ['facility-board', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<FacilityBoard>(`/api/v1/facilities/board?storeId=${storeId}`), refetchInterval: 30_000 })
-  const customers = useQuery({ queryKey: ['customers', storeId, 'facilities'], enabled: Boolean(storeId), queryFn: () => apiRequest<CustomerSummary[]>('/api/v1/customers/search', { method: 'POST', body: JSON.stringify({ storeId, query: '' }) }) })
+  const customers = useQuery({ queryKey: ['customers', storeId, 'facilities'], enabled: Boolean(storeId), queryFn: () => apiRequest<PageResult<CustomerSummary>>('/api/v1/customers/search', { method: 'POST', body: JSON.stringify({ storeId, query: '', page: 1, pageSize: 100 }) }), select: (result) => result.items })
   const serviceItems = useQuery({ queryKey: ['service-items'], queryFn: () => apiRequest<ServiceItem[]>('/api/v1/catalog/service-items') })
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['facility-board', storeId] })
   const mutate = useMutation({ mutationFn: ({ path, body }: { path: string; body: object }) => apiRequest<FacilityBoardItem>(path, { method: 'POST', body: JSON.stringify(body) }), onSuccess: async () => { await refresh() }, onError: (error) => message.error(error instanceof ApiError ? error.message : '操作失败') })

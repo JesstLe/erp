@@ -71,4 +71,4 @@ flowchart LR
 - 展示备份、WAL归档、恢复演练和磁盘容量状态，但不向普通管理员开放任意SQL。
 - 配置变更走版本和审批；数据库结构变更只能通过受控迁移发布。
 - 生产应用账号不拥有DDL权限，系统页面不提供通用SQL执行入口。
-- 具体规则见 [数据库设计与变更治理规范](../database-design-and-change-governance.md) 和 [Windows单机部署与容量基线](../windows-server-deployment-baseline.md)。
+- 具体规则见 [数据库设计与变更治理规范](../database-design-and-change-governance.md) 和 [Linux单机部署与容量基线](../linux-server-deployment-baseline.md)。

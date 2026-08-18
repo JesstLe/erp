@@ -6,6 +6,7 @@ using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
 using Erp.Domain.Inventory;
 using Erp.Domain.Organization;
+using Erp.Domain.Scheduling;
 using Erp.Infrastructure.Identity;
 using Erp.Infrastructure.Files;
 using Microsoft.AspNetCore.Identity;
@@ -54,6 +55,10 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<MemberAccount> MemberAccounts => Set<MemberAccount>();
     public DbSet<MemberAccountLedger> MemberAccountLedgers => Set<MemberAccountLedger>();
     public DbSet<MemberTopupOrder> MemberTopupOrders => Set<MemberTopupOrder>();
+    public DbSet<ServicePass> ServicePasses => Set<ServicePass>();
+    public DbSet<ServicePassLedger> ServicePassLedgers => Set<ServicePassLedger>();
+    public DbSet<MemberPointGrant> MemberPointGrants => Set<MemberPointGrant>();
+    public DbSet<MemberPointUseAllocation> MemberPointUseAllocations => Set<MemberPointUseAllocation>();
     public DbSet<MemberVerificationChallenge> MemberVerificationChallenges => Set<MemberVerificationChallenge>();
     public DbSet<ServiceOrder> ServiceOrders => Set<ServiceOrder>();
     public DbSet<ServiceOrderLine> ServiceOrderLines => Set<ServiceOrderLine>();
@@ -79,9 +84,22 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<InventoryDocument> InventoryDocuments => Set<InventoryDocument>();
     public DbSet<InventoryDocumentLine> InventoryDocumentLines => Set<InventoryDocumentLine>();
     public DbSet<ProductReturn> ProductReturns => Set<ProductReturn>();
+    public DbSet<Supplier> Suppliers => Set<Supplier>();
+    public DbSet<PurchaseReceipt> PurchaseReceipts => Set<PurchaseReceipt>();
+    public DbSet<PurchaseReceiptLine> PurchaseReceiptLines => Set<PurchaseReceiptLine>();
+    public DbSet<InventoryLot> InventoryLots => Set<InventoryLot>();
+    public DbSet<InventoryLotAllocation> InventoryLotAllocations => Set<InventoryLotAllocation>();
+    public DbSet<Stocktake> Stocktakes => Set<Stocktake>();
+    public DbSet<StocktakeLine> StocktakeLines => Set<StocktakeLine>();
+    public DbSet<InventoryTransfer> InventoryTransfers => Set<InventoryTransfer>();
+    public DbSet<InventoryTransferLine> InventoryTransferLines => Set<InventoryTransferLine>();
+    public DbSet<InventoryTransferLot> InventoryTransferLots => Set<InventoryTransferLot>();
     public DbSet<StoredFileRecord> StoredFiles => Set<StoredFileRecord>();
     public DbSet<ServiceRecord> ServiceRecords => Set<ServiceRecord>();
+    public DbSet<ServiceRecordCorrection> ServiceRecordCorrections => Set<ServiceRecordCorrection>();
     public DbSet<ServiceRecordAttachment> ServiceRecordAttachments => Set<ServiceRecordAttachment>();
+    public DbSet<Appointment> Appointments => Set<Appointment>();
+    public DbSet<EmployeeShift> EmployeeShifts => Set<EmployeeShift>();
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -107,6 +125,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
         ConfigureCustomers(builder);
         ConfigureCashier(builder);
         ConfigureInventory(builder);
+        ConfigureScheduling(builder);
         ConfigureFilesAndServiceRecords(builder);
         ConfigureSystemRecords(builder);
     }
@@ -438,8 +457,13 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.ServiceNotificationConsent).HasColumnName("service_notification_consent");
             entity.Property(x => x.MarketingConsent).HasColumnName("marketing_consent");
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.MergedIntoCustomerId).HasColumnName("merged_into_customer_id");
+            entity.Property(x => x.MergedAtUtc).HasColumnName("merged_at_utc");
+            entity.Property(x => x.MergedBy).HasColumnName("merged_by");
+            entity.Property(x => x.MergeReason).HasColumnName("merge_reason").HasMaxLength(500);
             entity.HasIndex(x => new { x.TenantId, x.MobileLookupHash });
             entity.HasIndex(x => new { x.HomeStoreId, x.CreatedAtUtc });
+            entity.HasIndex(x => new { x.TenantId, x.MergedIntoCustomerId });
         });
         builder.Entity<MemberCardType>(entity =>
         {
@@ -505,12 +529,89 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.PrincipalMinor).HasColumnName("principal_minor");
             entity.Property(x => x.BonusMinor).HasColumnName("bonus_minor");
             entity.Property(x => x.ReceivableMinor).HasColumnName("receivable_minor");
+            entity.Property(x => x.RefundedPrincipalMinor).HasColumnName("refunded_principal_minor");
+            entity.Property(x => x.RevokedBonusMinor).HasColumnName("revoked_bonus_minor");
+            entity.Ignore(x => x.RemainingPrincipalMinor);
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(32);
             entity.Property(x => x.Note).HasColumnName("note").HasMaxLength(500);
             entity.Property(x => x.PaidAtUtc).HasColumnName("paid_at_utc");
             entity.HasIndex(x => new { x.TenantId, x.TopupNo }).IsUnique();
             entity.HasIndex(x => new { x.StoreId, x.PaidAtUtc });
             entity.HasIndex(x => new { x.CustomerId, x.PaidAtUtc });
+        });
+        builder.Entity<ServicePass>(entity =>
+        {
+            entity.ToTable("member_service_passes");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.CardId).HasColumnName("card_id");
+            entity.Property(x => x.ServiceItemId).HasColumnName("service_item_id");
+            entity.Property(x => x.PassName).HasColumnName("pass_name").HasMaxLength(100);
+            entity.Property(x => x.PurchasedUses).HasColumnName("purchased_uses");
+            entity.Property(x => x.BonusUses).HasColumnName("bonus_uses");
+            entity.Property(x => x.RemainingPurchasedUses).HasColumnName("remaining_purchased_uses");
+            entity.Property(x => x.RemainingBonusUses).HasColumnName("remaining_bonus_uses");
+            entity.Ignore(x => x.RemainingUses);
+            entity.Property(x => x.ValidFrom).HasColumnName("valid_from");
+            entity.Property(x => x.ValidTo).HasColumnName("valid_to");
+            entity.Property(x => x.IssueReason).HasColumnName("issue_reason").HasMaxLength(500);
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.HasIndex(x => new { x.TenantId, x.StoreId, x.CustomerId, x.CreatedAtUtc });
+            entity.HasOne<MemberCard>().WithMany().HasForeignKey(x => x.CardId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ServiceItem>().WithMany().HasForeignKey(x => x.ServiceItemId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<ServicePassLedger>(entity =>
+        {
+            entity.ToTable("member_service_pass_ledgers");
+            ConfigureBase(entity);
+            entity.Property(x => x.PassId).HasColumnName("pass_id");
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.Action).HasColumnName("action").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.PurchasedUsesDelta).HasColumnName("purchased_uses_delta");
+            entity.Property(x => x.BonusUsesDelta).HasColumnName("bonus_uses_delta");
+            entity.Property(x => x.PurchasedUsesAfter).HasColumnName("purchased_uses_after");
+            entity.Property(x => x.BonusUsesAfter).HasColumnName("bonus_uses_after");
+            entity.Property(x => x.ServiceOrderId).HasColumnName("service_order_id");
+            entity.Property(x => x.ReversedLedgerId).HasColumnName("reversed_ledger_id");
+            entity.Property(x => x.CommandId).HasColumnName("command_id");
+            entity.Property(x => x.OperatorId).HasColumnName("operator_id");
+            entity.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500);
+            entity.Property(x => x.OccurredAtUtc).HasColumnName("occurred_at_utc");
+            entity.HasIndex(x => new { x.PassId, x.CommandId }).IsUnique();
+            entity.HasIndex(x => x.ReversedLedgerId).IsUnique();
+            entity.HasOne<ServicePass>().WithMany().HasForeignKey(x => x.PassId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<MemberPointGrant>(entity =>
+        {
+            entity.ToTable("member_point_grants");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.CardId).HasColumnName("card_id");
+            entity.Property(x => x.AccountId).HasColumnName("account_id");
+            entity.Property(x => x.OriginalUnits).HasColumnName("original_units");
+            entity.Property(x => x.RemainingUnits).HasColumnName("remaining_units");
+            entity.Property(x => x.ExpiresOn).HasColumnName("expires_on");
+            entity.Property(x => x.SourceType).HasColumnName("source_type").HasMaxLength(40);
+            entity.Property(x => x.SourceId).HasColumnName("source_id");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.HasIndex(x => new { x.AccountId, x.Status, x.ExpiresOn, x.CreatedAtUtc });
+            entity.HasOne<MemberAccount>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<MemberPointUseAllocation>(entity =>
+        {
+            entity.ToTable("member_point_use_allocations");
+            ConfigureBase(entity);
+            entity.Property(x => x.DebitLedgerId).HasColumnName("debit_ledger_id");
+            entity.Property(x => x.GrantId).HasColumnName("grant_id");
+            entity.Property(x => x.Units).HasColumnName("units");
+            entity.HasIndex(x => new { x.DebitLedgerId, x.GrantId }).IsUnique();
+            entity.HasOne<MemberAccountLedger>().WithMany().HasForeignKey(x => x.DebitLedgerId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<MemberPointGrant>().WithMany().HasForeignKey(x => x.GrantId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<MemberVerificationChallenge>(entity =>
         {
@@ -700,6 +801,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.PaidMinor).HasColumnName("paid_minor");
             entity.Property(x => x.RefundedMinor).HasColumnName("refunded_minor");
             entity.Property(x => x.PaidAtUtc).HasColumnName("paid_at_utc");
+            entity.Property(x => x.CashTenderedMinor).HasColumnName("cash_tendered_minor");
+            entity.Property(x => x.CashChangeMinor).HasColumnName("cash_change_minor");
             entity.HasMany(x => x.Allocations).WithOne().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
             entity.Navigation(x => x.Allocations).UsePropertyAccessMode(PropertyAccessMode.Field);
             entity.HasIndex(x => new { x.TenantId, x.PaymentNo }).IsUnique();
@@ -1048,6 +1151,220 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.OperatorId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
+        builder.Entity<Supplier>(entity =>
+        {
+            entity.ToTable("suppliers");
+            ConfigureBase(entity);
+            entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(40);
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(120);
+            entity.Property(x => x.ContactName).HasColumnName("contact_name").HasMaxLength(80);
+            entity.Property(x => x.Mobile).HasColumnName("mobile").HasMaxLength(32);
+            entity.Property(x => x.SettlementTerms).HasColumnName("settlement_terms").HasMaxLength(500);
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        });
+        builder.Entity<PurchaseReceipt>(entity =>
+        {
+            entity.ToTable("purchase_receipts");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.SupplierId).HasColumnName("supplier_id");
+            entity.Property(x => x.ReceiptNo).HasColumnName("receipt_no").HasMaxLength(40);
+            entity.Property(x => x.ExternalNo).HasColumnName("external_no").HasMaxLength(80);
+            entity.Property(x => x.Note).HasColumnName("note").HasMaxLength(500);
+            entity.Property(x => x.PostedBy).HasColumnName("posted_by");
+            entity.Property(x => x.PostedAtUtc).HasColumnName("posted_at_utc");
+            entity.Ignore(x => x.TotalCostMinor);
+            entity.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.ReceiptId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasIndex(x => new { x.TenantId, x.ReceiptNo }).IsUnique();
+            entity.HasOne<Supplier>().WithMany().HasForeignKey(x => x.SupplierId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<PurchaseReceiptLine>(entity =>
+        {
+            entity.ToTable("purchase_receipt_lines");
+            ConfigureBase(entity);
+            entity.Property(x => x.ReceiptId).HasColumnName("receipt_id");
+            entity.Property(x => x.ProductItemId).HasColumnName("product_item_id");
+            entity.Property(x => x.Quantity).HasColumnName("quantity");
+            entity.Property(x => x.UnitCostMinor).HasColumnName("unit_cost_minor");
+            entity.Ignore(x => x.LineCostMinor);
+            entity.Property(x => x.BatchNo).HasColumnName("batch_no").HasMaxLength(80);
+            entity.Property(x => x.ExpiresOn).HasColumnName("expires_on");
+            entity.HasIndex(x => new { x.ReceiptId, x.ProductItemId, x.BatchNo }).IsUnique();
+        });
+        builder.Entity<InventoryLot>(entity =>
+        {
+            entity.ToTable("inventory_lots");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.ProductItemId).HasColumnName("product_item_id");
+            entity.Property(x => x.BatchNo).HasColumnName("batch_no").HasMaxLength(80);
+            entity.Property(x => x.ExpiresOn).HasColumnName("expires_on");
+            entity.Property(x => x.UnitCostMinor).HasColumnName("unit_cost_minor");
+            entity.Property(x => x.OriginalQuantity).HasColumnName("original_quantity");
+            entity.Property(x => x.RemainingQuantity).HasColumnName("remaining_quantity");
+            entity.Property(x => x.SourceType).HasColumnName("source_type").HasMaxLength(40);
+            entity.Property(x => x.SourceLineId).HasColumnName("source_line_id");
+            entity.HasIndex(x => new { x.SourceType, x.SourceLineId }).IsUnique();
+            entity.HasIndex(x => new { x.StoreId, x.ProductItemId, x.ExpiresOn, x.CreatedAtUtc });
+        });
+        builder.Entity<InventoryLotAllocation>(entity =>
+        {
+            entity.ToTable("inventory_lot_allocations");
+            ConfigureBase(entity);
+            entity.Property(x => x.MovementId).HasColumnName("movement_id");
+            entity.Property(x => x.LotId).HasColumnName("lot_id");
+            entity.Property(x => x.Quantity).HasColumnName("quantity");
+            entity.HasIndex(x => new { x.MovementId, x.LotId }).IsUnique();
+            entity.HasOne<InventoryMovement>().WithMany().HasForeignKey(x => x.MovementId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<InventoryLot>().WithMany().HasForeignKey(x => x.LotId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<Stocktake>(entity =>
+        {
+            entity.ToTable("stocktakes");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.StocktakeNo).HasColumnName("stocktake_no").HasMaxLength(40);
+            entity.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500);
+            entity.Property(x => x.RequestedBy).HasColumnName("requested_by");
+            entity.Property(x => x.FrozenAtUtc).HasColumnName("frozen_at_utc");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.ApprovedBy).HasColumnName("approved_by");
+            entity.Property(x => x.PostedAtUtc).HasColumnName("posted_at_utc");
+            entity.Property(x => x.DecisionReason).HasColumnName("decision_reason").HasMaxLength(500);
+            entity.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.StocktakeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasIndex(x => new { x.TenantId, x.StocktakeNo }).IsUnique();
+        });
+        builder.Entity<StocktakeLine>(entity =>
+        {
+            entity.ToTable("stocktake_lines");
+            ConfigureBase(entity);
+            entity.Property(x => x.StocktakeId).HasColumnName("stocktake_id");
+            entity.Property(x => x.ProductItemId).HasColumnName("product_item_id");
+            entity.Property(x => x.BookQuantity).HasColumnName("book_quantity");
+            entity.Property(x => x.CountedQuantity).HasColumnName("counted_quantity");
+            entity.Property(x => x.DifferenceQuantity).HasColumnName("difference_quantity");
+            entity.HasIndex(x => new { x.StocktakeId, x.ProductItemId }).IsUnique();
+        });
+        builder.Entity<InventoryTransfer>(entity =>
+        {
+            entity.ToTable("inventory_transfers");
+            ConfigureBase(entity);
+            entity.Property(x => x.SourceStoreId).HasColumnName("source_store_id");
+            entity.Property(x => x.DestinationStoreId).HasColumnName("destination_store_id");
+            entity.Property(x => x.TransferNo).HasColumnName("transfer_no").HasMaxLength(40);
+            entity.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500);
+            entity.Property(x => x.RequestedBy).HasColumnName("requested_by");
+            entity.Property(x => x.RequestedAtUtc).HasColumnName("requested_at_utc");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.ShippedBy).HasColumnName("shipped_by");
+            entity.Property(x => x.ShippedAtUtc).HasColumnName("shipped_at_utc");
+            entity.Property(x => x.ReceivedBy).HasColumnName("received_by");
+            entity.Property(x => x.ReceivedAtUtc).HasColumnName("received_at_utc");
+            entity.Property(x => x.DecisionReason).HasColumnName("decision_reason").HasMaxLength(500);
+            entity.HasMany(x => x.Lines).WithOne().HasForeignKey(x => x.TransferId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
+            entity.HasIndex(x => new { x.TenantId, x.TransferNo }).IsUnique();
+        });
+        builder.Entity<InventoryTransferLine>(entity =>
+        {
+            entity.ToTable("inventory_transfer_lines");
+            ConfigureBase(entity);
+            entity.Property(x => x.TransferId).HasColumnName("transfer_id");
+            entity.Property(x => x.ProductItemId).HasColumnName("product_item_id");
+            entity.Property(x => x.Quantity).HasColumnName("quantity");
+            entity.HasIndex(x => new { x.TransferId, x.ProductItemId }).IsUnique();
+        });
+        builder.Entity<InventoryTransferLot>(entity =>
+        {
+            entity.ToTable("inventory_transfer_lots");
+            ConfigureBase(entity);
+            entity.Property(x => x.TransferLineId).HasColumnName("transfer_line_id");
+            entity.Property(x => x.SourceLotId).HasColumnName("source_lot_id");
+            entity.Property(x => x.BatchNo).HasColumnName("batch_no").HasMaxLength(80);
+            entity.Property(x => x.ExpiresOn).HasColumnName("expires_on");
+            entity.Property(x => x.UnitCostMinor).HasColumnName("unit_cost_minor");
+            entity.Property(x => x.Quantity).HasColumnName("quantity");
+            entity.HasIndex(x => new { x.TransferLineId, x.SourceLotId }).IsUnique();
+        });
+    }
+
+    private static void ConfigureScheduling(ModelBuilder builder)
+    {
+        builder.Entity<EmployeeShift>(entity =>
+        {
+            entity.ToTable("employee_shifts");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.EmployeeId).HasColumnName("employee_id");
+            entity.Property(x => x.StartsAtUtc).HasColumnName("starts_at_utc");
+            entity.Property(x => x.EndsAtUtc).HasColumnName("ends_at_utc");
+            entity.Property(x => x.Note).HasColumnName("note").HasMaxLength(500);
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.CreatedBy).HasColumnName("created_by");
+            entity.Property(x => x.CreateCommandId).HasColumnName("create_command_id");
+            entity.Property(x => x.CancelledAtUtc).HasColumnName("cancelled_at_utc");
+            entity.Property(x => x.CancelledBy).HasColumnName("cancelled_by");
+            entity.Property(x => x.CancellationReason).HasColumnName("cancellation_reason").HasMaxLength(500);
+            entity.HasIndex(x => x.CreateCommandId).IsUnique();
+            entity.HasIndex(x => new { x.StoreId, x.StartsAtUtc, x.EndsAtUtc });
+            entity.HasIndex(x => new { x.EmployeeId, x.StartsAtUtc, x.EndsAtUtc });
+            entity.HasOne<Store>().WithMany().HasForeignKey(x => x.StoreId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CancelledBy).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<Appointment>(entity =>
+        {
+            entity.ToTable("appointments");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.AppointmentNo).HasColumnName("appointment_no").HasMaxLength(40);
+            entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.ServiceItemId).HasColumnName("service_item_id");
+            entity.Property(x => x.EmployeeId).HasColumnName("employee_id");
+            entity.Property(x => x.FacilityId).HasColumnName("facility_id");
+            entity.Property(x => x.StartsAtUtc).HasColumnName("starts_at_utc");
+            entity.Property(x => x.EndsAtUtc).HasColumnName("ends_at_utc");
+            entity.Property(x => x.Note).HasColumnName("note").HasMaxLength(500);
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.Property(x => x.CreatedBy).HasColumnName("created_by");
+            entity.Property(x => x.CreateCommandId).HasColumnName("create_command_id");
+            entity.Property(x => x.VisitId).HasColumnName("visit_id");
+            entity.Property(x => x.ArrivedBy).HasColumnName("arrived_by");
+            entity.Property(x => x.ArrivedAtUtc).HasColumnName("arrived_at_utc");
+            entity.Property(x => x.CancelledAtUtc).HasColumnName("cancelled_at_utc");
+            entity.Property(x => x.CancelledBy).HasColumnName("cancelled_by");
+            entity.Property(x => x.CancellationReason).HasColumnName("cancellation_reason").HasMaxLength(500);
+            entity.Property(x => x.NoShowAtUtc).HasColumnName("no_show_at_utc");
+            entity.Property(x => x.NoShowBy).HasColumnName("no_show_by");
+            entity.Property(x => x.NoShowReason).HasColumnName("no_show_reason").HasMaxLength(500);
+            entity.HasIndex(x => new { x.TenantId, x.AppointmentNo }).IsUnique();
+            entity.HasIndex(x => x.CreateCommandId).IsUnique();
+            entity.HasIndex(x => x.VisitId).IsUnique();
+            entity.HasIndex(x => new { x.StoreId, x.StartsAtUtc, x.EndsAtUtc });
+            entity.HasIndex(x => new { x.CustomerId, x.StartsAtUtc });
+            entity.HasIndex(x => new { x.EmployeeId, x.StartsAtUtc, x.EndsAtUtc });
+            entity.HasIndex(x => new { x.FacilityId, x.StartsAtUtc, x.EndsAtUtc });
+            entity.HasOne<Store>().WithMany().HasForeignKey(x => x.StoreId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ServiceItem>().WithMany().HasForeignKey(x => x.ServiceItemId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Employee>().WithMany().HasForeignKey(x => x.EmployeeId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Facility>().WithMany().HasForeignKey(x => x.FacilityId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Visit>().WithOne().HasForeignKey<Appointment>(x => x.VisitId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.ArrivedBy).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CancelledBy).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.NoShowBy).OnDelete(DeleteBehavior.Restrict);
+        });
     }
 
     private static void ConfigureSystemRecords(ModelBuilder builder)
@@ -1143,6 +1460,24 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasIndex(x => new { x.ServiceRecordId, x.FileId }).IsUnique();
             entity.HasIndex(x => new { x.ServiceRecordId, x.SortOrder }).IsUnique();
             entity.HasOne<StoredFileRecord>().WithMany().HasForeignKey(x => x.FileId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<ServiceRecordCorrection>(entity =>
+        {
+            entity.ToTable("customer_service_record_corrections");
+            ConfigureBase(entity);
+            entity.Property(x => x.ServiceRecordId).HasColumnName("service_record_id");
+            entity.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500);
+            entity.Property(x => x.ConditionNotes).HasColumnName("condition_notes").HasMaxLength(2000);
+            entity.Property(x => x.ServiceContent).HasColumnName("service_content").HasMaxLength(4000);
+            entity.Property(x => x.FollowUpNotes).HasColumnName("follow_up_notes").HasMaxLength(2000);
+            entity.Property(x => x.CommandId).HasColumnName("command_id");
+            entity.Property(x => x.CorrectedBy).HasColumnName("corrected_by");
+            entity.HasIndex(x => x.CommandId).IsUnique();
+            entity.HasIndex(x => new { x.ServiceRecordId, x.CreatedAtUtc });
+            entity.HasOne<ServiceRecord>().WithMany().HasForeignKey(x => x.ServiceRecordId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CorrectedBy)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

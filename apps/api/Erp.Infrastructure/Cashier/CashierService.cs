@@ -24,12 +24,14 @@ namespace Erp.Infrastructure.Cashier;
 internal sealed class CashierService(ErpDbContext db, InventoryPostingService inventory, TimeProvider clock,
     IHttpContextAccessor httpContextAccessor) : ICashierService
 {
-    public async Task<IReadOnlyList<CashierVisitDto>> ListPendingVisitsAsync(Guid tenantId, Guid storeId,
-        CancellationToken cancellationToken)
+    public async Task<PageResult<CashierVisitDto>> ListPendingVisitsAsync(Guid tenantId, Guid storeId,
+        int page, int pageSize, CancellationToken cancellationToken)
     {
-        var visits = await db.Visits.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId &&
-            x.Status == VisitStatus.ServiceEnded && !db.ServiceOrders.Any(order => order.VisitId == x.Id && order.Status != ServiceOrderStatus.Voided))
-            .OrderBy(x => x.ServiceEndedAtUtc).Take(100).ToListAsync(cancellationToken);
+        var query = db.Visits.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId &&
+            x.Status == VisitStatus.ServiceEnded && !db.ServiceOrders.Any(order => order.VisitId == x.Id && order.Status != ServiceOrderStatus.Voided));
+        var total = await query.CountAsync(cancellationToken);
+        var visits = await query.OrderBy(x => x.ServiceEndedAtUtc).ThenBy(x => x.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
         var visitIds = visits.Select(x => x.Id).ToList();
         var sessions = await db.FacilitySessions.AsNoTracking().Include(x => x.Pauses)
             .Where(x => visitIds.Contains(x.VisitId)).ToListAsync(cancellationToken);
@@ -47,7 +49,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             .Where(x => x.TenantId == tenantId && x.StoreId == storeId && facilityIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
         var now = clock.GetUtcNow();
-        return visits.Select(visit => new CashierVisitDto(visit.Id, visit.VisitNo, visit.Status.ToString(), visit.CustomerId,
+        var items = visits.Select(visit => new CashierVisitDto(visit.Id, visit.VisitNo, visit.Status.ToString(), visit.CustomerId,
             visit.CustomerId is Guid customerId ? customerNames.GetValueOrDefault(customerId, "匿名顾客") : "匿名顾客",
             visit.PlannedServiceItemId,
             visit.PlannedServiceItemId is Guid serviceItemId ? plannedServiceNames.GetValueOrDefault(serviceItemId) : null,
@@ -55,6 +57,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                 .Select(x => facilityNames.GetValueOrDefault(x.FacilityId, "未知设施")).Distinct()),
             visit.ArrivedAtUtc, visit.ServiceEndedAtUtc,
             sessions.Where(x => x.VisitId == visit.Id).Sum(x => x.GetActiveSeconds(now)), visit.Note)).ToList();
+        return new PageResult<CashierVisitDto>(items, total, page, pageSize);
     }
 
     public async Task<IReadOnlyList<ServiceEmployeeDto>> ListServiceEmployeesAsync(Guid tenantId, Guid storeId,
@@ -67,12 +70,53 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             .Select(employee => new ServiceEmployeeDto(employee.Id, employee.EmployeeNo, employee.DisplayName,
                 employee.PositionCode)).ToListAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<ServiceOrderDto>> ListOrdersAsync(Guid tenantId, Guid storeId, CancellationToken cancellationToken)
+    public async Task<PageResult<ServiceOrderDto>> ListOrdersAsync(Guid tenantId, Guid storeId,
+        ServiceOrderSearchCriteria criteria, int page, int pageSize, CancellationToken cancellationToken)
     {
-        var orders = await db.ServiceOrders.AsNoTracking().Include(x => x.Lines)
-            .Where(x => x.TenantId == tenantId && x.StoreId == storeId)
-            .OrderByDescending(x => x.CreatedAtUtc).Take(100).ToListAsync(cancellationToken);
-        return orders.Select(ToDto).ToList();
+        var query = db.ServiceOrders.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId);
+        var term = criteria.Query?.Trim();
+        if (!string.IsNullOrWhiteSpace(term))
+            query = query.Where(order => order.OrderNo.Contains(term) ||
+                (order.Note != null && order.Note.Contains(term)) ||
+                (order.CustomerId.HasValue && db.Customers.Any(customer => customer.Id == order.CustomerId.Value &&
+                    customer.TenantId == tenantId && customer.Name.Contains(term))) ||
+                order.Lines.Any(line => line.ItemCodeSnapshot.Contains(term) ||
+                    line.ItemNameSnapshot.Contains(term) ||
+                    (line.EmployeeNoSnapshot != null && line.EmployeeNoSnapshot.Contains(term)) ||
+                    (line.EmployeeNameSnapshot != null && line.EmployeeNameSnapshot.Contains(term))));
+        if (criteria.CustomerId.HasValue)
+            query = query.Where(x => x.CustomerId == criteria.CustomerId.Value);
+        if (criteria.CatalogItemId.HasValue)
+            query = query.Where(x => x.Lines.Any(line => line.ServiceItemId == criteria.CatalogItemId.Value ||
+                line.ProductItemId == criteria.CatalogItemId.Value));
+        if (criteria.EmployeeId.HasValue)
+            query = query.Where(x => x.Lines.Any(line => line.ServiceEmployeeId == criteria.EmployeeId.Value));
+        if (!string.IsNullOrWhiteSpace(criteria.Status) && Enum.TryParse<ServiceOrderStatus>(criteria.Status, true,
+                out var status)) query = query.Where(x => x.Status == status);
+        if (criteria.FromDate.HasValue || criteria.ToDate.HasValue)
+        {
+            var timeZoneId = await db.Stores.AsNoTracking().Where(x => x.TenantId == tenantId && x.Id == storeId)
+                .Select(x => x.TimeZoneId).SingleAsync(cancellationToken);
+            var timeZone = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId);
+            if (criteria.FromDate.HasValue)
+            {
+                var local = DateTime.SpecifyKind(criteria.FromDate.Value.ToDateTime(TimeOnly.MinValue),
+                    DateTimeKind.Unspecified);
+                var fromUtc = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, timeZone));
+                query = query.Where(x => x.CreatedAtUtc >= fromUtc);
+            }
+            if (criteria.ToDate.HasValue)
+            {
+                var localExclusive = DateTime.SpecifyKind(criteria.ToDate.Value.AddDays(1)
+                    .ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
+                var toUtc = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(localExclusive, timeZone));
+                query = query.Where(x => x.CreatedAtUtc < toUtc);
+            }
+        }
+        var total = await query.CountAsync(cancellationToken);
+        var orders = await query.Include(x => x.Lines).OrderByDescending(x => x.CreatedAtUtc)
+            .ThenByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        return new PageResult<ServiceOrderDto>(orders.Select(ToDto).ToList(), total, page, pageSize);
     }
 
     public async Task<Result<ServiceOrderDto>> GetOrderAsync(Guid tenantId, Guid storeId, Guid orderId,
@@ -427,17 +471,19 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
         }
     }
 
-    public async Task<IReadOnlyList<PriceOverrideApprovalDto>> ListPriceOverrideApprovalsAsync(Guid tenantId,
-        Guid storeId, string? status, CancellationToken cancellationToken)
+    public async Task<PageResult<PriceOverrideApprovalDto>> ListPriceOverrideApprovalsAsync(Guid tenantId,
+        Guid storeId, string? status, int page, int pageSize, CancellationToken cancellationToken)
     {
         var query = db.PriceOverrideApprovals.AsNoTracking().Where(x =>
             x.TenantId == tenantId && x.StoreId == storeId);
         if (!string.IsNullOrWhiteSpace(status) &&
             Enum.TryParse<PriceOverrideApprovalStatus>(status, true, out var parsed))
             query = query.Where(x => x.Status == parsed);
-        var approvals = await query.OrderByDescending(x => x.RequestedAtUtc).Take(100)
-            .ToListAsync(cancellationToken);
-        return await ToApprovalDtosAsync(approvals, cancellationToken);
+        var total = await query.CountAsync(cancellationToken);
+        var approvals = await query.OrderByDescending(x => x.RequestedAtUtc).ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        return new PageResult<PriceOverrideApprovalDto>(await ToApprovalDtosAsync(approvals, cancellationToken),
+            total, page, pageSize);
     }
 
     public Task<Result<PriceOverrideApprovalDto>> ApprovePriceOverrideAsync(Guid tenantId,

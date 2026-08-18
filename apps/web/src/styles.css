@@ -1,7 +1,8 @@
 :root { font-family: Inter, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif; color: #172238; background: #f4f6f9; font-synthesis: none; text-rendering: optimizeLegibility; }
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 1180px; min-height: 100vh; background: #f4f6f9; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #f4f6f9; }
 button, input { font: inherit; }
+button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focus-visible { outline: 3px solid rgba(22,119,255,.35); outline-offset: 2px; }
 .full-width { width: 100%; }
 .grow { flex: 1; }
 .screen-loader { min-height: 100vh; display: grid; place-items: center; }
@@ -96,6 +97,7 @@ button, input { font: inherit; }
 .customer-avatar { width: 32px; height: 32px; border-radius: 10px; display: inline-grid; place-items: center; color: #2563eb; background: #eff6ff; }
 .clickable-row { cursor: pointer; }
 .clickable-row:hover td { background: #f8fbff !important; }
+.table-card .ant-table-content { overflow-x: auto; }
 .member-card { margin-top: 12px; border-color: #dbeafe; }
 .member-card-title { display: flex; justify-content: space-between; align-items: flex-start; }
 .member-card-title .ant-typography { margin: 2px 0 0 !important; }
@@ -167,3 +169,29 @@ button, input { font: inherit; }
 .password-card h2.ant-typography { margin: 18px 0 8px; }
 .password-icon { width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; font-size: 25px; color: #fff; background: linear-gradient(145deg,#16998e,#0e746d); }
 @media (max-width: 1280px) { .app-content { padding: 22px; } .login-brand-panel { padding-inline: 6vw; } }
+@media (max-width: 960px) {
+  .app-content { padding: 16px; }
+  .app-header { padding: 0 14px; }
+  .collapse-button { margin-right: 8px; }
+  .header-context > .ant-typography, .header-user-copy { display: none; }
+  .store-select { min-width: 150px; max-width: 220px; }
+  .page-heading, .welcome-strip { align-items: flex-start; flex-direction: column; }
+  .cashier-metrics, .flow-steps { grid-template-columns: 1fr; }
+  .shift-strip > .ant-card-body > div, .refund-review-row { align-items: flex-start; flex-wrap: wrap; }
+  .order-line-fields, .payment-line-fields, .employee-form-grid { grid-template-columns: 1fr; }
+  .account-grid { grid-template-columns: 1fr; }
+  .login-shell { grid-template-columns: 1fr; }
+  .login-brand-panel { display: none; }
+  .login-card { width: min(440px, calc(100% - 32px)); margin: 40px auto; }
+}
+@media (max-width: 600px) {
+  .app-content { padding: 12px; }
+  .app-header { padding-inline: 8px; }
+  .store-select { min-width: 112px; max-width: 150px; }
+  .header-actions { gap: 0; }
+  .header-icon-button { width: 34px; }
+  .page-heading .ant-space { flex-wrap: wrap; }
+  .order-detail-grid { grid-template-columns: 1fr 1fr; }
+  .password-shell { padding: 16px; }
+  .password-card { width: 100%; }
+}

@@ -1,4 +1,5 @@
 using Erp.Application.Cashier;
+using Erp.Application.Common;
 using Erp.Application.Identity;
 using Erp.Application.Security;
 
@@ -23,12 +24,17 @@ public static class PaymentEndpoints
             return Results.Ok(await payments.ListMethodsAsync(current.TenantId, storeId, cancellationToken));
         });
 
-        group.MapGet("", async (Guid storeId, IIdentityService identity, IPaymentService payments,
+        group.MapGet("", async (Guid storeId, int? page, int? pageSize,
+            IIdentityService identity, IPaymentService payments,
             CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
-            return HasStore(current, storeId) ? Results.Ok(await payments.ListPaymentsAsync(current.TenantId, storeId, cancellationToken)) : Results.Forbid();
+            if (!HasStore(current, storeId)) return Results.Forbid();
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedPageSize))
+                return EndpointResults.InvalidPagination();
+            return Results.Ok(await payments.ListPaymentsAsync(current.TenantId, storeId, normalizedPage,
+                normalizedPageSize, cancellationToken));
         });
 
         group.MapPost("/orders/{orderId:guid}/settle", async (Guid orderId, SettleRequest request,
@@ -41,7 +47,19 @@ public static class PaymentEndpoints
                 new SettleOrderCommand(request.StoreId, orderId, request.ExpectedVersion,
                     (request.Allocations ?? []).Select(x => new SettleAllocationCommand(x.MethodId, x.AmountMinor,
                         x.ExternalReference, x.MemberAccountId)).ToList(), request.VerifiedMobile,
-                    request.VerificationChallengeId, request.CommandId, current.Id), cancellationToken));
+                    request.VerificationChallengeId, request.CashTenderedMinor, request.CommandId, current.Id),
+                cancellationToken));
+        });
+
+        group.MapPost("/{paymentId:guid}/receipt", async (Guid paymentId, PrintReceiptRequest request,
+            IIdentityService identity, IPaymentService payments, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await payments.PrintReceiptAsync(current.TenantId,
+                new PrintPaymentReceiptCommand(request.StoreId, paymentId, request.CommandId, current.Id),
+                cancellationToken));
         });
 
         group.MapGet("/shifts/current", async (Guid storeId, IIdentityService identity, IPaymentService payments,
@@ -54,13 +72,17 @@ public static class PaymentEndpoints
             return Results.Ok(shift);
         });
 
-        group.MapGet("/shifts", async (Guid storeId, IIdentityService identity, IPaymentService payments,
+        group.MapGet("/shifts", async (Guid storeId, int? page, int? pageSize,
+            IIdentityService identity, IPaymentService payments,
             CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
-            return Results.Ok(await payments.ListShiftsAsync(current.TenantId, storeId, cancellationToken));
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedPageSize))
+                return EndpointResults.InvalidPagination();
+            return Results.Ok(await payments.ListShiftsAsync(current.TenantId, storeId, normalizedPage,
+                normalizedPageSize, cancellationToken));
         }).RequireAuthorization(policy => policy.RequireRole(ReviewerRoles));
 
         group.MapPost("/shifts/open", async (OpenShiftRequest request, IIdentityService identity,
@@ -102,7 +124,8 @@ public static class PaymentEndpoints
     private sealed record AllocationRequest(Guid MethodId, long AmountMinor, string? ExternalReference,
         Guid? MemberAccountId);
     private sealed record SettleRequest(Guid StoreId, uint ExpectedVersion, IReadOnlyList<AllocationRequest>? Allocations,
-        string? VerifiedMobile, Guid? VerificationChallengeId, Guid CommandId);
+        string? VerifiedMobile, Guid? VerificationChallengeId, long? CashTenderedMinor, Guid CommandId);
+    private sealed record PrintReceiptRequest(Guid StoreId, Guid CommandId);
     private sealed record OpenShiftRequest(Guid StoreId, long OpeningCashMinor, Guid CommandId);
     private sealed record SubmitShiftRequest(Guid StoreId, uint ExpectedVersion, long SubmittedCashMinor, string? Note,
         Guid CommandId);

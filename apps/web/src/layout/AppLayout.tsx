@@ -1,4 +1,4 @@
-import { AppstoreOutlined, AuditOutlined, BarChartOutlined, BellOutlined, ClockCircleOutlined, CloudServerOutlined, DatabaseOutlined, InboxOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, QuestionCircleOutlined, SafetyCertificateOutlined, SettingOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
+import { AppstoreOutlined, AuditOutlined, BarChartOutlined, BellOutlined, CalendarOutlined, ClockCircleOutlined, CloudServerOutlined, DatabaseOutlined, InboxOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, QuestionCircleOutlined, SafetyCertificateOutlined, SettingOutlined, ShopOutlined, TeamOutlined } from '@ant-design/icons'
 import { Avatar, Badge, Button, Dropdown, Empty, Layout, Menu, Popover, Select, Tag, Tooltip, Typography, type MenuProps } from 'antd'
 import { useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -8,12 +8,17 @@ import { apiRequest } from '../api/client'
 import type { NotificationInbox } from '../api/types'
 
 const { Header, Sider, Content } = Layout
+const appVersion = import.meta.env.VITE_APP_VERSION?.trim() || '0.0.0-local'
+const deploymentEnvironment = import.meta.env.VITE_APP_ENVIRONMENT?.trim() || 'Local'
+const environmentLabel = deploymentEnvironment.toLowerCase() === 'production' ? '生产' : deploymentEnvironment.toLowerCase() === 'staging' ? '预发布' : '本地开发'
 const baseMenuItems: NonNullable<MenuProps['items']> = [
   { key: '/', icon: <AppstoreOutlined />, label: '经营工作台' },
   { key: '/facilities', icon: <ClockCircleOutlined />, label: '设施接待' },
+  { key: '/scheduling', icon: <CalendarOutlined />, label: '预约与排班' },
   { key: '/customers', icon: <TeamOutlined />, label: '顾客与会员' },
   { key: '/cashier', icon: <PayCircleOutlined />, label: '服务录单与收银' },
   { key: '/inventory', icon: <InboxOutlined />, label: '商品库存' },
+  { key: '/supply-chain', icon: <CloudServerOutlined />, label: '采购与供应链' },
   { type: 'divider' },
   { key: '/catalog/items', icon: <DatabaseOutlined />, label: '服务项目' },
   { key: '/catalog/products', icon: <DatabaseOutlined />, label: '产品目录' },
@@ -30,7 +35,7 @@ export function AppLayout() {
   const isOwner = auth.user?.roles.includes('OWNER') ?? false
   const isManager = auth.user?.roles.includes('STORE_MANAGER') ?? false
   const visibleBaseKeys = isOwner || isManager ? undefined : new Set(roles.includes('FRONT_DESK')
-    ? ['/', '/facilities', '/customers', '/cashier', '/catalog/items', '/catalog/products', '/catalog/prices']
+    ? ['/', '/facilities', '/scheduling', '/customers', '/cashier', '/catalog/items', '/catalog/products', '/catalog/prices']
     : roles.includes('CASHIER')
       ? ['/', '/customers', '/cashier', '/inventory', '/catalog/items', '/catalog/products', '/catalog/prices']
       : ['/', '/catalog/items', '/catalog/products', '/catalog/prices'])
@@ -41,11 +46,11 @@ export function AppLayout() {
   const menuItems: MenuProps['items'] = [
     ...visibleBaseItems,
     ...(canConfigureFacilities ? [{ key: '/settings/facilities', icon: <SettingOutlined />, label: '门店设施配置' }] : []),
-    ...(isOwner ? [{ key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }, { key: '/settings/payment-channels', icon: <CloudServerOutlined />, label: '支付渠道配置' }] : []),
+    ...(isOwner ? [{ key: '/settings/organization', icon: <ShopOutlined />, label: '品牌与门店' }, { key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }, { key: '/settings/payment-channels', icon: <CloudServerOutlined />, label: '支付渠道配置' }] : []),
   ]
   const settingsItems: MenuProps['items'] = [
     ...(canConfigureFacilities ? [{ key: '/settings/facilities', icon: <ShopOutlined />, label: '门店设施配置' }] : []),
-    ...(isOwner ? [{ key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }, { key: '/settings/payment-channels', icon: <CloudServerOutlined />, label: '支付渠道配置' }] : []),
+    ...(isOwner ? [{ key: '/settings/organization', icon: <ShopOutlined />, label: '品牌与门店' }, { key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }, { key: '/settings/payment-channels', icon: <CloudServerOutlined />, label: '支付渠道配置' }] : []),
   ]
   const accountItems: MenuProps['items'] = [
     { key: 'account', disabled: true, label: <div className="account-menu-summary"><strong>{auth.user?.displayName}</strong><span>{auth.user?.roles.join(' / ')}</span></div> },
@@ -58,10 +63,10 @@ export function AppLayout() {
     navigate('/login')
   }
   return <Layout className="app-shell">
-    <Sider width={232} collapsedWidth={76} collapsed={collapsed} className="app-sider">
+    <Sider width={232} collapsedWidth={76} breakpoint="lg" collapsed={collapsed} onBreakpoint={setCollapsed} className="app-sider">
       <div className="app-logo"><span><ShopOutlined /></span>{!collapsed && <strong>门店 ERP</strong>}</div>
       <Menu theme="dark" mode="inline" items={menuItems} selectedKeys={[location.pathname]} onClick={({ key }) => navigate(key)} />
-      <div className="sider-version">{collapsed ? 'V2' : 'V2 · 开发中'}</div>
+      <div className="sider-version" title={`版本 ${appVersion} · ${environmentLabel}`}>{collapsed ? `v${appVersion.split('.')[0]}` : `v${appVersion} · ${environmentLabel}`}</div>
     </Sider>
     <Layout>
       <Header className="app-header">

@@ -41,6 +41,23 @@ public sealed class Employee : Entity
         Touch();
     }
 
+    public void Reactivate()
+    {
+        if (Status == EmployeeStatus.Active) return;
+        Status = EmployeeStatus.Active;
+        Touch();
+    }
+
+    public void UpdateProfile(string displayName, string positionCode)
+    {
+        if (Status == EmployeeStatus.Inactive)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "离职员工需先恢复在职状态才能修改资料");
+        DisplayName = NormalizeRequired(displayName, 2, 100, "INVALID_EMPLOYEE_NAME",
+            "员工姓名长度必须为2到100个字符");
+        PositionCode = NormalizeRequired(positionCode, 2, 40, "INVALID_POSITION", "岗位长度必须为2到40个字符");
+        Touch();
+    }
+
     private static string NormalizeRequired(string value, int minLength, int maxLength, string code, string message)
     {
         var normalized = value.Trim();

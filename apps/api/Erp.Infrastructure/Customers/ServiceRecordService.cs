@@ -15,25 +15,32 @@ namespace Erp.Infrastructure.Customers;
 public sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileStorage fileStorage,
     IHttpContextAccessor httpContextAccessor) : IServiceRecordService
 {
-    public async Task<IReadOnlyList<ServiceRecordDto>> ListAsync(Guid tenantId, Guid storeId, Guid customerId,
-        CancellationToken cancellationToken)
+    public async Task<PageResult<ServiceRecordDto>> ListAsync(Guid tenantId, Guid storeId, Guid customerId,
+        int page, int pageSize, CancellationToken cancellationToken)
     {
-        var records = await dbContext.ServiceRecords.AsNoTracking().AsSplitQuery()
-            .Include(x => x.Attachments)
-            .Where(x => x.TenantId == tenantId && x.StoreId == storeId && x.CustomerId == customerId)
+        var customerIds = await CustomerGroupIdsAsync(tenantId, customerId, cancellationToken);
+        var query = dbContext.ServiceRecords.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.StoreId == storeId && customerIds.Contains(x.CustomerId));
+        var total = await query.CountAsync(cancellationToken);
+        var records = await query.AsSplitQuery().Include(x => x.Attachments)
             .OrderByDescending(x => x.ServiceOccurredAtUtc).ThenByDescending(x => x.CreatedAtUtc)
-            .Take(100).ToListAsync(cancellationToken);
-        return await MapAsync(records, cancellationToken);
+            .ThenByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize)
+            .ToListAsync(cancellationToken);
+        return new PageResult<ServiceRecordDto>(await MapAsync(records, cancellationToken), total, page, pageSize);
     }
 
     public async Task<IReadOnlyList<ServiceRecordOrderOptionDto>> ListOrderOptionsAsync(Guid tenantId, Guid storeId,
         Guid customerId, CancellationToken cancellationToken)
-        => await dbContext.ServiceOrders.AsNoTracking()
-            .Where(x => x.TenantId == tenantId && x.StoreId == storeId && x.CustomerId == customerId &&
+    {
+        var customerIds = await CustomerGroupIdsAsync(tenantId, customerId, cancellationToken);
+        return await dbContext.ServiceOrders.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.StoreId == storeId && x.CustomerId.HasValue &&
+                customerIds.Contains(x.CustomerId.Value) &&
                 x.Status != ServiceOrderStatus.Voided)
             .OrderByDescending(x => x.CreatedAtUtc).Take(50)
             .Select(x => new ServiceRecordOrderOptionDto(x.Id, x.OrderNo, x.Status.ToString(), x.CreatedAtUtc))
             .ToListAsync(cancellationToken);
+    }
 
     public async Task<Result<ServiceRecordDto>> CreateAsync(Guid tenantId, CreateServiceRecordCommand command,
         CancellationToken cancellationToken)
@@ -104,9 +111,10 @@ public sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileStora
     public async Task<Result<StoredFileContent>> ReadImageAsync(Guid tenantId, Guid storeId, Guid customerId,
         Guid fileId, CancellationToken cancellationToken)
     {
+        var customerIds = await CustomerGroupIdsAsync(tenantId, customerId, cancellationToken);
         var isAttached = await dbContext.ServiceRecordAttachments.AsNoTracking().AnyAsync(attachment =>
             attachment.FileId == fileId && dbContext.ServiceRecords.Any(record => record.Id == attachment.ServiceRecordId &&
-                record.TenantId == tenantId && record.StoreId == storeId && record.CustomerId == customerId),
+                record.TenantId == tenantId && record.StoreId == storeId && customerIds.Contains(record.CustomerId)),
             cancellationToken);
         if (!isAttached)
             return ResultFactory.Failure<StoredFileContent>("FILE_NOT_FOUND", "服务记录图片不存在");
@@ -120,13 +128,58 @@ public sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileStora
         { return ResultFactory.Failure<StoredFileContent>(exception.Code, exception.Message); }
     }
 
+    public async Task<Result<ServiceRecordDto>> CorrectAsync(Guid tenantId, CorrectServiceRecordCommand command,
+        CancellationToken cancellationToken)
+    {
+        var existingCorrection = await dbContext.ServiceRecordCorrections.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.CommandId == command.CommandId,
+                cancellationToken);
+        var customerIds = await CustomerGroupIdsAsync(tenantId, command.CustomerId, cancellationToken);
+        var record = await dbContext.ServiceRecords.AsNoTracking().AsSplitQuery().Include(x => x.Attachments)
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.StoreId == command.StoreId &&
+                x.Id == command.ServiceRecordId && customerIds.Contains(x.CustomerId), cancellationToken);
+        if (record is null)
+            return ResultFactory.Failure<ServiceRecordDto>("SERVICE_RECORD_NOT_FOUND", "服务档案不存在");
+        if (existingCorrection is not null)
+            return ResultFactory.Success((await MapAsync([record], cancellationToken)).Single());
+        try
+        {
+            var correction = new ServiceRecordCorrection(tenantId, record.Id, command.Reason,
+                command.ConditionNotes, command.ServiceContent, command.FollowUpNotes, command.CommandId,
+                command.OperatorId);
+            dbContext.ServiceRecordCorrections.Add(correction);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "customer.service_record.correct",
+                "ServiceRecord", record.Id);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success((await MapAsync([record], cancellationToken)).Single());
+        }
+        catch (DomainRuleException exception)
+        {
+            return ResultFactory.Failure<ServiceRecordDto>(exception.Code, exception.Message);
+        }
+        catch (DbUpdateException)
+        {
+            foreach (var entry in dbContext.ChangeTracker.Entries().Where(x => x.State == EntityState.Added))
+                entry.State = EntityState.Detached;
+            var repeated = await dbContext.ServiceRecordCorrections.AsNoTracking()
+                .AnyAsync(x => x.TenantId == tenantId && x.CommandId == command.CommandId, cancellationToken);
+            if (repeated) return ResultFactory.Success((await MapAsync([record], cancellationToken)).Single());
+            throw;
+        }
+    }
+
     private async Task<IReadOnlyList<ServiceRecordDto>> MapAsync(IReadOnlyList<ServiceRecord> records,
         CancellationToken cancellationToken)
     {
         var fileIds = records.SelectMany(x => x.Attachments).Select(x => x.FileId).Distinct().ToArray();
         var files = await dbContext.StoredFiles.AsNoTracking().Where(x => fileIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, cancellationToken);
-        var userIds = records.Select(x => x.CreatedBy).Distinct().ToArray();
+        var recordIds = records.Select(x => x.Id).ToArray();
+        var corrections = await dbContext.ServiceRecordCorrections.AsNoTracking()
+            .Where(x => recordIds.Contains(x.ServiceRecordId)).OrderBy(x => x.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+        var userIds = records.Select(x => x.CreatedBy).Concat(corrections.Select(x => x.CorrectedBy))
+            .Distinct().ToArray();
         var userNames = await dbContext.Set<ApplicationUser>().AsNoTracking().Where(x => userIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
         var orderIds = records.Where(x => x.ServiceOrderId.HasValue).Select(x => x.ServiceOrderId!.Value)
@@ -142,8 +195,17 @@ public sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileStora
             {
                 var file = files[x.FileId];
                 return new ServiceRecordAttachmentDto(file.Id, file.OriginalFileName, file.ContentType, file.SizeBytes);
-            }).ToList())).ToList();
+            }).ToList(), corrections.Where(x => x.ServiceRecordId == record.Id).Select(correction =>
+                new ServiceRecordCorrectionDto(correction.Id, correction.Reason, correction.ConditionNotes,
+                    correction.ServiceContent, correction.FollowUpNotes, correction.CorrectedBy,
+                    userNames.GetValueOrDefault(correction.CorrectedBy, "未知人员"), correction.CreatedAtUtc))
+                .ToList())).ToList();
     }
+
+    private async Task<List<Guid>> CustomerGroupIdsAsync(Guid tenantId, Guid customerId,
+        CancellationToken cancellationToken) => await dbContext.Customers.AsNoTracking()
+        .Where(x => x.TenantId == tenantId && (x.Id == customerId || x.MergedIntoCustomerId == customerId))
+        .Select(x => x.Id).ToListAsync(cancellationToken);
 
     private async Task CleanupAsync(IEnumerable<StoredFileRecord> files)
     {

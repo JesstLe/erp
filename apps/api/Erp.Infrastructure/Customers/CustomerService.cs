@@ -5,7 +5,9 @@ using System.Text.Json;
 using Erp.Application.Common;
 using Erp.Application.Customers;
 using Erp.Domain.Common;
+using Erp.Domain.Cashier;
 using Erp.Domain.Customers;
+using Erp.Domain.Facilities;
 using Erp.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
@@ -17,18 +19,21 @@ namespace Erp.Infrastructure.Customers;
 internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService privacy, TimeProvider clock,
     IHttpContextAccessor httpContextAccessor) : ICustomerService
 {
-    public async Task<IReadOnlyList<CustomerSummaryDto>> SearchAsync(Guid tenantId, Guid storeId, string? query,
-        CancellationToken cancellationToken)
+    public async Task<PageResult<CustomerSummaryDto>> SearchAsync(Guid tenantId, Guid storeId, string? query,
+        int page, int pageSize, CancellationToken cancellationToken)
     {
         var customers = BuildCustomerQuery(tenantId, storeId, query);
-        if (customers is null) return [];
+        if (customers is null) return new PageResult<CustomerSummaryDto>([], 0, page, pageSize);
 
-        var rows = await customers.OrderByDescending(x => x.CreatedAtUtc).Take(100)
+        var total = await customers.CountAsync(cancellationToken);
+        var rows = await customers.OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
             .Select(x => new { Customer = x, ActiveCards = db.MemberCards.Count(card => card.CustomerId == x.Id && card.Status == MemberCardStatus.Active) })
             .ToListAsync(cancellationToken);
-        return rows.Select(x => new CustomerSummaryDto(x.Customer.Id, x.Customer.Name,
+        var items = rows.Select(x => new CustomerSummaryDto(x.Customer.Id, x.Customer.Name,
             privacy.MaskProtectedMobile(x.Customer.MobileCiphertext), x.Customer.Status.ToString(), x.Customer.HomeStoreId,
             x.ActiveCards, x.Customer.CreatedAtUtc)).ToList();
+        return new PageResult<CustomerSummaryDto>(items, total, page, pageSize);
     }
 
     public async Task<Result<CustomerDetailDto>> GetAsync(Guid tenantId, Guid storeId, Guid customerId,
@@ -36,6 +41,9 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
     {
         var customer = await db.Customers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == customerId &&
             x.TenantId == tenantId && x.HomeStoreId == storeId, cancellationToken);
+        if (customer?.Status == CustomerStatus.Merged && customer.MergedIntoCustomerId is Guid targetId)
+            customer = await db.Customers.AsNoTracking().SingleOrDefaultAsync(x => x.Id == targetId &&
+                x.TenantId == tenantId && x.HomeStoreId == storeId, cancellationToken);
         return customer is null
             ? ResultFactory.Failure<CustomerDetailDto>("CUSTOMER_NOT_FOUND", "顾客不存在")
             : ResultFactory.Success(await ToDetailAsync(customer, includeFinancialDetails, cancellationToken));
@@ -143,8 +151,8 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
 
         try
         {
-            if (await db.Customers.AnyAsync(x => x.TenantId == tenantId && x.MobileLookupHash == mobile.LookupHash &&
-                x.Status != CustomerStatus.Merged, cancellationToken))
+            if (await db.Customers.AnyAsync(x => x.TenantId == tenantId &&
+                x.MobileLookupHash == mobile.LookupHash, cancellationToken))
             {
                 await RollbackIfActiveAsync(transaction, cancellationToken);
                 return ResultFactory.Failure<CustomerDetailDto>("DUPLICATE_CUSTOMER", "该手机号已存在顾客档案，请先查询并核对");
@@ -180,6 +188,269 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             await RollbackIfActiveAsync(transaction, cancellationToken);
             return ResultFactory.Failure<CustomerDetailDto>("DUPLICATE_CUSTOMER", "顾客档案已被其他终端创建，请重新查询");
         }
+    }
+
+    public async Task<Result<CustomerDetailDto>> UpdateAsync(Guid tenantId, UpdateCustomerCommand command,
+        CancellationToken cancellationToken)
+    {
+        if (command.CommandId == Guid.Empty)
+            return ResultFactory.Failure<CustomerDetailDto>("VALIDATION_FAILED", "缺少幂等请求号");
+        ProtectedMobile mobile;
+        CustomerGender gender;
+        try
+        {
+            mobile = privacy.Protect(command.Mobile);
+            if (string.IsNullOrWhiteSpace(command.Gender)) gender = CustomerGender.Unknown;
+            else if (!Enum.TryParse<CustomerGender>(command.Gender, true, out gender) || !Enum.IsDefined(gender))
+                throw new ArgumentException("性别值无效");
+        }
+        catch (ArgumentException exception)
+        {
+            return ResultFactory.Failure<CustomerDetailDto>("VALIDATION_FAILED", exception.Message);
+        }
+
+        var requestHash = RequestHash($"CUSTOMER_UPDATE|{command.StoreId}|{command.CustomerId}|{command.Name}|" +
+            $"{Convert.ToHexString(mobile.LookupHash)}|{gender}|{command.BirthDate}|{command.SourceCode}|" +
+            $"{command.ServiceNotificationConsent}|{command.MarketingConsent}|{command.ExpectedVersion}");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable,
+            cancellationToken);
+        var replay = await ReplayAsync<CustomerDetailDto>(tenantId, command.CommandId, requestHash,
+            id => GetAsync(tenantId, command.StoreId, id, includeFinancialDetails: true, cancellationToken),
+            cancellationToken);
+        if (replay is not null) return replay;
+
+        try
+        {
+            var customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == command.CustomerId &&
+                x.TenantId == tenantId && x.HomeStoreId == command.StoreId, cancellationToken);
+            if (customer is null)
+                return await RollbackFailure<CustomerDetailDto>(transaction, "CUSTOMER_NOT_FOUND", "顾客不存在",
+                    cancellationToken);
+            if (customer.Version != command.ExpectedVersion)
+                return await RollbackFailure<CustomerDetailDto>(transaction, "VERSION_CONFLICT",
+                    "顾客资料已被其他终端修改，请刷新后重试", cancellationToken);
+            if (await db.Customers.AnyAsync(x => x.TenantId == tenantId && x.Id != customer.Id &&
+                x.MobileLookupHash == mobile.LookupHash && (x.Status != CustomerStatus.Merged ||
+                    x.MergedIntoCustomerId != customer.Id), cancellationToken))
+                return await RollbackFailure<CustomerDetailDto>(transaction, "DUPLICATE_CUSTOMER",
+                    "该手机号已属于其他顾客档案", cancellationToken);
+            var timeZoneId = await db.Stores.Where(x => x.Id == command.StoreId && x.TenantId == tenantId)
+                .Select(x => x.TimeZoneId).SingleOrDefaultAsync(cancellationToken);
+            if (timeZoneId is null)
+                return await RollbackFailure<CustomerDetailDto>(transaction, "VALIDATION_FAILED", "门店时区配置无效",
+                    cancellationToken);
+            var before = new
+            {
+                customer.Name, customer.Gender, customer.BirthDate, customer.SourceCode,
+                customer.ServiceNotificationConsent, customer.MarketingConsent,
+            };
+            customer.UpdateProfile(command.Name, mobile.Ciphertext, mobile.LookupHash, mobile.LastFour, gender,
+                command.BirthDate, command.SourceCode, command.ServiceNotificationConsent,
+                command.MarketingConsent, StoreDate(clock.GetUtcNow(), timeZoneId));
+            var now = clock.GetUtcNow();
+            AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, customer.Id, now);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "customer.update", "Customer", customer.Id,
+                customer.Status.ToString(), customer.Status.ToString(), command.CommandId, now,
+                metadata: JsonSerializer.Serialize(new { before, after = new
+                {
+                    customer.Name, customer.Gender, customer.BirthDate, customer.SourceCode,
+                    customer.ServiceNotificationConsent, customer.MarketingConsent,
+                } }));
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ResultFactory.Success(await ToDetailAsync(customer, includeFinancialDetails: true,
+                cancellationToken));
+        }
+        catch (DomainRuleException exception)
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<CustomerDetailDto>(exception.Code, exception.Message);
+        }
+        catch (Exception exception) when (IsDatabaseConcurrencyConflict(exception))
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<CustomerDetailDto>("VERSION_CONFLICT", "顾客资料已变化，请刷新后重试");
+        }
+    }
+
+    public async Task<Result<CustomerDetailDto>> ChangeStatusAsync(Guid tenantId,
+        ChangeCustomerStatusCommand command, CancellationToken cancellationToken)
+    {
+        var reason = NormalizePurpose(command.Reason);
+        if (command.CommandId == Guid.Empty || reason is null)
+            return ResultFactory.Failure<CustomerDetailDto>("VALIDATION_FAILED", "停用或恢复必须填写2到200字原因");
+        var action = command.Restore ? "RESTORE" : "DISABLE";
+        var requestHash = RequestHash($"CUSTOMER_{action}|{command.StoreId}|{command.CustomerId}|" +
+            $"{command.ExpectedVersion}|{reason}");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable,
+            cancellationToken);
+        var replay = await ReplayAsync<CustomerDetailDto>(tenantId, command.CommandId, requestHash,
+            id => GetAsync(tenantId, command.StoreId, id, includeFinancialDetails: true, cancellationToken),
+            cancellationToken);
+        if (replay is not null) return replay;
+        try
+        {
+            var customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == command.CustomerId &&
+                x.TenantId == tenantId && x.HomeStoreId == command.StoreId, cancellationToken);
+            if (customer is null)
+                return await RollbackFailure<CustomerDetailDto>(transaction, "CUSTOMER_NOT_FOUND", "顾客不存在",
+                    cancellationToken);
+            if (customer.Version != command.ExpectedVersion)
+                return await RollbackFailure<CustomerDetailDto>(transaction, "VERSION_CONFLICT",
+                    "顾客状态已被其他终端修改，请刷新后重试", cancellationToken);
+            var before = customer.Status.ToString();
+            if (command.Restore) customer.Restore(); else customer.Disable();
+            var now = clock.GetUtcNow();
+            AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, customer.Id, now);
+            AddAudit(tenantId, command.StoreId, command.OperatorId,
+                command.Restore ? "customer.restore" : "customer.disable", "Customer", customer.Id,
+                before, customer.Status.ToString(), command.CommandId, now, reason: reason);
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ResultFactory.Success(await ToDetailAsync(customer, includeFinancialDetails: true,
+                cancellationToken));
+        }
+        catch (DomainRuleException exception)
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<CustomerDetailDto>(exception.Code, exception.Message);
+        }
+        catch (Exception exception) when (IsDatabaseConcurrencyConflict(exception))
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<CustomerDetailDto>("VERSION_CONFLICT", "顾客状态已变化，请刷新后重试");
+        }
+    }
+
+    public async Task<Result<CustomerMergePreviewDto>> PreviewMergeAsync(Guid tenantId,
+        PreviewCustomerMergeCommand command, CancellationToken cancellationToken)
+    {
+        if (command.SourceCustomerId == Guid.Empty || command.TargetCustomerId == Guid.Empty ||
+            command.SourceCustomerId == command.TargetCustomerId)
+            return ResultFactory.Failure<CustomerMergePreviewDto>("VALIDATION_FAILED", "请选择两个不同的顾客档案");
+        var customers = await db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                (x.Id == command.SourceCustomerId || x.Id == command.TargetCustomerId))
+            .ToListAsync(cancellationToken);
+        var source = customers.SingleOrDefault(x => x.Id == command.SourceCustomerId);
+        var target = customers.SingleOrDefault(x => x.Id == command.TargetCustomerId);
+        if (source is null || target is null)
+            return ResultFactory.Failure<CustomerMergePreviewDto>("CUSTOMER_NOT_FOUND", "源档案或保留档案不存在");
+        if (source.HomeStoreId != command.StoreId || target.HomeStoreId != command.StoreId)
+            return ResultFactory.Failure<CustomerMergePreviewDto>("FORBIDDEN_DATA_SCOPE",
+                "只能预览当前授权门店内的顾客合并");
+        return ResultFactory.Success(await BuildMergePreviewAsync(source, target, command.StoreId,
+            cancellationToken));
+    }
+
+    public async Task<Result<CustomerDetailDto>> MergeAsync(Guid tenantId, MergeCustomerCommand command,
+        CancellationToken cancellationToken)
+    {
+        var reason = NormalizePurpose(command.Reason);
+        if (command.CommandId == Guid.Empty || reason is null || command.SourceCustomerId == Guid.Empty ||
+            command.TargetCustomerId == Guid.Empty || command.SourceCustomerId == command.TargetCustomerId)
+            return ResultFactory.Failure<CustomerDetailDto>("VALIDATION_FAILED",
+                "请选择两个不同顾客并填写2到200字合并原因");
+        var requestHash = RequestHash($"CUSTOMER_MERGE|{command.StoreId}|{command.SourceCustomerId}|" +
+            $"{command.TargetCustomerId}|{command.ExpectedSourceVersion}|{command.ExpectedTargetVersion}|{reason}");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable,
+            cancellationToken);
+        var replay = await ReplayAsync<CustomerDetailDto>(tenantId, command.CommandId, requestHash,
+            _ => GetAsync(tenantId, command.StoreId, command.TargetCustomerId, includeFinancialDetails: true,
+                cancellationToken), cancellationToken);
+        if (replay is not null) return replay;
+        try
+        {
+            var customers = await db.Customers.Where(x => x.TenantId == tenantId &&
+                    (x.Id == command.SourceCustomerId || x.Id == command.TargetCustomerId))
+                .ToListAsync(cancellationToken);
+            var source = customers.SingleOrDefault(x => x.Id == command.SourceCustomerId);
+            var target = customers.SingleOrDefault(x => x.Id == command.TargetCustomerId);
+            if (source is null || target is null)
+                return await RollbackFailure<CustomerDetailDto>(transaction, "CUSTOMER_NOT_FOUND",
+                    "源档案或保留档案不存在", cancellationToken);
+            if (source.HomeStoreId != command.StoreId || target.HomeStoreId != command.StoreId)
+                return await RollbackFailure<CustomerDetailDto>(transaction, "FORBIDDEN_DATA_SCOPE",
+                    "只能合并当前授权门店内的顾客档案", cancellationToken);
+            if (source.Version != command.ExpectedSourceVersion || target.Version != command.ExpectedTargetVersion)
+                return await RollbackFailure<CustomerDetailDto>(transaction, "VERSION_CONFLICT",
+                    "顾客档案已被其他终端修改，请重新预览", cancellationToken);
+            var preview = await BuildMergePreviewAsync(source, target, command.StoreId, cancellationToken);
+            if (!preview.CanMerge)
+                return await RollbackFailure<CustomerDetailDto>(transaction, "CUSTOMER_MERGE_BLOCKED",
+                    string.Join('；', preview.Blockers), cancellationToken);
+            var now = clock.GetUtcNow();
+            source.MergeInto(target.Id, command.OperatorId, reason, now);
+            AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, target.Id, now);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "customer.merge", "Customer", source.Id,
+                "SelectedAsSource", "Merged", command.CommandId, now, reason: reason,
+                metadata: JsonSerializer.Serialize(new
+                {
+                    sourceCustomerId = source.Id,
+                    targetCustomerId = target.Id,
+                    preview.SourceCardCount,
+                    preview.SourcePrincipalBalanceMinor,
+                    preview.SourceBonusBalanceMinor,
+                    preview.SourcePointsBalance,
+                    preview.SourceOrderCount,
+                    preview.SourceServiceRecordCount,
+                    strategy = "LogicalLineagePreservesHistoricalForeignKeys",
+                }));
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return await GetAsync(tenantId, command.StoreId, target.Id, includeFinancialDetails: true,
+                cancellationToken);
+        }
+        catch (DomainRuleException exception)
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<CustomerDetailDto>(exception.Code, exception.Message);
+        }
+        catch (Exception exception) when (IsDatabaseConcurrencyConflict(exception))
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<CustomerDetailDto>("VERSION_CONFLICT", "顾客合并发生并发冲突，请重新预览");
+        }
+    }
+
+    private async Task<CustomerMergePreviewDto> BuildMergePreviewAsync(Customer source, Customer target,
+        Guid storeId, CancellationToken cancellationToken)
+    {
+        var blockers = new List<string>();
+        if (source.Status == CustomerStatus.Merged) blockers.Add("源档案已经合并");
+        if (target.Status != CustomerStatus.Active) blockers.Add("保留档案必须为正常状态");
+        if (source.HomeStoreId != storeId || target.HomeStoreId != storeId)
+            blockers.Add("当前只允许合并同一归属门店的顾客档案");
+        if (await db.Customers.AsNoTracking().AnyAsync(x => x.TenantId == source.TenantId &&
+            x.MergedIntoCustomerId == source.Id, cancellationToken))
+            blockers.Add("源档案已经承接其他合并档案，不能再次作为源档案");
+        if (await db.Visits.AsNoTracking().AnyAsync(x => x.TenantId == source.TenantId &&
+            x.CustomerId == source.Id && (x.Status == VisitStatus.Arrived || x.Status == VisitStatus.InService ||
+                x.Status == VisitStatus.ServiceEnded), cancellationToken))
+            blockers.Add("源档案仍有关联的进行中或待录单接待");
+        if (await db.ServiceOrders.AsNoTracking().AnyAsync(x => x.TenantId == source.TenantId &&
+            x.CustomerId == source.Id && (x.Status == ServiceOrderStatus.Draft ||
+                x.Status == ServiceOrderStatus.PendingPayment || x.Status == ServiceOrderStatus.PaymentProcessing),
+            cancellationToken))
+            blockers.Add("源档案仍有未完成消费单");
+        if (await db.MemberVerificationChallenges.AsNoTracking().AnyAsync(x => x.TenantId == source.TenantId &&
+            x.CustomerId == source.Id && (x.Status == MemberVerificationStatus.Active ||
+                x.Status == MemberVerificationStatus.Verified), cancellationToken))
+            blockers.Add("源档案仍有有效的会员验证码挑战");
+        var accounts = await db.MemberAccounts.AsNoTracking().Where(x => x.TenantId == source.TenantId &&
+                x.CustomerId == source.Id).ToListAsync(cancellationToken);
+        var cards = await db.MemberCards.AsNoTracking().CountAsync(x => x.TenantId == source.TenantId &&
+            x.CustomerId == source.Id, cancellationToken);
+        var orders = await db.ServiceOrders.AsNoTracking().CountAsync(x => x.TenantId == source.TenantId &&
+            x.CustomerId == source.Id, cancellationToken);
+        var records = await db.ServiceRecords.AsNoTracking().CountAsync(x => x.TenantId == source.TenantId &&
+            x.CustomerId == source.Id, cancellationToken);
+        return new CustomerMergePreviewDto(source.Id, source.Name,
+            privacy.MaskProtectedMobile(source.MobileCiphertext), source.Version, target.Id, target.Name,
+            privacy.MaskProtectedMobile(target.MobileCiphertext), target.Version, cards,
+            accounts.Where(x => x.AccountType == MemberAccountType.Principal).Sum(x => x.BalanceUnits),
+            accounts.Where(x => x.AccountType == MemberAccountType.Bonus).Sum(x => x.BalanceUnits),
+            accounts.Where(x => x.AccountType == MemberAccountType.Points).Sum(x => x.BalanceUnits),
+            orders, records, blockers, blockers.Count == 0);
     }
 
     public async Task<IReadOnlyList<MemberCardTypeDto>> ListCardTypesAsync(Guid tenantId, CancellationToken cancellationToken) =>
@@ -301,7 +572,16 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
     private async Task<CustomerDetailDto> ToDetailAsync(Customer customer, bool includeFinancialDetails,
         CancellationToken cancellationToken)
     {
-        var cards = await db.MemberCards.AsNoTracking().Where(x => x.CustomerId == customer.Id)
+        var customerIds = await db.Customers.AsNoTracking().Where(x => x.TenantId == customer.TenantId &&
+                (x.Id == customer.Id || x.MergedIntoCustomerId == customer.Id))
+            .Select(x => x.Id).ToListAsync(cancellationToken);
+        var aliases = await db.Customers.AsNoTracking().Where(x => x.TenantId == customer.TenantId &&
+                x.MergedIntoCustomerId == customer.Id)
+            .OrderByDescending(x => x.MergedAtUtc).Select(x => new
+            {
+                x.Id, x.Name, x.MobileCiphertext, x.MergedAtUtc,
+            }).ToListAsync(cancellationToken);
+        var cards = await db.MemberCards.AsNoTracking().Where(x => customerIds.Contains(x.CustomerId))
             .OrderByDescending(x => x.CreatedAtUtc).ToListAsync(cancellationToken);
         var cardTypeNames = await db.MemberCardTypes.AsNoTracking().Where(x => x.TenantId == customer.TenantId)
             .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
@@ -315,9 +595,11 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             accounts.Where(x => x.CardId == card.Id).OrderBy(x => AccountOrder(x.AccountType)).Select(x => new MemberAccountDto(x.Id, x.AccountType.ToString(),
                 x.BalanceUnits, x.Status.ToString())).ToList())).ToList();
         return new CustomerDetailDto(customer.Id, customer.Name,
-            privacy.MaskProtectedMobile(customer.MobileCiphertext), customer.Gender.ToString(), customer.SourceCode,
+            privacy.MaskProtectedMobile(customer.MobileCiphertext), customer.Gender.ToString(), customer.BirthDate,
+            customer.SourceCode,
             customer.ServiceNotificationConsent, customer.MarketingConsent, customer.Status.ToString(),
-            customer.HomeStoreId, customer.Version, cardDtos);
+            customer.HomeStoreId, customer.Version, cardDtos, aliases.Select(x => new MergedCustomerAliasDto(
+                x.Id, x.Name, privacy.MaskProtectedMobile(x.MobileCiphertext), x.MergedAtUtc)).ToList());
     }
 
     private async Task<Result<CustomerMobileRevealDto>> LoadMobileAsync(Guid tenantId, Guid storeId,
@@ -334,7 +616,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
     private IQueryable<Customer>? BuildCustomerQuery(Guid tenantId, Guid storeId, string? query)
     {
         var customers = db.Customers.AsNoTracking().Where(x =>
-            x.TenantId == tenantId && x.HomeStoreId == storeId);
+            x.TenantId == tenantId && x.HomeStoreId == storeId && x.Status != CustomerStatus.Merged);
         var term = query?.Trim();
         if (term?.Length > 100) return null;
         if (string.IsNullOrEmpty(term)) return customers;
@@ -345,21 +627,35 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             try
             {
                 var hash = privacy.Hash(digits);
-                return customers.Where(x => x.MobileLookupHash == hash);
+                return customers.Where(x => x.MobileLookupHash == hash || db.Customers.Any(alias =>
+                    alias.TenantId == tenantId && alias.MergedIntoCustomerId == x.Id &&
+                    alias.MobileLookupHash == hash));
             }
             catch (ArgumentException) { return null; }
         }
         if (digits.Length == 4 && term.All(char.IsDigit))
-            return customers.Where(x => x.MobileLastFour == digits);
+            return customers.Where(x => x.MobileLastFour == digits || db.Customers.Any(alias =>
+                alias.TenantId == tenantId && alias.MergedIntoCustomerId == x.Id &&
+                alias.MobileLastFour == digits));
         var upper = term.ToUpperInvariant();
-        return customers.Where(x => x.Name.Contains(term) ||
-            db.MemberCards.Any(card => card.CustomerId == x.Id && card.CardNo == upper));
+        return customers.Where(x => x.Name.Contains(term) || db.Customers.Any(alias =>
+                alias.TenantId == tenantId && alias.MergedIntoCustomerId == x.Id && alias.Name.Contains(term)) ||
+            db.MemberCards.Any(card => (card.CustomerId == x.Id || db.Customers.Any(alias =>
+                alias.Id == card.CustomerId && alias.MergedIntoCustomerId == x.Id)) && card.CardNo == upper));
     }
 
     private static string? NormalizePurpose(string? value)
     {
         var purpose = value?.Trim();
         return purpose?.Length is >= 2 and <= 200 ? purpose : null;
+    }
+
+    private static async Task<Result<T>> RollbackFailure<T>(IDbContextTransaction transaction, string code,
+        string message, CancellationToken cancellationToken)
+    {
+        if (transaction.GetDbTransaction().Connection is not null)
+            await transaction.RollbackAsync(cancellationToken);
+        return ResultFactory.Failure<T>(code, message);
     }
 
     private async Task<Result<T>?> ReplayAsync<T>(Guid tenantId, Guid commandId, byte[] requestHash,

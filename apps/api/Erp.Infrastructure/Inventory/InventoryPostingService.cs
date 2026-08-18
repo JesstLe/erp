@@ -36,17 +36,19 @@ internal sealed class InventoryPostingService(ErpDbContext db, TimeProvider cloc
         }).ToList();
     }
 
-    public async Task<IReadOnlyList<InventoryMovementDto>> ListMovementsAsync(Guid tenantId, Guid storeId,
-        Guid? productItemId, CancellationToken cancellationToken)
+    public async Task<PageResult<InventoryMovementDto>> ListMovementsAsync(Guid tenantId, Guid storeId,
+        Guid? productItemId, int page, int pageSize, CancellationToken cancellationToken)
     {
         var query = db.InventoryMovements.AsNoTracking().Where(x => x.TenantId == tenantId &&
             x.StoreId == storeId);
         if (productItemId.HasValue) query = query.Where(x => x.ProductItemId == productItemId.Value);
-        var rows = await query.OrderByDescending(x => x.OccurredAtUtc).Take(300).ToListAsync(cancellationToken);
+        var total = await query.CountAsync(cancellationToken);
+        var rows = await query.OrderByDescending(x => x.OccurredAtUtc).ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
         var productIds = rows.Select(x => x.ProductItemId).Distinct().ToList();
         var products = await db.ProductItems.AsNoTracking().Where(x => productIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, cancellationToken);
-        return rows.Select(row =>
+        var items = rows.Select(row =>
         {
             var product = products[row.ProductItemId];
             return new InventoryMovementDto(row.Id, row.ProductItemId, product.Code, product.Name,
@@ -54,15 +56,18 @@ internal sealed class InventoryPostingService(ErpDbContext db, TimeProvider cloc
                 row.OnHandBefore, row.OnHandAfter, row.SourceType, row.SourceId, row.SourceLineId,
                 row.CommandId, row.OperatorId, row.OccurredAtUtc);
         }).ToList();
+        return new PageResult<InventoryMovementDto>(items, total, page, pageSize);
     }
 
-    public async Task<IReadOnlyList<InventoryDocumentDto>> ListDocumentsAsync(Guid tenantId, Guid storeId,
-        CancellationToken cancellationToken)
+    public async Task<PageResult<InventoryDocumentDto>> ListDocumentsAsync(Guid tenantId, Guid storeId,
+        int page, int pageSize, CancellationToken cancellationToken)
     {
-        var documents = await db.InventoryDocuments.AsNoTracking().Include(x => x.Lines)
-            .Where(x => x.TenantId == tenantId && x.StoreId == storeId)
-            .OrderByDescending(x => x.PostedAtUtc).Take(100).ToListAsync(cancellationToken);
-        return await ToDocumentDtosAsync(documents, cancellationToken);
+        var query = db.InventoryDocuments.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId);
+        var total = await query.CountAsync(cancellationToken);
+        var documents = await query.Include(x => x.Lines).OrderByDescending(x => x.PostedAtUtc)
+            .ThenByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        return new PageResult<InventoryDocumentDto>(await ToDocumentDtosAsync(documents, cancellationToken),
+            total, page, pageSize);
     }
 
     public async Task<Result<InventoryDocumentDto>> PostDocumentAsync(Guid tenantId,
@@ -107,10 +112,17 @@ internal sealed class InventoryPostingService(ErpDbContext db, TimeProvider cloc
                     ? InventoryMovementDirection.Out : InventoryMovementDirection.In;
                 if (direction == InventoryMovementDirection.Out) balance.AdjustOut(line.Quantity);
                 else balance.Receive(line.Quantity);
-                db.InventoryMovements.Add(new InventoryMovement(tenantId, command.StoreId,
+                var movement = new InventoryMovement(tenantId, command.StoreId,
                     line.ProductItemId, balance.Id, ToMovementType(documentType), direction, line.Quantity,
                     before, balance.OnHandQuantity, "InventoryDocument", document.Id, line.Id,
-                    command.CommandId, command.OperatorId, now));
+                    command.CommandId, command.OperatorId, now);
+                db.InventoryMovements.Add(movement);
+                if (direction == InventoryMovementDirection.In)
+                    AddInboundLot(tenantId, command.StoreId, line.ProductItemId,
+                        $"{documentType.ToString().ToUpperInvariant()}-{document.DocumentNo}", line.Quantity,
+                        "InventoryDocumentLine", line.Id, movement);
+                else await IssueLotsAsync(tenantId, command.StoreId, line.ProductItemId, line.Quantity,
+                    movement, cancellationToken);
             }
             AddReceipt(tenantId, command.CommandId, command.OperatorId, hash, document.Id, now);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "inventory.document.post",
@@ -175,10 +187,14 @@ internal sealed class InventoryPostingService(ErpDbContext db, TimeProvider cloc
                     cancellationToken);
                 var before = balance.OnHandQuantity;
                 balance.Receive(command.Quantity);
-                db.InventoryMovements.Add(new InventoryMovement(tenantId, command.StoreId, product.Id,
+                var movement = new InventoryMovement(tenantId, command.StoreId, product.Id,
                     balance.Id, InventoryMovementType.SalesReturn, InventoryMovementDirection.In,
                     command.Quantity, before, balance.OnHandQuantity, "ProductReturn", productReturn.Id,
-                    productReturn.Id, command.CommandId, command.OperatorId, now));
+                    productReturn.Id, command.CommandId, command.OperatorId, now);
+                db.InventoryMovements.Add(movement);
+                AddInboundLot(tenantId, command.StoreId, product.Id,
+                    $"RETURN-{productReturn.Id:N}", command.Quantity, "ProductReturn", productReturn.Id,
+                    movement);
             }
             AddReceipt(tenantId, command.CommandId, command.OperatorId, hash, productReturn.Id, now);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "inventory.product.return",
@@ -233,10 +249,13 @@ internal sealed class InventoryPostingService(ErpDbContext db, TimeProvider cloc
             var before = balance.OnHandQuantity;
             balance.ConsumeReserved(reservation.Quantity);
             reservation.Consume(now);
-            db.InventoryMovements.Add(new InventoryMovement(order.TenantId, order.StoreId,
+            var movement = new InventoryMovement(order.TenantId, order.StoreId,
                 reservation.ProductItemId, balance.Id, InventoryMovementType.SaleIssue,
                 InventoryMovementDirection.Out, reservation.Quantity, before, balance.OnHandQuantity,
-                "ServiceOrder", order.Id, reservation.OrderLineId, commandId, operatorId, now));
+                "ServiceOrder", order.Id, reservation.OrderLineId, commandId, operatorId, now);
+            db.InventoryMovements.Add(movement);
+            await IssueLotsAsync(order.TenantId, order.StoreId, reservation.ProductItemId,
+                reservation.Quantity, movement, cancellationToken);
         }
     }
 
@@ -263,6 +282,36 @@ internal sealed class InventoryPostingService(ErpDbContext db, TimeProvider cloc
         balance = new InventoryBalance(tenantId, storeId, productId);
         db.InventoryBalances.Add(balance);
         return balance;
+    }
+
+    private void AddInboundLot(Guid tenantId, Guid storeId, Guid productId, string batchNo,
+        int quantity, string sourceType, Guid sourceLineId, InventoryMovement movement)
+    {
+        var lot = new InventoryLot(tenantId, storeId, productId, batchNo, null, 0, quantity,
+            sourceType, sourceLineId);
+        db.InventoryLots.Add(lot);
+        db.InventoryLotAllocations.Add(new InventoryLotAllocation(tenantId, movement.Id, lot.Id, quantity));
+    }
+
+    private async Task IssueLotsAsync(Guid tenantId, Guid storeId, Guid productId, int quantity,
+        InventoryMovement movement, CancellationToken cancellationToken)
+    {
+        var lots = await db.InventoryLots.Where(x => x.TenantId == tenantId && x.StoreId == storeId &&
+                x.ProductItemId == productId && x.RemainingQuantity > 0)
+            .OrderBy(x => x.ExpiresOn == null).ThenBy(x => x.ExpiresOn).ThenBy(x => x.CreatedAtUtc)
+            .ThenBy(x => x.Id).ToListAsync(cancellationToken);
+        var remaining = quantity;
+        foreach (var lot in lots)
+        {
+            var used = Math.Min(remaining, lot.RemainingQuantity);
+            if (used == 0) continue;
+            lot.Issue(used);
+            db.InventoryLotAllocations.Add(new InventoryLotAllocation(tenantId, movement.Id, lot.Id, used));
+            remaining -= used;
+            if (remaining == 0) break;
+        }
+        if (remaining != 0)
+            throw new DomainRuleException("INVENTORY_LOT_INSUFFICIENT", "批次库存与库存余额不一致，请先核对库存");
     }
 
     private async Task<Result<InventoryDocumentDto>?> ReplayDocumentAsync(Guid tenantId,

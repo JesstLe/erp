@@ -43,13 +43,99 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<PaymentDto>> ListPaymentsAsync(Guid tenantId, Guid storeId,
-        CancellationToken cancellationToken)
+    public async Task<PageResult<PaymentDto>> ListPaymentsAsync(Guid tenantId, Guid storeId, int page,
+        int pageSize, CancellationToken cancellationToken)
     {
-        var payments = await db.Payments.AsNoTracking().Include(x => x.Allocations)
-            .Where(x => x.TenantId == tenantId && x.StoreId == storeId)
-            .OrderByDescending(x => x.CreatedAtUtc).Take(100).ToListAsync(cancellationToken);
-        return payments.Select(ToDto).ToList();
+        var query = db.Payments.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId);
+        var total = await query.CountAsync(cancellationToken);
+        var payments = await query.Include(x => x.Allocations).OrderByDescending(x => x.CreatedAtUtc)
+            .ThenByDescending(x => x.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        return new PageResult<PaymentDto>(payments.Select(ToDto).ToList(), total, page, pageSize);
+    }
+
+    public async Task<Result<PaymentReceiptDto>> PrintReceiptAsync(Guid tenantId,
+        PrintPaymentReceiptCommand command, CancellationToken cancellationToken)
+    {
+        if (command.CommandId == Guid.Empty)
+            return ResultFactory.Failure<PaymentReceiptDto>("VALIDATION_FAILED", "缺少打印请求号");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable,
+            cancellationToken);
+        try
+        {
+            var payment = await db.Payments.Include(x => x.Allocations).SingleOrDefaultAsync(x =>
+                x.Id == command.PaymentId && x.TenantId == tenantId && x.StoreId == command.StoreId,
+                cancellationToken);
+            if (payment is null)
+                return await FailureAndRollback<PaymentReceiptDto>(transaction, "PAYMENT_NOT_FOUND", "支付单不存在",
+                    cancellationToken);
+            if (payment.BusinessType != PaymentBusinessType.ServiceOrder || payment.OrderId is null ||
+                payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartiallyRefunded or PaymentStatus.Refunded))
+                return await FailureAndRollback<PaymentReceiptDto>(transaction, "RECEIPT_NOT_AVAILABLE",
+                    "只有已完成收款的消费单可以打印小票", cancellationToken);
+
+            var order = await db.ServiceOrders.AsNoTracking().Include(x => x.Lines).SingleAsync(x =>
+                x.Id == payment.OrderId.Value && x.TenantId == tenantId && x.StoreId == command.StoreId,
+                cancellationToken);
+            var replay = await db.AuditEvents.AsNoTracking().SingleOrDefaultAsync(x =>
+                x.TenantId == tenantId && x.StoreId == command.StoreId && x.Action == "payment.receipt.print" &&
+                x.EntityId == payment.Id && x.RequestId == command.CommandId, cancellationToken);
+            int sequence;
+            var printedAt = clock.GetUtcNow();
+            if (replay is not null && int.TryParse(replay.CurrentState, out var replaySequence))
+            {
+                sequence = replaySequence;
+                printedAt = replay.OccurredAtUtc;
+            }
+            else
+            {
+                sequence = await db.AuditEvents.CountAsync(x => x.TenantId == tenantId &&
+                    x.StoreId == command.StoreId && x.Action == "payment.receipt.print" &&
+                    x.EntityId == payment.Id, cancellationToken) + 1;
+                db.AuditEvents.Add(new AuditEventRecord
+                {
+                    TenantId = tenantId,
+                    StoreId = command.StoreId,
+                    OperatorId = command.OperatorId,
+                    Action = "payment.receipt.print",
+                    EntityType = "Payment",
+                    EntityId = payment.Id,
+                    PreviousState = (sequence - 1).ToString(CultureInfo.InvariantCulture),
+                    CurrentState = sequence.ToString(CultureInfo.InvariantCulture),
+                    Reason = sequence == 1 ? "首次打印" : "补打小票",
+                    RequestId = command.CommandId,
+                    TraceId = httpContextAccessor.HttpContext?.TraceIdentifier ?? "background",
+                    Metadata = JsonSerializer.Serialize(new { payment.PaymentNo, order.OrderNo, sequence }),
+                    OccurredAtUtc = printedAt
+                });
+                await db.SaveChangesAsync(cancellationToken);
+            }
+
+            var storeName = await db.Stores.AsNoTracking().Where(x => x.Id == command.StoreId &&
+                    x.TenantId == tenantId).Select(x => x.Name).SingleAsync(cancellationToken);
+            var customerName = order.CustomerId.HasValue
+                ? await db.Customers.AsNoTracking().Where(x => x.Id == order.CustomerId.Value &&
+                        x.TenantId == tenantId).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken)
+                    ?? "顾客档案已停用"
+                : "散客";
+            var operatorName = await db.Users.AsNoTracking().Where(x => x.Id == command.OperatorId &&
+                    x.TenantId == tenantId).Select(x => x.DisplayName).SingleOrDefaultAsync(cancellationToken)
+                ?? "当前操作员";
+            var result = new PaymentReceiptDto(payment.Id, payment.PaymentNo, order.OrderNo, storeName,
+                customerName, operatorName, payment.PaidAtUtc!.Value, printedAt, sequence,
+                sequence == 1 ? "顾客联" : $"补打联 #{sequence}", payment.ReceivableMinor,
+                payment.CashTenderedMinor, payment.CashChangeMinor,
+                order.Lines.OrderBy(x => x.CreatedAtUtc).Select(x => new PaymentReceiptLineDto(
+                    x.ItemNameSnapshot, x.UnitNameSnapshot, x.Quantity, x.EnteredPriceMinor,
+                    x.LineAmountMinor, x.EmployeeNameSnapshot)).ToList(),
+                payment.Allocations.OrderBy(x => x.CreatedAtUtc).Select(ToAllocationDto).ToList());
+            await transaction.CommitAsync(cancellationToken);
+            return ResultFactory.Success(result);
+        }
+        catch (Exception exception) when (IsUniqueOrConcurrency(exception))
+        {
+            await RollbackIfActiveAsync(transaction, cancellationToken);
+            return ResultFactory.Failure<PaymentReceiptDto>("VERSION_CONFLICT", "打印序号正在更新，请重试");
+        }
     }
 
     public async Task<CashierShiftDto?> GetCurrentShiftAsync(Guid tenantId, Guid storeId, Guid operatorId,
@@ -61,15 +147,19 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
         return shift is null ? null : ToDto(shift);
     }
 
-    public async Task<IReadOnlyList<CashierShiftReviewDto>> ListShiftsAsync(Guid tenantId, Guid storeId,
-        CancellationToken cancellationToken)
+    public async Task<PageResult<CashierShiftReviewDto>> ListShiftsAsync(Guid tenantId, Guid storeId,
+        int page, int pageSize, CancellationToken cancellationToken)
     {
-        var shifts = await db.CashierShifts.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId)
-            .OrderByDescending(x => x.OpenedAtUtc).Take(100).ToListAsync(cancellationToken);
+        var query = db.CashierShifts.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId);
+        var total = await query.CountAsync(cancellationToken);
+        var shifts = await query.OrderByDescending(x => x.OpenedAtUtc).ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
         var operatorIds = shifts.Select(x => x.OperatorId).Distinct().ToList();
         var names = await db.Users.AsNoTracking().Where(x => x.TenantId == tenantId && operatorIds.Contains(x.Id))
             .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
-        return shifts.Select(x => new CashierShiftReviewDto(ToDto(x), names.GetValueOrDefault(x.OperatorId, "未知员工"))).ToList();
+        var items = shifts.Select(x => new CashierShiftReviewDto(ToDto(x),
+            names.GetValueOrDefault(x.OperatorId, "未知员工"))).ToList();
+        return new PageResult<CashierShiftReviewDto>(items, total, page, pageSize);
     }
 
     public async Task<Result<CashierShiftDto>> OpenShiftAsync(Guid tenantId, OpenShiftCommand command,
@@ -253,8 +343,11 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                 if (accountIds.Count != memberLines.Count)
                     return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_ACCOUNT_REQUIRED",
                         "每条会员支付分摊必须选择不同的会员账户", cancellationToken);
+                var customerIds = await db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                        (x.Id == order.CustomerId || x.MergedIntoCustomerId == order.CustomerId))
+                    .Select(x => x.Id).ToListAsync(cancellationToken);
                 memberAccounts = await db.MemberAccounts.Where(x => x.TenantId == tenantId &&
-                    x.CustomerId == order.CustomerId && accountIds.Contains(x.Id) &&
+                    customerIds.Contains(x.CustomerId) && accountIds.Contains(x.Id) &&
                     x.Status == MemberAccountStatus.Active).ToDictionaryAsync(x => x.Id, cancellationToken);
                 if (memberAccounts.Count != accountIds.Count)
                     return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_ACCOUNT_NOT_FOUND",
@@ -322,7 +415,7 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
             }).ToList();
             order.BeginCheckout();
             var payment = new Payment(tenantId, command.StoreId, order.Id, CreatePaymentNo(localTime.Value),
-                order.ReceivableMinor, drafts, now);
+                order.ReceivableMinor, drafts, now, command.CashTenderedMinor);
             foreach (var line in memberLines.OrderBy(line =>
                          memberAccounts[line.MemberAccountId!.Value].AccountType == MemberAccountType.Principal
                              ? 0 : 1))
@@ -425,11 +518,15 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
 
     private static PaymentDto ToDto(Payment payment) => new(payment.Id, payment.PaymentNo, payment.OrderId,
         payment.BusinessType.ToString(), payment.BusinessId, payment.Status.ToString(), payment.Currency,
-        payment.ReceivableMinor, payment.PaidMinor, payment.RefundedMinor, payment.PaidAtUtc, payment.Version,
-        payment.Allocations.OrderBy(x => x.CreatedAtUtc).Select(x => new PaymentAllocationDto(x.Id, x.MethodId,
-            x.MethodCodeSnapshot, x.MethodNameSnapshot, x.Category.ToString(), x.AmountMinor, x.ExternalReference,
-            x.ConfirmationStatus.ToString(), x.ReconciliationStatus.ToString(), x.ShiftId,
-            x.MemberAccountId, x.ChannelProvider?.ToString())).ToList());
+        payment.ReceivableMinor, payment.PaidMinor, payment.RefundedMinor, payment.CashTenderedMinor,
+        payment.CashChangeMinor, payment.PaidAtUtc, payment.Version,
+        payment.Allocations.OrderBy(x => x.CreatedAtUtc).Select(ToAllocationDto).ToList());
+
+    private static PaymentAllocationDto ToAllocationDto(PaymentAllocation allocation) => new(allocation.Id,
+        allocation.MethodId, allocation.MethodCodeSnapshot, allocation.MethodNameSnapshot,
+        allocation.Category.ToString(), allocation.AmountMinor, allocation.ExternalReference,
+        allocation.ConfirmationStatus.ToString(), allocation.ReconciliationStatus.ToString(), allocation.ShiftId,
+        allocation.MemberAccountId, allocation.ChannelProvider?.ToString());
 
     private static CashierShiftDto ToDto(CashierShift shift) => new(shift.Id, shift.ShiftNo, shift.OperatorId,
         shift.Status.ToString(), shift.OpeningCashMinor, shift.ExpectedCashMinor, shift.SubmittedCashMinor,

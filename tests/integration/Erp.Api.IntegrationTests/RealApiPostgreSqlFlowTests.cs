@@ -1,0 +1,882 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
+using Erp.Application.Cashier;
+using Erp.Application.Catalog;
+using Erp.Application.Customers;
+using Erp.Application.Facilities;
+using Erp.Application.Identity;
+using Erp.Application.Inventory;
+using Erp.Application.Organization;
+using Erp.Application.Scheduling;
+using Erp.Infrastructure.Seed;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Npgsql;
+using Testcontainers.PostgreSql;
+
+namespace Erp.Api.IntegrationTests;
+
+[CollectionDefinition(Name)]
+public sealed class RealApiPostgreSqlTestGroup : ICollectionFixture<RealApiPostgreSqlFixture>
+{
+    public const string Name = "real-api-postgresql";
+}
+
+[Collection(RealApiPostgreSqlTestGroup.Name)]
+public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
+{
+    [Fact]
+    public async Task CoreStoreFlowRunsThroughRealHttpApiAndPostgreSql()
+    {
+        var client = fixture.Client;
+        var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
+        Assert.Equal("ready", ready?.Status);
+        Assert.Equal("202608180028", ready?.SchemaVersion);
+
+        var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
+        {
+            account = "owner01", password = RealApiPostgreSqlFixture.InitialPassword, rememberMe = false,
+        });
+        Assert.True(login.MustChangePassword);
+
+        var blockedBeforePasswordChange = await SendAsync(client, HttpMethod.Post, "/api/v1/customers", new
+        {
+            storeId = login.Stores.Single().Id, name = "测试顾客", mobile = "13800138000",
+            serviceNotificationConsent = false, marketingConsent = false, commandId = Guid.NewGuid(),
+        });
+        Assert.Equal(HttpStatusCode.Forbidden, blockedBeforePasswordChange.StatusCode);
+
+        var changed = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/change-password", new
+        {
+            currentPassword = RealApiPostgreSqlFixture.InitialPassword,
+            newPassword = RealApiPostgreSqlFixture.ChangedPassword,
+        });
+        Assert.False(changed.MustChangePassword);
+        var storeId = changed.Stores.Single().Id;
+
+        var organization = await client.GetFromJsonAsync<OrganizationSettingsDto>(
+            "/api/v1/organization/settings");
+        Assert.Single(organization!.Stores);
+        var brand = await PutAsync<BrandProfileDto>(client, "/api/v1/organization/brand", new
+        {
+            code = "B01", name = "集成测试品牌已更新", expectedVersion = organization.Brand.Version,
+        });
+        Assert.Equal("集成测试品牌已更新", brand.Name);
+        var secondStore = await PostAsync<StoreProfileDto>(client, "/api/v1/organization/stores", new
+        {
+            code = "S02", name = "集成测试二店", timeZoneId = "Asia/Shanghai",
+        });
+        Assert.Equal("Enabled", secondStore.Status);
+        var ownerWithAllStores = await client.GetFromJsonAsync<CurrentUserDto>("/api/v1/auth/me");
+        Assert.Contains(ownerWithAllStores!.Stores, store => store.Id == secondStore.Id);
+        secondStore = await PutAsync<StoreProfileDto>(client,
+            $"/api/v1/organization/stores/{secondStore.Id}", new
+            {
+                code = "S02A", name = "集成测试二店已更新", timeZoneId = "Asia/Shanghai",
+                expectedVersion = secondStore.Version,
+            });
+        Assert.Equal("S02A", secondStore.Code);
+        secondStore = await PostAsync<StoreProfileDto>(client,
+            $"/api/v1/organization/stores/{secondStore.Id}/status", new
+            {
+                enable = false, reason = "自动回归门店停用验证", expectedVersion = secondStore.Version,
+            });
+        Assert.Equal("Disabled", secondStore.Status);
+        var ownerAfterDisable = await client.GetFromJsonAsync<CurrentUserDto>("/api/v1/auth/me");
+        Assert.DoesNotContain(ownerAfterDisable!.Stores, store => store.Id == secondStore.Id);
+        using (var lastStoreResponse = await SendAsync(client, HttpMethod.Post,
+                   $"/api/v1/organization/stores/{storeId}/status", new
+                   {
+                       enable = false, reason = "自动回归最后门店保护", expectedVersion = organization.Stores[0].Version,
+                   }))
+            Assert.Equal(HttpStatusCode.Conflict, lastStoreResponse.StatusCode);
+        secondStore = await PostAsync<StoreProfileDto>(client,
+            $"/api/v1/organization/stores/{secondStore.Id}/status", new
+            {
+                enable = true, reason = "自动回归门店恢复验证", expectedVersion = secondStore.Version,
+            });
+        Assert.Equal("Enabled", secondStore.Status);
+
+        var employee = await PostAsync<EmployeeDto>(client, "/api/v1/employees", new
+        {
+            employeeNo = "E0002", displayName = "自动回归服务员工", positionCode = "TECHNICIAN",
+            storeIds = new List<Guid> { storeId }, createLoginAccount = true, account = "technician02",
+            initialPassword = "Technician_Test!123", roles = new List<string> { "TECHNICIAN" },
+        });
+        Assert.True(employee.AccountEnabled);
+        Assert.True(employee.MustChangePassword);
+        employee = await PutAsync<EmployeeDto>(client, $"/api/v1/employees/{employee.Id}", new
+        {
+            displayName = "自动回归前台员工", positionCode = "FRONT_DESK",
+            storeIds = new List<Guid> { storeId }, roles = new List<string> { "FRONT_DESK" },
+            expectedVersion = employee.Version,
+        });
+        Assert.Equal("自动回归前台员工", employee.DisplayName);
+        Assert.Equal("FRONT_DESK", employee.PositionCode);
+        Assert.Equal("FRONT_DESK", Assert.Single(employee.Roles));
+        employee = await PostAsync<EmployeeDto>(client, $"/api/v1/employees/{employee.Id}/reset-password", new
+        {
+            newInitialPassword = "Reset_Test!7890", reason = "自动回归密码重置验证",
+        });
+        Assert.True(employee.MustChangePassword);
+        employee = await PostAsync<EmployeeDto>(client, $"/api/v1/employees/{employee.Id}/employment-status", new
+        {
+            reactivate = false, reason = "自动回归离职验证", expectedVersion = employee.Version,
+        });
+        Assert.Equal("Inactive", employee.Status);
+        Assert.False(employee.AccountEnabled);
+        employee = await PostAsync<EmployeeDto>(client, $"/api/v1/employees/{employee.Id}/employment-status", new
+        {
+            reactivate = true, reason = "自动回归复职验证", expectedVersion = employee.Version,
+        });
+        Assert.Equal("Active", employee.Status);
+        Assert.False(employee.AccountEnabled);
+        employee = await PostAsync<EmployeeDto>(client, $"/api/v1/employees/{employee.Id}/account-status", new
+        {
+            isEnabled = true,
+        });
+        Assert.True(employee.AccountEnabled);
+
+        var customer = await PostAsync<CustomerDetailDto>(client, "/api/v1/customers", new
+        {
+            storeId, name = "测试顾客", mobile = "13800138000", gender = (string?)null,
+            serviceNotificationConsent = false, marketingConsent = false, commandId = Guid.NewGuid(),
+        });
+        Assert.Equal("138****8000", customer.MaskedMobile);
+        customer = await PutAsync<CustomerDetailDto>(client, $"/api/v1/customers/{customer.Id}", new
+        {
+            storeId, name = "测试顾客已更新", mobile = "13900139000", gender = "Female",
+            birthDate = new DateOnly(1990, 1, 2), sourceCode = "AUTOMATION",
+            serviceNotificationConsent = true, marketingConsent = false,
+            expectedVersion = customer.Version, commandId = Guid.NewGuid(),
+        });
+        Assert.Equal("测试顾客已更新", customer.DisplayName);
+        Assert.Equal("139****9000", customer.MaskedMobile);
+        customer = await PostAsync<CustomerDetailDto>(client, $"/api/v1/customers/{customer.Id}/status", new
+        {
+            storeId, restore = false, reason = "自动回归停用验证", expectedVersion = customer.Version,
+            commandId = Guid.NewGuid(),
+        });
+        Assert.Equal("Disabled", customer.Status);
+        customer = await PostAsync<CustomerDetailDto>(client, $"/api/v1/customers/{customer.Id}/status", new
+        {
+            storeId, restore = true, reason = "自动回归恢复验证", expectedVersion = customer.Version,
+            commandId = Guid.NewGuid(),
+        });
+        Assert.Equal("Active", customer.Status);
+        var duplicate = await PostAsync<CustomerDetailDto>(client, "/api/v1/customers", new
+        {
+            storeId, name = "测试顾客旧档", mobile = "13700137000", gender = "Unknown",
+            serviceNotificationConsent = false, marketingConsent = false, commandId = Guid.NewGuid(),
+        });
+        var mergeCardType = await PostAsync<MemberCardTypeDto>(client,
+            "/api/v1/customers/membership/card-types", new
+            {
+                code = "MERGE_TEST", name = "合并回归卡", validityDays = (int?)null, commandId = Guid.NewGuid(),
+            });
+        duplicate = await PostAsync<CustomerDetailDto>(client,
+            $"/api/v1/customers/{duplicate.Id}/membership", new
+            {
+                storeId, cardTypeId = mergeCardType.Id, cardNo = "MERGETEST001", note = "合并回归",
+                commandId = Guid.NewGuid(),
+            });
+        var preview = await PostAsync<CustomerMergePreviewDto>(client,
+            $"/api/v1/customers/{duplicate.Id}/merge-preview", new
+            {
+                storeId, targetCustomerId = customer.Id,
+            });
+        Assert.True(preview.CanMerge);
+        Assert.Equal(1, preview.SourceCardCount);
+        customer = await PostAsync<CustomerDetailDto>(client,
+            $"/api/v1/customers/{duplicate.Id}/merge", new
+            {
+                storeId, targetCustomerId = customer.Id, expectedSourceVersion = preview.SourceVersion,
+                expectedTargetVersion = preview.TargetVersion, reason = "自动回归确认属于同一顾客",
+                commandId = Guid.NewGuid(),
+            });
+        Assert.Contains(customer.MergedAliases, alias => alias.Id == duplicate.Id);
+        Assert.Contains(customer.Cards, card => card.MaskedCardNo.EndsWith("T001", StringComparison.Ordinal));
+        var aliasSearch = await PostAsync<PageResponse<CustomerSummaryDto>>(client,
+            "/api/v1/customers/search", new { storeId, query = "13700137000", page = 1, pageSize = 20 });
+        Assert.Single(aliasSearch.Items);
+        Assert.Equal(customer.Id, aliasSearch.Items.Single().Id);
+        var customerPage = await PostAsync<PageResponse<CustomerSummaryDto>>(client,
+            "/api/v1/customers/search", new { storeId, query = "13900139000", page = 1, pageSize = 1 });
+        Assert.Equal(1, customerPage.Total);
+        Assert.Single(customerPage.Items);
+        Assert.Equal(1, customerPage.Page);
+        Assert.Equal(1, customerPage.PageSize);
+        var invalidCustomerPage = await SendAsync(client, HttpMethod.Post, "/api/v1/customers/search",
+            new { storeId, query = "", page = 1, pageSize = 101 });
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, invalidCustomerPage.StatusCode);
+
+        var serviceRecord = await CreateServiceRecordAsync(client, storeId, customer.Id);
+        Assert.Empty(serviceRecord.Corrections);
+        serviceRecord = await PostAsync<ServiceRecordDto>(client,
+            $"/api/v1/customers/{customer.Id}/service-records/{serviceRecord.Id}/corrections", new
+            {
+                storeId, reason = "自动回归更正服务描述", conditionNotes = "更正后的顾客需求",
+                serviceContent = "更正后的服务内容", followUpNotes = (string?)null,
+                commandId = Guid.NewGuid(),
+            });
+        var correction = Assert.Single(serviceRecord.Corrections);
+        Assert.Equal("自动回归更正服务描述", correction.Reason);
+        Assert.Equal("更正后的服务内容", correction.ServiceContent);
+
+        var service = await PostAsync<ServiceItemDto>(client, "/api/v1/catalog/service-items", new
+        {
+            code = "SVC01", name = "测试服务", standardDurationMinutes = 30, commissionMode = "NONE",
+        }, HttpStatusCode.Created);
+        var memberCard = Assert.Single(customer.Cards);
+        var issuedPass = await PostAsync<ServicePassDto>(client,
+            "/api/v1/membership-benefits/service-passes", new
+            {
+                storeId, customerId = customer.Id, cardId = memberCard.Id, serviceItemId = service.Id,
+                passName = "自动回归三次卡", purchasedUses = 2, bonusUses = 1,
+                validFrom = DateOnly.FromDateTime(DateTime.UtcNow),
+                validTo = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)),
+                reason = "自动回归发放", commandId = Guid.NewGuid(),
+            });
+        Assert.Equal(3, issuedPass.RemainingUses);
+        var product = await PostAsync<ProductItemDto>(client, "/api/v1/catalog/products", new
+        {
+            code = "PRD01", name = "测试产品", unitName = "件", trackInventory = true,
+        }, HttpStatusCode.Created);
+
+        var opening = await PostAsync<InventoryDocumentDto>(client, "/api/v1/inventory/documents", new
+        {
+            storeId, documentType = "OPENING", reason = "自动回归期初",
+            lines = new[] { new { productItemId = product.Id, quantity = 3 } }, commandId = Guid.NewGuid(),
+        });
+        Assert.Equal("Opening", opening.DocumentType);
+
+        var priceBook = await PostAsync<PriceBookDto>(client, "/api/v1/catalog/price-books", new
+        {
+            name = "自动回归价格", effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow),
+            lines = new[] { new { serviceItemId = service.Id, unitPriceMinor = 10_000L } },
+            productLines = new[] { new { productItemId = product.Id, unitPriceMinor = 5_000L } },
+        }, HttpStatusCode.Created);
+        priceBook = await PutAsync<PriceBookDto>(client, $"/api/v1/catalog/price-books/{priceBook.Id}", new
+        {
+            name = "自动回归价格已编辑", effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow),
+            lines = new[] { new { serviceItemId = service.Id, unitPriceMinor = 10_000L } },
+            productLines = new[] { new { productItemId = product.Id, unitPriceMinor = 5_000L } },
+            expectedVersion = priceBook.Version,
+        });
+        Assert.Equal("自动回归价格已编辑", priceBook.Name);
+        var published = await PostAsync<PriceBookDto>(client,
+            $"/api/v1/catalog/price-books/{priceBook.Id}/publish", new { });
+        Assert.Equal("PUBLISHED", published.Status);
+        var cancelledDraft = await PostAsync<PriceBookDto>(client, "/api/v1/catalog/price-books", new
+        {
+            name = "自动回归待取消价格", effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),
+            lines = new[] { new { serviceItemId = service.Id, unitPriceMinor = 10_100L } },
+            productLines = Array.Empty<object>(),
+        }, HttpStatusCode.Created);
+        cancelledDraft = await PostAsync<PriceBookDto>(client,
+            $"/api/v1/catalog/price-books/{cancelledDraft.Id}/cancel", new
+            {
+                expectedVersion = cancelledDraft.Version,
+            });
+        Assert.Equal("RETIRED", cancelledDraft.Status);
+
+        var group = await PostAsync<FacilityGroupDto>(client, "/api/v1/facilities/groups", new
+        {
+            storeId, displayName = "自动回归服务区", sortOrder = 10,
+        });
+        var type = await PostAsync<FacilityTypeDto>(client, "/api/v1/facilities/types", new
+        {
+            displayName = "自动回归服务位",
+        });
+        var facility = await PostAsync<FacilityBoardItemDto>(client, "/api/v1/facilities", new
+        {
+            storeId, groupId = group.Id, facilityTypeId = type.Id, code = "F01", displayName = "服务位01",
+            serviceName = "测试服务", equipmentName = "测试设备", referencePriceMinor = (long?)null,
+            sortOrder = 10, defaultCleaningMinutes = 0, allowReservation = true,
+        });
+
+        var schedulingEmployees = await client.GetFromJsonAsync<IReadOnlyList<SchedulingResourceDto>>(
+            $"/api/v1/scheduling/employees?storeId={storeId}");
+        Assert.Contains(schedulingEmployees!, item => item.Id == employee.Id);
+        var schedulingFacilities = await client.GetFromJsonAsync<IReadOnlyList<SchedulingResourceDto>>(
+            $"/api/v1/scheduling/facilities?storeId={storeId}");
+        Assert.Contains(schedulingFacilities!, item => item.Id == facility.Id);
+        var scheduleStart = DateTimeOffset.UtcNow.AddDays(1).AddMinutes(5);
+        var shift = await PostAsync<EmployeeShiftDto>(client, "/api/v1/scheduling/shifts", new
+        {
+            storeId, employeeId = employee.Id, startsAtUtc = scheduleStart,
+            endsAtUtc = scheduleStart.AddHours(8), note = "自动回归班次", commandId = Guid.NewGuid(),
+        });
+        Assert.Equal("Scheduled", shift.Status);
+        using (var overlappingShift = await SendAsync(client, HttpMethod.Post, "/api/v1/scheduling/shifts", new
+               {
+                   storeId, employeeId = employee.Id, startsAtUtc = scheduleStart.AddHours(1),
+                   endsAtUtc = scheduleStart.AddHours(2), note = (string?)null, commandId = Guid.NewGuid(),
+               }))
+            Assert.Equal(HttpStatusCode.Conflict, overlappingShift.StatusCode);
+        shift = await PutAsync<EmployeeShiftDto>(client, $"/api/v1/scheduling/shifts/{shift.Id}", new
+        {
+            storeId, startsAtUtc = scheduleStart.AddMinutes(30), endsAtUtc = scheduleStart.AddHours(8),
+            note = "自动回归班次已调整", expectedVersion = shift.Version,
+        });
+        Assert.Equal("自动回归班次已调整", shift.Note);
+
+        var appointment = await PostAsync<AppointmentDto>(client, "/api/v1/scheduling/appointments", new
+        {
+            storeId, customerId = customer.Id, serviceItemId = service.Id, employeeId = employee.Id,
+            facilityId = (Guid?)null, startsAtUtc = scheduleStart.AddHours(2),
+            endsAtUtc = scheduleStart.AddHours(3), note = "自动回归预约", commandId = Guid.NewGuid(),
+        });
+        Assert.Equal("Scheduled", appointment.Status);
+        using (var overlappingAppointment = await SendAsync(client, HttpMethod.Post,
+                   "/api/v1/scheduling/appointments", new
+                   {
+                       storeId, customerId = customer.Id, serviceItemId = service.Id,
+                       employeeId = employee.Id, facilityId = (Guid?)null,
+                       startsAtUtc = scheduleStart.AddHours(2).AddMinutes(15),
+                       endsAtUtc = scheduleStart.AddHours(2).AddMinutes(45), note = (string?)null,
+                       commandId = Guid.NewGuid(),
+                   }))
+            Assert.Equal(HttpStatusCode.Conflict, overlappingAppointment.StatusCode);
+        var appointmentPage = await client.GetFromJsonAsync<PageResponse<AppointmentDto>>(
+            $"/api/v1/scheduling/appointments?storeId={storeId}&fromUtc={Uri.EscapeDataString(scheduleStart.ToString("O"))}" +
+            $"&toUtc={Uri.EscapeDataString(scheduleStart.AddDays(1).ToString("O"))}&query=13900139000&page=1&pageSize=1");
+        Assert.Equal(1, appointmentPage!.Total);
+        Assert.Equal("139****9000", appointmentPage.Items.Single().MaskedMobile);
+        appointment = await PutAsync<AppointmentDto>(client,
+            $"/api/v1/scheduling/appointments/{appointment.Id}", new
+            {
+                storeId, serviceItemId = service.Id, employeeId = employee.Id, facilityId = (Guid?)null,
+                startsAtUtc = scheduleStart.AddHours(3), endsAtUtc = scheduleStart.AddHours(4),
+                note = "自动回归预约已调整", expectedVersion = appointment.Version,
+            });
+        appointment = await PostAsync<AppointmentDto>(client,
+            $"/api/v1/scheduling/appointments/{appointment.Id}/arrive", new
+            {
+                storeId, reason = (string?)null, expectedVersion = appointment.Version, commandId = Guid.NewGuid(),
+            });
+        Assert.Equal("Arrived", appointment.Status);
+        Assert.NotNull(appointment.VisitId);
+
+        var facilityAppointment = await PostAsync<AppointmentDto>(client,
+            "/api/v1/scheduling/appointments", new
+            {
+                storeId, customerId = customer.Id, serviceItemId = service.Id, employeeId = (Guid?)null,
+                facilityId = facility.Id, startsAtUtc = scheduleStart.AddHours(5),
+                endsAtUtc = scheduleStart.AddHours(6), note = "设施预约", commandId = Guid.NewGuid(),
+            });
+        using (var facilityConflict = await SendAsync(client, HttpMethod.Post,
+                   "/api/v1/scheduling/appointments", new
+                   {
+                       storeId, customerId = customer.Id, serviceItemId = service.Id, employeeId = (Guid?)null,
+                       facilityId = facility.Id, startsAtUtc = scheduleStart.AddHours(5).AddMinutes(10),
+                       endsAtUtc = scheduleStart.AddHours(5).AddMinutes(40), note = (string?)null,
+                       commandId = Guid.NewGuid(),
+                   }))
+            Assert.Equal(HttpStatusCode.Conflict, facilityConflict.StatusCode);
+        facilityAppointment = await PostAsync<AppointmentDto>(client,
+            $"/api/v1/scheduling/appointments/{facilityAppointment.Id}/cancel", new
+            {
+                storeId, reason = "顾客取消自动回归预约", expectedVersion = facilityAppointment.Version,
+                commandId = Guid.NewGuid(),
+            });
+        Assert.Equal("Cancelled", facilityAppointment.Status);
+
+        var noShow = await PostAsync<AppointmentDto>(client, "/api/v1/scheduling/appointments", new
+        {
+            storeId, customerId = customer.Id, serviceItemId = service.Id, employeeId = (Guid?)null,
+            facilityId = (Guid?)null, startsAtUtc = DateTimeOffset.UtcNow.AddMinutes(-1),
+            endsAtUtc = DateTimeOffset.UtcNow.AddMinutes(29), note = "爽约自动回归", commandId = Guid.NewGuid(),
+        });
+        noShow = await PostAsync<AppointmentDto>(client,
+            $"/api/v1/scheduling/appointments/{noShow.Id}/no-show", new
+            {
+                storeId, reason = "顾客未按时到店", expectedVersion = noShow.Version, commandId = Guid.NewGuid(),
+            });
+        Assert.Equal("NoShow", noShow.Status);
+        shift = await PostAsync<EmployeeShiftDto>(client, $"/api/v1/scheduling/shifts/{shift.Id}/cancel", new
+        {
+            storeId, reason = "自动回归班次取消", expectedVersion = shift.Version, commandId = Guid.NewGuid(),
+        });
+        Assert.Equal("Cancelled", shift.Status);
+
+        var started = await PostAsync<FacilityBoardItemDto>(client, "/api/v1/facilities/sessions/start", new
+        {
+            storeId, facilityId = facility.Id, customerId = customer.Id, plannedServiceItemId = service.Id,
+            expectedDurationMinutes = 30, note = "自动回归接待", commandId = Guid.NewGuid(),
+        });
+        Assert.NotNull(started.SessionId);
+        Assert.NotNull(started.VisitId);
+        var mergeBlockerTarget = await PostAsync<CustomerDetailDto>(client, "/api/v1/customers", new
+        {
+            storeId, name = "合并阻断目标", mobile = "13600136000", gender = "Unknown",
+            serviceNotificationConsent = false, marketingConsent = false, commandId = Guid.NewGuid(),
+        });
+        var blockedMerge = await PostAsync<CustomerMergePreviewDto>(client,
+            $"/api/v1/customers/{customer.Id}/merge-preview", new
+            {
+                storeId, targetCustomerId = mergeBlockerTarget.Id,
+            });
+        Assert.False(blockedMerge.CanMerge);
+        Assert.Contains(blockedMerge.Blockers, blocker => blocker.Contains("接待", StringComparison.Ordinal));
+        _ = await PostAsync<FacilityBoardItemDto>(client,
+            $"/api/v1/facilities/sessions/{started.SessionId}/end", new
+            {
+                storeId, commandId = Guid.NewGuid(),
+            });
+
+        var order = await PostAsync<ServiceOrderDto>(client, "/api/v1/cashier/orders", new
+        {
+            storeId, visitId = started.VisitId, customerId = customer.Id, note = "自动回归消费单",
+            lines = new object[]
+            {
+                new { lineType = "SERVICE", serviceItemId = service.Id, productItemId = (Guid?)null,
+                    serviceEmployeeId = (Guid?)null, quantity = 1, actualSeconds = 90,
+                    enteredPriceMinor = 10_000L, priceOverrideReason = (string?)null },
+                new { lineType = "PRODUCT", serviceItemId = (Guid?)null, productItemId = product.Id,
+                    serviceEmployeeId = (Guid?)null, quantity = 1, actualSeconds = (int?)null,
+                    enteredPriceMinor = 5_000L, priceOverrideReason = (string?)null },
+            },
+            commandId = Guid.NewGuid(),
+        });
+        var confirmed = await PostAsync<ServiceOrderDto>(client,
+            $"/api/v1/cashier/orders/{order.Id}/confirm", new
+            {
+                storeId, expectedVersion = order.Version, commandId = Guid.NewGuid(),
+            });
+        Assert.Equal("PendingPayment", confirmed.Status);
+
+        _ = await PostAsync<CashierShiftDto>(client, "/api/v1/payments/shifts/open", new
+        {
+            storeId, openingCashMinor = 5_000L, commandId = Guid.NewGuid(),
+        });
+        var methods = await client.GetFromJsonAsync<IReadOnlyList<PaymentMethodDto>>(
+            $"/api/v1/payments/methods?storeId={storeId}");
+        var cash = Assert.Single(methods!, x => x.Code == "CASH");
+
+        var topup = await PostAsync<MemberTopupDto>(client, "/api/v1/member-topups", new
+        {
+            storeId, customerId = customer.Id, cardId = memberCard.Id,
+            principalMinor = 50_000L, bonusMinor = 10_000L, note = "自动回归储值",
+            allocations = new[] { new { methodId = cash.Id, amountMinor = 50_000L,
+                externalReference = (string?)null } },
+            commandId = Guid.NewGuid(),
+        });
+        var topupRefund = await PostAsync<RefundDto>(client, "/api/v1/refunds", new
+        {
+            storeId, paymentId = topup.PaymentId, expectedPaymentVersion = topup.PaymentVersion,
+            reason = "自动回归部分退储值本金",
+            lines = new[] { new { originalAllocationId = topup.Allocations.Single().Id, amountMinor = 20_000L } },
+            commandId = Guid.NewGuid(),
+        });
+        _ = await PostAsync<RefundDto>(client, $"/api/v1/refunds/{topupRefund.Id}/approve", new
+        {
+            storeId, expectedVersion = topupRefund.Version, commandId = Guid.NewGuid(),
+        });
+        var topupPage = await client.GetFromJsonAsync<PageResponse<MemberTopupDto>>(
+            $"/api/v1/member-topups?storeId={storeId}&customerId={customer.Id}&page=1&pageSize=20");
+        var partiallyRefundedTopup = Assert.Single(topupPage!.Items);
+        Assert.Equal("PartiallyRefunded", partiallyRefundedTopup.Status);
+        Assert.Equal(20_000L, partiallyRefundedTopup.RefundedPrincipalMinor);
+        Assert.Equal(4_000L, partiallyRefundedTopup.RevokedBonusMinor);
+        Assert.Equal(30_000L, partiallyRefundedTopup.RemainingPrincipalMinor);
+        var customerAfterTopupRefund = await client.GetFromJsonAsync<CustomerDetailDto>(
+            $"/api/v1/customers/{customer.Id}?storeId={storeId}");
+        var accountsAfterTopupRefund = Assert.Single(customerAfterTopupRefund!.Cards).Accounts;
+        Assert.Equal(30_000L, Assert.Single(accountsAfterTopupRefund,
+            account => account.AccountType == "Principal").BalanceUnits);
+        Assert.Equal(6_000L, Assert.Single(accountsAfterTopupRefund,
+            account => account.AccountType == "Bonus").BalanceUnits);
+
+        var points = await PostAsync<MemberPointSummaryDto>(client,
+            "/api/v1/membership-benefits/points/adjust", new
+            {
+                storeId, customerId = customer.Id, cardId = memberCard.Id, units = 100L, credit = true,
+                expiresOn = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(30)),
+                reason = "自动回归增加积分", commandId = Guid.NewGuid(),
+            });
+        Assert.Equal(100L, points.BalanceUnits);
+        points = await PostAsync<MemberPointSummaryDto>(client,
+            "/api/v1/membership-benefits/points/adjust", new
+            {
+                storeId, customerId = customer.Id, cardId = memberCard.Id, units = 30L, credit = false,
+                expiresOn = (DateOnly?)null, reason = "自动回归使用积分", commandId = Guid.NewGuid(),
+            });
+        Assert.Equal(70L, points.BalanceUnits);
+        var pointDebit = Assert.Single(points.Ledgers, line => line.BusinessType == "PointManualDebit");
+        points = await PostAsync<MemberPointSummaryDto>(client,
+            "/api/v1/membership-benefits/points/reverse", new
+            {
+                storeId, cardId = memberCard.Id, ledgerId = pointDebit.Id,
+                reason = "自动回归撤销积分扣减", commandId = Guid.NewGuid(),
+            });
+        Assert.Equal(100L, points.BalanceUnits);
+
+        var payment = await PostAsync<PaymentDto>(client, $"/api/v1/payments/orders/{order.Id}/settle", new
+        {
+            storeId, expectedVersion = confirmed.Version,
+            allocations = new[] { new { methodId = cash.Id, amountMinor = 15_000L,
+                externalReference = (string?)null, memberAccountId = (Guid?)null } },
+            cashTenderedMinor = 20_000L, verifiedMobile = (string?)null,
+            verificationChallengeId = (Guid?)null, commandId = Guid.NewGuid(),
+        });
+        Assert.Equal("Paid", payment.Status);
+        Assert.Equal(20_000L, payment.CashTenderedMinor);
+        Assert.Equal(5_000L, payment.CashChangeMinor);
+        var firstReceipt = await PostAsync<PaymentReceiptDto>(client,
+            $"/api/v1/payments/{payment.Id}/receipt", new { storeId, commandId = Guid.NewGuid() });
+        var reprintedReceipt = await PostAsync<PaymentReceiptDto>(client,
+            $"/api/v1/payments/{payment.Id}/receipt", new { storeId, commandId = Guid.NewGuid() });
+        Assert.Equal(1, firstReceipt.PrintSequence);
+        Assert.Equal("顾客联", firstReceipt.PrintLabel);
+        Assert.Equal(2, reprintedReceipt.PrintSequence);
+        Assert.StartsWith("补打联", reprintedReceipt.PrintLabel);
+        Assert.Equal(5_000L, reprintedReceipt.CashChangeMinor);
+
+        var afterSale = await client.GetFromJsonAsync<IReadOnlyList<InventoryBalanceDto>>(
+            $"/api/v1/inventory/balances?storeId={storeId}");
+        Assert.Equal(2, Assert.Single(afterSale!, x => x.ProductItemId == product.Id).OnHandQuantity);
+
+        var refund = await PostAsync<RefundDto>(client, "/api/v1/refunds", new
+        {
+            storeId, paymentId = payment.Id, expectedPaymentVersion = payment.Version,
+            reason = "自动回归部分退款",
+            lines = new[] { new { originalAllocationId = payment.Allocations.Single().Id, amountMinor = 1_000L } },
+            commandId = Guid.NewGuid(),
+        });
+        var completedRefund = await PostAsync<RefundDto>(client, $"/api/v1/refunds/{refund.Id}/approve", new
+        {
+            storeId, expectedVersion = refund.Version, commandId = Guid.NewGuid(),
+        });
+        Assert.Equal("Completed", completedRefund.Status);
+
+        var redeemedPass = await PostAsync<ServicePassDto>(client,
+            $"/api/v1/membership-benefits/service-passes/{issuedPass.Id}/redeem", new
+            {
+                storeId, uses = 2, serviceOrderId = order.Id, reason = "自动回归次卡核销",
+                expectedVersion = issuedPass.Version, commandId = Guid.NewGuid(),
+            });
+        Assert.Equal(1, redeemedPass.RemainingUses);
+        var redemption = Assert.Single(redeemedPass.Ledgers, line => line.Action == "Redeem");
+        var reversedPass = await PostAsync<ServicePassDto>(client,
+            $"/api/v1/membership-benefits/service-passes/{issuedPass.Id}/reverse", new
+            {
+                storeId, ledgerId = redemption.Id, reason = "自动回归撤销次卡核销",
+                expectedVersion = redeemedPass.Version, commandId = Guid.NewGuid(),
+            });
+        Assert.Equal(3, reversedPass.RemainingUses);
+        var benefits = await client.GetFromJsonAsync<MembershipBenefitsDto>(
+            $"/api/v1/membership-benefits?storeId={storeId}&customerId={customer.Id}");
+        Assert.Equal(3, Assert.Single(benefits!.ServicePasses).RemainingUses);
+        Assert.Equal(100L, Assert.Single(benefits.PointAccounts).BalanceUnits);
+
+        var orderAfterRefund = await client.GetFromJsonAsync<ServiceOrderDto>(
+            $"/api/v1/cashier/orders/{order.Id}?storeId={storeId}");
+        var productLine = Assert.Single(orderAfterRefund!.Lines, x => x.ProductItemId == product.Id);
+        _ = await PostAsync<ProductReturnDto>(client, "/api/v1/inventory/product-returns", new
+        {
+            storeId, orderId = order.Id, orderLineId = productLine.Id, quantity = 1,
+            reason = "自动回归退货", expectedOrderVersion = orderAfterRefund.Version, commandId = Guid.NewGuid(),
+        });
+        var afterReturn = await client.GetFromJsonAsync<IReadOnlyList<InventoryBalanceDto>>(
+            $"/api/v1/inventory/balances?storeId={storeId}");
+        Assert.Equal(3, Assert.Single(afterReturn!, x => x.ProductItemId == product.Id).OnHandQuantity);
+
+        var orderPage = await client.GetFromJsonAsync<PageResponse<ServiceOrderDto>>(
+            $"/api/v1/cashier/orders?storeId={storeId}&page=1&pageSize=1");
+        Assert.Equal(1, orderPage!.Total);
+        Assert.Single(orderPage.Items);
+        var filteredOrders = await client.GetFromJsonAsync<PageResponse<ServiceOrderDto>>(
+            $"/api/v1/cashier/orders?storeId={storeId}&query=%E6%B5%8B%E8%AF%95%E6%9C%8D%E5%8A%A1" +
+            $"&customerId={customer.Id}&catalogItemId={service.Id}&status=PartiallyRefunded" +
+            $"&fromDate={DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}" +
+            $"&toDate={DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}&page=1&pageSize=20");
+        Assert.Single(filteredOrders!.Items);
+        Assert.Equal(order.Id, filteredOrders.Items.Single().Id);
+        var invalidOrderFilter = await client.GetAsync(
+            $"/api/v1/cashier/orders?storeId={storeId}&status=Unknown&page=1&pageSize=20");
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, invalidOrderFilter.StatusCode);
+        var paymentPage = await client.GetFromJsonAsync<PageResponse<PaymentDto>>(
+            $"/api/v1/payments?storeId={storeId}&page=1&pageSize=1");
+        Assert.Equal(2, paymentPage!.Total);
+        var refundPage = await client.GetFromJsonAsync<PageResponse<RefundDto>>(
+            $"/api/v1/refunds?storeId={storeId}&page=1&pageSize=1");
+        Assert.Equal(2, refundPage!.Total);
+        var movementPage = await client.GetFromJsonAsync<PageResponse<InventoryMovementDto>>(
+            $"/api/v1/inventory/movements?storeId={storeId}&page=1&pageSize=1");
+        Assert.True(movementPage!.Total >= 3);
+        Assert.Single(movementPage.Items);
+        var documentPage = await client.GetFromJsonAsync<PageResponse<InventoryDocumentDto>>(
+            $"/api/v1/inventory/documents?storeId={storeId}&page=1&pageSize=1");
+        Assert.Equal(1, documentPage!.Total);
+
+        var supplier = await PostAsync<SupplierDto>(client, "/api/v1/supply-chain/suppliers", new
+        {
+            code = "SUP-01", name = "集成测试供应商", contactName = "供应商联系人",
+            mobile = "13800001111", settlementTerms = "月结",
+        }, HttpStatusCode.Created);
+        Assert.Equal("Active", supplier.Status);
+        var purchase = await PostAsync<PurchaseReceiptDto>(client,
+            "/api/v1/supply-chain/purchase-receipts", new
+            {
+                storeId, supplierId = supplier.Id, externalNo = "EXT-001", note = "集成测试采购入库",
+                commandId = Guid.NewGuid(), lines = new[]
+                {
+                    new { productItemId = product.Id, quantity = 5, unitCostMinor = 1234L,
+                        batchNo = "BATCH-20260818", expiresOn = new DateOnly(2027, 8, 18) },
+                },
+            }, HttpStatusCode.Created);
+        Assert.Equal(6170, purchase.TotalCostMinor);
+        var lots = await client.GetFromJsonAsync<PageResponse<InventoryLotDto>>(
+            $"/api/v1/supply-chain/lots?storeId={storeId}&productItemId={product.Id}&page=1&pageSize=100");
+        Assert.Contains(lots!.Items, lot => lot.BatchNo == "BATCH-20260818" &&
+            lot.UnitCostMinor == 1234 && lot.RemainingQuantity == 5);
+
+        var balanceBeforeStocktake = (await client.GetFromJsonAsync<IReadOnlyList<InventoryBalanceDto>>(
+            $"/api/v1/inventory/balances?storeId={storeId}"))!.Single(x => x.ProductItemId == product.Id);
+        var stocktake = await PostAsync<StocktakeDto>(client, "/api/v1/supply-chain/stocktakes", new
+        {
+            storeId, reason = "集成测试盘点", commandId = Guid.NewGuid(),
+            lines = new[] { new { productItemId = product.Id,
+                countedQuantity = balanceBeforeStocktake.OnHandQuantity } },
+        }, HttpStatusCode.Created);
+        Assert.Equal("PendingApproval", stocktake.Status);
+        stocktake = await PostAsync<StocktakeDto>(client,
+            $"/api/v1/supply-chain/stocktakes/{stocktake.Id}/cancel", new
+            {
+                storeId, reason = "集成测试取消盘点", expectedVersion = stocktake.Version,
+                commandId = Guid.NewGuid(),
+            });
+        Assert.Equal("Cancelled", stocktake.Status);
+
+        var transfer = await PostAsync<InventoryTransferDto>(client, "/api/v1/supply-chain/transfers", new
+        {
+            sourceStoreId = storeId, destinationStoreId = secondStore.Id, reason = "集成测试跨店调拨",
+            commandId = Guid.NewGuid(),
+            lines = new[] { new { productItemId = product.Id, quantity = 2 } },
+        }, HttpStatusCode.Created);
+        transfer = await PostAsync<InventoryTransferDto>(client,
+            $"/api/v1/supply-chain/transfers/{transfer.Id}/ship", new
+            {
+                reason = "集成测试确认出库", expectedVersion = transfer.Version,
+                commandId = Guid.NewGuid(),
+            });
+        Assert.Equal("InTransit", transfer.Status);
+        transfer = await PostAsync<InventoryTransferDto>(client,
+            $"/api/v1/supply-chain/transfers/{transfer.Id}/receive", new
+            {
+                reason = "集成测试确认收货", expectedVersion = transfer.Version,
+                commandId = Guid.NewGuid(),
+            });
+        Assert.Equal("Received", transfer.Status);
+        var destinationBalance = (await client.GetFromJsonAsync<IReadOnlyList<InventoryBalanceDto>>(
+            $"/api/v1/inventory/balances?storeId={secondStore.Id}"))!.Single(x =>
+                x.ProductItemId == product.Id);
+        Assert.Equal(2, destinationBalance.OnHandQuantity);
+        var invalidOrderPage = await client.GetAsync(
+            $"/api/v1/cashier/orders?storeId={storeId}&page=1&pageSize=101");
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, invalidOrderPage.StatusCode);
+    }
+
+    private static async Task<T> PostAsync<T>(HttpClient client, string path, object body,
+        HttpStatusCode expectedStatus = HttpStatusCode.OK)
+    {
+        using var response = await SendAsync(client, HttpMethod.Post, path, body);
+        if (response.StatusCode != expectedStatus)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            Assert.Fail($"POST {path} expected {(int)expectedStatus}, got {(int)response.StatusCode}: {error}");
+        }
+        return (await response.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private static async Task<T> PutAsync<T>(HttpClient client, string path, object body)
+    {
+        using var response = await SendAsync(client, HttpMethod.Put, path, body);
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            Assert.Fail($"PUT {path} expected 200, got {(int)response.StatusCode}: {error}");
+        }
+        return (await response.Content.ReadFromJsonAsync<T>())!;
+    }
+
+    private static async Task<ServiceRecordDto> CreateServiceRecordAsync(HttpClient client, Guid storeId,
+        Guid customerId)
+    {
+        var csrf = await client.GetFromJsonAsync<CsrfResponse>("/api/v1/security/csrf");
+        using var content = new MultipartFormDataContent
+        {
+            { new StringContent(storeId.ToString()), "storeId" },
+            { new StringContent(Guid.NewGuid().ToString()), "commandId" },
+            { new StringContent(DateTimeOffset.UtcNow.AddMinutes(-1).ToString("O")), "serviceOccurredAtUtc" },
+            { new StringContent("原始顾客需求"), "conditionNotes" },
+            { new StringContent("原始服务内容"), "serviceContent" },
+        };
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            $"/api/v1/customers/{customerId}/service-records") { Content = content };
+        request.Headers.Add("X-CSRF-TOKEN", csrf!.Token);
+        using var response = await client.SendAsync(request);
+        if (response.StatusCode != HttpStatusCode.Created)
+            Assert.Fail($"Create service record expected 201, got {(int)response.StatusCode}: " +
+                await response.Content.ReadAsStringAsync());
+        return (await response.Content.ReadFromJsonAsync<ServiceRecordDto>())!;
+    }
+
+    private static async Task<HttpResponseMessage> SendAsync(HttpClient client, HttpMethod method, string path,
+        object body)
+    {
+        var csrf = await client.GetFromJsonAsync<CsrfResponse>("/api/v1/security/csrf");
+        var request = new HttpRequestMessage(method, path) { Content = JsonContent.Create(body) };
+        request.Headers.Add("X-CSRF-TOKEN", csrf!.Token);
+        return await client.SendAsync(request);
+    }
+
+    private sealed record CsrfResponse(string Token);
+    private sealed record ReadinessResponse(string Status, string SchemaVersion);
+    private sealed record PageResponse<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize);
+}
+
+[SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable",
+    Justification = "xUnit 2 fixtures release the HTTP factory and container through IAsyncLifetime.DisposeAsync.")]
+public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
+{
+    internal const string InitialPassword = "Initial_Test!123";
+    internal const string ChangedPassword = "Changed_Test!456";
+
+    private readonly PostgreSqlContainer database = new PostgreSqlBuilder("postgres:18.4-alpine")
+        .WithDatabase("erp_integration")
+        .WithUsername("erp_test")
+        .WithPassword("Integration_Test!42")
+        .Build();
+    private readonly string temporaryRoot = Path.Combine(Path.GetTempPath(), "erp-real-api-tests",
+        Guid.NewGuid().ToString("N"));
+    private readonly Dictionary<string, string?> previousEnvironment = new(StringComparer.Ordinal);
+    private ErpTestApplicationFactory? factory;
+
+    public HttpClient Client { get; private set; } = null!;
+
+    public async Task InitializeAsync()
+    {
+        Directory.CreateDirectory(temporaryRoot);
+        await database.StartAsync();
+        await ApplyMigrationsAsync(database.GetConnectionString());
+        SetProcessConfiguration(database.GetConnectionString());
+
+        factory = new ErpTestApplicationFactory(database.GetConnectionString(), temporaryRoot);
+        Client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false,
+            BaseAddress = new Uri("https://localhost"),
+            HandleCookies = true,
+        });
+        using var scope = factory.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<ProductionBootstrapper>()
+            .BootstrapAsync(CancellationToken.None);
+    }
+
+    public async Task DisposeAsync()
+    {
+        try
+        {
+            Client?.Dispose();
+            if (factory is not null) await factory.DisposeAsync();
+        }
+        finally
+        {
+            try
+            {
+                await database.DisposeAsync();
+                if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, true);
+            }
+            finally
+            {
+                foreach (var (key, value) in previousEnvironment)
+                    Environment.SetEnvironmentVariable(key, value, EnvironmentVariableTarget.Process);
+            }
+        }
+    }
+
+    private static async Task ApplyMigrationsAsync(string connectionString)
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var migrations = Directory.GetFiles(Path.Combine(repositoryRoot, "db", "migrations"), "V*.sql")
+            .Order(StringComparer.Ordinal).ToList();
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        foreach (var migration in migrations)
+        {
+            await using var command = new NpgsqlCommand(await File.ReadAllTextAsync(migration), connection)
+            {
+                CommandTimeout = 120,
+            };
+            await command.ExecuteNonQueryAsync();
+        }
+    }
+
+    private void SetProcessConfiguration(string connectionString)
+    {
+        var values = new Dictionary<string, string?>
+        {
+            ["ConnectionStrings__ErpDatabase"] = connectionString,
+            ["AllowedHosts"] = "localhost",
+            ["CustomerPrivacy__LookupPepper"] = "integration-customer-pepper-1234567890",
+            ["MemberVerification__CodePepper"] = "integration-member-pepper-123456789012",
+            ["FileStorage__RootPath"] = Path.Combine(temporaryRoot, "files"),
+            ["DataProtection__KeyRingPath"] = Path.Combine(temporaryRoot, "keys"),
+        };
+        foreach (var (key, value) in values)
+        {
+            previousEnvironment[key] = Environment.GetEnvironmentVariable(key,
+                EnvironmentVariableTarget.Process);
+            Environment.SetEnvironmentVariable(key, value, EnvironmentVariableTarget.Process);
+        }
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null && !File.Exists(Path.Combine(current.FullName, "Directory.Build.props")))
+            current = current.Parent;
+        return current?.FullName ?? throw new InvalidOperationException("无法定位 ERP 仓库根目录");
+    }
+}
+
+internal sealed class ErpTestApplicationFactory(string connectionString, string temporaryRoot)
+    : WebApplicationFactory<Program>
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseEnvironment("Production");
+        builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:ErpDatabase"] = connectionString,
+                ["AllowedHosts"] = "localhost",
+                ["CustomerPrivacy:LookupPepper"] = "integration-customer-pepper-1234567890",
+                ["MemberVerification:CodePepper"] = "integration-member-pepper-123456789012",
+                ["FileStorage:RootPath"] = Path.Combine(temporaryRoot, "files"),
+                ["DataProtection:KeyRingPath"] = Path.Combine(temporaryRoot, "keys"),
+                ["ERP_BOOTSTRAP_CONFIRM"] = ProductionBootstrapper.RequiredConfirmation,
+                ["ERP_BOOTSTRAP_TENANT_CODE"] = "B01",
+                ["ERP_BOOTSTRAP_TENANT_NAME"] = "集成测试品牌",
+                ["ERP_BOOTSTRAP_STORE_CODE"] = "S01",
+                ["ERP_BOOTSTRAP_STORE_NAME"] = "集成测试门店",
+                ["ERP_BOOTSTRAP_OWNER_ACCOUNT"] = "owner01",
+                ["ERP_BOOTSTRAP_OWNER_DISPLAY_NAME"] = "集成测试负责人",
+                ["ERP_BOOTSTRAP_OWNER_EMPLOYEE_NO"] = "E0001",
+                ["ERP_BOOTSTRAP_OWNER_PASSWORD"] = RealApiPostgreSqlFixture.InitialPassword,
+            }));
+        builder.ConfigureLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Warning);
+            logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+            logging.AddFilter("Microsoft.Hosting.Lifetime", LogLevel.Warning);
+        });
+    }
+}

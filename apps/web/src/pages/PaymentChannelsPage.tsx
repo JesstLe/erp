@@ -3,9 +3,9 @@ import { Alert, Button, Card, DatePicker, Descriptions, Empty, Form, Input, Moda
 import type { ColumnsType } from 'antd/es/table'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import dayjs, { type Dayjs } from 'dayjs'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ApiError, apiRequest } from '../api/client'
-import type { PaymentChannelConfiguration, PaymentChannelReconciliationItem, PaymentChannelReconciliationRun } from '../api/types'
+import type { PageResult, PaymentChannelConfiguration, PaymentChannelReconciliationItem, PaymentChannelReconciliationRun } from '../api/types'
 import { useAuth } from '../auth/useAuth'
 
 interface ChannelValues { environment: string; displayName: string; credentialProfile: string; isEnabled: boolean }
@@ -28,9 +28,11 @@ const money = (minor?: number) => minor === undefined ? '—' : `¥${(minor / 10
 export function PaymentChannelsPage() {
   const auth = useAuth(); const queryClient = useQueryClient(); const [form] = Form.useForm<ChannelValues>(); const [resolutionForm] = Form.useForm<ResolutionValues>()
   const [editing, setEditing] = useState<(typeof providers)[number]>(); const [businessDate, setBusinessDate] = useState<Dayjs>(dayjs().subtract(1, 'day')); const [resolving, setResolving] = useState<PaymentChannelReconciliationItem>()
+  const [page, setPage] = useState(1); const pageSize = 10
   const storeId = auth.store?.id; const canManage = auth.user?.roles.includes('OWNER') ?? false; const dateText = businessDate.format('YYYY-MM-DD')
   const configurations = useQuery({ queryKey: ['payment-channel-configurations', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<PaymentChannelConfiguration[]>(`/api/v1/payment-channels/configurations?storeId=${storeId}`) })
-  const reconciliations = useQuery({ queryKey: ['payment-channel-reconciliations', storeId, dateText], enabled: Boolean(storeId), queryFn: () => apiRequest<PaymentChannelReconciliationRun[]>(`/api/v1/payment-channels/reconciliations?storeId=${storeId}&fromDate=${dateText}&toDate=${dateText}`), refetchInterval: (query) => query.state.data?.some((run) => run.status === 'Running') ? 5_000 : false })
+  useEffect(() => setPage(1), [storeId, dateText])
+  const reconciliations = useQuery({ queryKey: ['payment-channel-reconciliations', storeId, dateText, page], enabled: Boolean(storeId), queryFn: () => apiRequest<PageResult<PaymentChannelReconciliationRun>>(`/api/v1/payment-channels/reconciliations?storeId=${storeId}&fromDate=${dateText}&toDate=${dateText}&page=${page}&pageSize=${pageSize}`), refetchInterval: (query) => query.state.data?.items.some((run) => run.status === 'Running') ? 5_000 : false })
   const selected = configurations.data?.find((item) => item.provider === editing?.code)
   const onError = (error: unknown) => message.error(error instanceof ApiError ? error.message : '请求失败，请稍后重试')
   const save = useMutation({ mutationFn: (values: ChannelValues) => apiRequest<PaymentChannelConfiguration>(`/api/v1/payment-channels/configurations/${editing?.code}`, { method: 'PUT', body: JSON.stringify({ storeId, ...values, expectedVersion: selected?.version ?? 0 }) }), onSuccess: async () => { message.success('渠道配置映射已保存'); setEditing(undefined); await queryClient.invalidateQueries({ queryKey: ['payment-channel-configurations', storeId] }) }, onError })
@@ -73,7 +75,7 @@ export function PaymentChannelsPage() {
       <Space className="reconciliation-actions" wrap>
         {providers.map((provider) => { const configuration = configurations.data?.find((item) => item.provider === provider.code); const unavailable = !canManage || !configuration?.credentialsPresent; const reason = !canManage ? '只有最高权限账号可以执行对账' : !configuration ? '尚未建立渠道配置' : !configuration.credentialsPresent ? '服务器凭据不完整' : ''; return <Tooltip key={provider.code} title={unavailable ? reason : ''}><span><Button icon={<CloudDownloadOutlined />} disabled={unavailable} loading={runReconciliation.isPending && runReconciliation.variables === provider.code} onClick={() => runReconciliation.mutate(provider.code)}>下载并核对{provider.name}账单</Button></span></Tooltip> })}
       </Space>
-      <Table rowKey="id" loading={reconciliations.isLoading} dataSource={reconciliations.data ?? []} columns={runColumns} pagination={false} locale={{ emptyText: '该账单日还没有对账记录' }} expandable={{ expandedRowRender: (run) => run.failureCode ? <Alert type="error" showIcon title={`执行失败：${run.failureCode}`} /> : <Table rowKey="id" size="small" dataSource={run.items} columns={itemColumns} pagination={false} locale={{ emptyText: '没有需要人工处理的差异，匹配数量见批次汇总' }} /> }} />
+      <Table rowKey="id" loading={reconciliations.isLoading} dataSource={reconciliations.data?.items} columns={runColumns} pagination={{ current: page, pageSize, total: reconciliations.data?.total ?? 0, showSizeChanger: false, showTotal: (total) => `共 ${total} 个批次`, onChange: setPage }} locale={{ emptyText: '该账单日还没有对账记录' }} expandable={{ expandedRowRender: (run) => run.failureCode ? <Alert type="error" showIcon title={`执行失败：${run.failureCode}`} /> : <Table rowKey="id" size="small" dataSource={run.items} columns={itemColumns} pagination={false} locale={{ emptyText: '没有需要人工处理的差异，匹配数量见批次汇总' }} /> }} />
     </Card>
 
     <Modal title={`配置${editing?.name ?? ''}`} open={Boolean(editing)} onCancel={() => setEditing(undefined)} onOk={() => form.submit()} okText="保存配置" confirmLoading={save.isPending} destroyOnHidden>

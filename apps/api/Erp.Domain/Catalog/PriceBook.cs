@@ -72,6 +72,24 @@ public sealed class PriceBook : Entity
         Touch();
     }
 
+    public void UpdateDraft(string name, DateOnly effectiveFrom)
+    {
+        EnsureDraft();
+        var normalized = name.Trim();
+        if (normalized.Length is 0 or > 120)
+            throw new DomainRuleException("VALIDATION_FAILED", "价格版本名称长度不正确");
+        Name = normalized;
+        EffectiveFrom = effectiveFrom;
+        Touch();
+    }
+
+    public void CancelDraft()
+    {
+        EnsureDraft();
+        Status = PriceBookStatus.Retired;
+        Touch();
+    }
+
     public void SetProductPrice(Guid productItemId, long unitPriceMinor)
     {
         EnsureDraft();

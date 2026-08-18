@@ -79,3 +79,42 @@ public sealed class ServiceRecordAttachment : Entity
     public Guid FileId { get; private set; }
     public int SortOrder { get; private set; }
 }
+
+public sealed class ServiceRecordCorrection : Entity
+{
+    private ServiceRecordCorrection() { }
+
+    public ServiceRecordCorrection(Guid tenantId, Guid serviceRecordId, string reason, string? conditionNotes,
+        string? serviceContent, string? followUpNotes, Guid commandId, Guid correctedBy) : base(tenantId)
+    {
+        if (serviceRecordId == Guid.Empty || commandId == Guid.Empty || correctedBy == Guid.Empty)
+            throw new DomainRuleException("VALIDATION_FAILED", "更正记录、请求号和更正人不能为空");
+        var normalizedReason = reason.Trim();
+        if (normalizedReason.Length is < 2 or > 500)
+            throw new DomainRuleException("VALIDATION_FAILED", "更正原因必须为2到500字");
+        ServiceRecordId = serviceRecordId;
+        Reason = normalizedReason;
+        ConditionNotes = NormalizeOptional(conditionNotes, 2_000, "更正后的本次情况/需求");
+        ServiceContent = NormalizeOptional(serviceContent, 4_000, "更正后的服务过程与内容");
+        FollowUpNotes = NormalizeOptional(followUpNotes, 2_000, "更正后的结果与后续建议");
+        CommandId = commandId;
+        CorrectedBy = correctedBy;
+    }
+
+    public Guid ServiceRecordId { get; private set; }
+    public string Reason { get; private set; } = string.Empty;
+    public string? ConditionNotes { get; private set; }
+    public string? ServiceContent { get; private set; }
+    public string? FollowUpNotes { get; private set; }
+    public Guid CommandId { get; private set; }
+    public Guid CorrectedBy { get; private set; }
+
+    private static string? NormalizeOptional(string? value, int maxLength, string field)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var normalized = value.Trim();
+        if (normalized.Length > maxLength)
+            throw new DomainRuleException("VALIDATION_FAILED", $"{field}最多{maxLength}个字符");
+        return normalized;
+    }
+}

@@ -2,7 +2,7 @@
 
 日期：2026-08-18  
 适用范围：ERP 开发、测试、发布、生产运维和数据修复。  
-当前测试基础设施：Windows 云服务器，2核 CPU、4GB 内存、70GB 磁盘；正式生产操作系统另行评审。
+当前基础设施：Ubuntu Server 24.04 LTS 云服务器，2核 CPU、4GB 内存、70GB 磁盘，作为测试和第一版生产基线。
 
 ## 1. 目标与底线
 
@@ -26,10 +26,10 @@
 
 - 支持事务、外键、唯一约束、检查约束、JSONB、行级锁和丰富索引。
 - 适合消费、库存、会员余额、应收应付等强一致性业务。
-- 官方提供Windows安装包，适合当前服务器环境。
+- Ubuntu 24.04 可使用受签名的软件源安装，适合当前服务器环境。
 - 支持逻辑备份、基础备份、WAL归档和时间点恢复。
 
-PostgreSQL 18 在当前 Windows 测试环境完成兼容、备份和恢复验证后写入部署清单；应用上线后不自动跨大版本升级。未来生产环境即使改用 Linux 或托管数据库，也保持相同主版本和迁移历史。
+PostgreSQL 18 在当前 Linux 环境完成兼容、备份和恢复验证后写入部署清单；应用上线后不自动跨大版本升级。未来即使改用托管数据库，也保持相同主版本和迁移历史。
 
 ### 2.2 数据库迁移
 
@@ -263,7 +263,7 @@ flowchart LR
 
 在开始编写核心业务代码前，必须先完成：
 
-- PostgreSQL版本与Windows Server版本兼容确认。
+- PostgreSQL版本与Ubuntu Server 24.04 LTS兼容确认。
 - Flyway最小迁移项目和空库重建测试。
 - `dev/test/prod`连接配置与账号隔离。
 - 一次逻辑备份、基础备份、WAL归档和隔离恢复演练。
@@ -274,7 +274,7 @@ flowchart LR
 
 ## 15. 参考依据
 
-- [PostgreSQL官方Windows安装说明](https://www.postgresql.org/download/windows/)
+- [PostgreSQL官方Ubuntu安装说明](https://www.postgresql.org/download/linux/ubuntu/)
 - [PostgreSQL官方备份与恢复](https://www.postgresql.org/docs/current/backup.html)
 - [PostgreSQL官方SQL Dump](https://www.postgresql.org/docs/current/backup-dump.html)
 - [PostgreSQL官方WAL归档与时间点恢复](https://www.postgresql.org/docs/current/continuous-archiving.html)

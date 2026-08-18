@@ -36,4 +36,37 @@ public sealed class EmployeeTests
 
         Assert.Equal(EmployeeStatus.Inactive, employee.Status);
     }
+
+    [Fact]
+    public void EmployeeCanReactivateAndUpdateProfile()
+    {
+        var employee = new Employee(TenantId, "E0004", "服务员工", "TECHNICIAN", null);
+        employee.Deactivate();
+
+        Assert.Throws<DomainRuleException>(() => employee.UpdateProfile("新姓名", "FRONT_DESK"));
+
+        employee.Reactivate();
+        employee.UpdateProfile(" 新姓名 ", " FRONT_DESK ");
+
+        Assert.Equal(EmployeeStatus.Active, employee.Status);
+        Assert.Equal("新姓名", employee.DisplayName);
+        Assert.Equal("FRONT_DESK", employee.PositionCode);
+    }
+
+    [Fact]
+    public void StoreAndTenantProfilesSupportSafeLifecycleChanges()
+    {
+        var tenant = new Tenant(" brand01 ", " 原品牌 ");
+        tenant.UpdateProfile("new_brand", " 新品牌 ");
+        var store = new Store(tenant.Id, "s01", "原门店");
+        store.UpdateProfile(" new_store ", " 新门店 ", "Asia/Shanghai");
+        store.Disable();
+        store.Enable();
+
+        Assert.Equal("NEW_BRAND", tenant.Code);
+        Assert.Equal("新品牌", tenant.Name);
+        Assert.Equal("NEW_STORE", store.Code);
+        Assert.Equal("新门店", store.Name);
+        Assert.Equal(StoreStatus.Enabled, store.Status);
+    }
 }

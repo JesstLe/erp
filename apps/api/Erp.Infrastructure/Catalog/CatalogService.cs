@@ -357,6 +357,72 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
         }
     }
 
+    public async Task<Result<PriceBookDto>> UpdatePriceBookAsync(Guid tenantId, UpdatePriceBookCommand command,
+        CancellationToken cancellationToken)
+    {
+        if (command.Lines.Count == 0 && command.ProductLines.Count == 0)
+            return ResultFactory.Failure<PriceBookDto>("VALIDATION_FAILED", "价格草稿至少保留一个定价条目");
+        if (command.Lines.Select(x => x.ServiceItemId).Distinct().Count() != command.Lines.Count ||
+            command.ProductLines.Select(x => x.ProductItemId).Distinct().Count() != command.ProductLines.Count)
+            return ResultFactory.Failure<PriceBookDto>("VALIDATION_FAILED", "同一目录条目不能重复定价");
+        var names = await ServiceItemNamesAsync(tenantId, cancellationToken);
+        var products = await ProductItemNamesAsync(tenantId, cancellationToken);
+        if (command.Lines.Any(x => !names.ContainsKey(x.ServiceItemId)) ||
+            command.ProductLines.Any(x => !products.ContainsKey(x.ProductItemId)))
+            return ResultFactory.Failure<PriceBookDto>("VALIDATION_FAILED", "价格草稿包含不存在的目录条目");
+        var book = await dbContext.PriceBooks.AsSplitQuery().Include(x => x.Lines).Include(x => x.ProductLines)
+            .SingleOrDefaultAsync(x => x.Id == command.Id && x.TenantId == tenantId, cancellationToken);
+        if (book is null) return ResultFactory.Failure<PriceBookDto>("PRICE_BOOK_NOT_FOUND", "价格版本不存在");
+        if (book.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<PriceBookDto>("VERSION_CONFLICT", "价格草稿已变化，请刷新后重试");
+        try
+        {
+            book.UpdateDraft(command.Name, command.EffectiveFrom);
+            foreach (var line in command.Lines) book.SetPrice(line.ServiceItemId, line.UnitPriceMinor);
+            foreach (var line in command.ProductLines) book.SetProductPrice(line.ProductItemId, line.UnitPriceMinor);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.price_book.update", "PriceBook",
+                book.Id, PriceBookStatus.Draft.ToString(), PriceBookStatus.Draft.ToString());
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(Map(book, names, products));
+        }
+        catch (DomainRuleException exception)
+        {
+            return ResultFactory.Failure<PriceBookDto>(exception.Code, exception.Message);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ResultFactory.Failure<PriceBookDto>("VERSION_CONFLICT", "价格草稿已变化，请刷新后重试");
+        }
+    }
+
+    public async Task<Result<PriceBookDto>> CancelPriceBookAsync(Guid tenantId, CancelPriceBookCommand command,
+        CancellationToken cancellationToken)
+    {
+        var book = await dbContext.PriceBooks.AsSplitQuery().Include(x => x.Lines).Include(x => x.ProductLines)
+            .SingleOrDefaultAsync(x => x.Id == command.Id && x.TenantId == tenantId, cancellationToken);
+        if (book is null) return ResultFactory.Failure<PriceBookDto>("PRICE_BOOK_NOT_FOUND", "价格版本不存在");
+        if (book.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<PriceBookDto>("VERSION_CONFLICT", "价格草稿已变化，请刷新后重试");
+        try
+        {
+            var previous = book.Status.ToString();
+            book.CancelDraft();
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.price_book.cancel", "PriceBook",
+                book.Id, previous, book.Status.ToString());
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(Map(book, await ServiceItemNamesAsync(tenantId, cancellationToken),
+                await ProductItemNamesAsync(tenantId, cancellationToken)));
+        }
+        catch (DomainRuleException exception)
+        {
+            return ResultFactory.Failure<PriceBookDto>(exception.Code, exception.Message);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ResultFactory.Failure<PriceBookDto>("VERSION_CONFLICT", "价格草稿已变化，请刷新后重试");
+        }
+    }
+
     private async Task<Dictionary<Guid, string>> ServiceItemNamesAsync(Guid tenantId, CancellationToken cancellationToken)
         => await dbContext.ServiceItems.AsNoTracking()
             .Where(x => x.TenantId == tenantId)
@@ -402,7 +468,7 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
             {
                 var product = products.GetValueOrDefault(line.ProductItemId, ("未知产品", "—"));
                 return new ProductPriceBookLineDto(line.ProductItemId, product.Item1, product.Item2, line.UnitPriceMinor);
-            }).ToList());
+            }).ToList(), book.Version);
 
     private void AddAudit(Guid tenantId, Guid? storeId, Guid operatorId, string action, string entityType, Guid entityId,
         string? previousState, string? currentState) => dbContext.AuditEvents.Add(new AuditEventRecord

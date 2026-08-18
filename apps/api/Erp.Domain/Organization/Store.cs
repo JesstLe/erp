@@ -31,6 +31,28 @@ public sealed class Store : Entity
         Touch();
     }
 
+    public void UpdateProfile(string code, string name, string timeZoneId)
+    {
+        Code = Normalize(code, 32, nameof(code)).ToUpperInvariant();
+        Name = Normalize(name, 100, nameof(name));
+        TimeZoneId = Normalize(timeZoneId, 64, nameof(timeZoneId));
+        Touch();
+    }
+
+    public void Disable()
+    {
+        if (Status == StoreStatus.Disabled) return;
+        Status = StoreStatus.Disabled;
+        Touch();
+    }
+
+    public void Enable()
+    {
+        if (Status == StoreStatus.Enabled) return;
+        Status = StoreStatus.Enabled;
+        Touch();
+    }
+
     private static string Normalize(string value, int maxLength, string field)
     {
         var normalized = value.Trim();
@@ -48,4 +70,3 @@ public enum StoreStatus
     Enabled = 1,
     Disabled = 2,
 }
-

@@ -47,7 +47,13 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   const response = await fetch(path, { ...init, headers, credentials: 'include' })
   if (!response.ok) {
     const payload = await safeJson(response)
-    if (payload.error?.code === 'INVALID_ANTIFORGERY_TOKEN') csrfToken = undefined
+    if (unsafe && payload.error?.code === 'INVALID_ANTIFORGERY_TOKEN') {
+      csrfToken = undefined
+      headers.set('X-CSRF-TOKEN', await getCsrfToken())
+      const retried = await fetch(path, { ...init, headers, credentials: 'include' })
+      if (retried.ok) return retried.status === 204 ? undefined as T : await retried.json() as T
+      throw new ApiError(retried.status, await safeJson(retried))
+    }
     throw new ApiError(response.status, payload)
   }
   if (response.status === 204) return undefined as T
@@ -64,7 +70,17 @@ export async function apiDownload(path: string, init: RequestInit = {}): Promise
   const response = await fetch(path, { ...init, headers, credentials: 'include' })
   if (!response.ok) {
     const payload = await safeJson(response)
-    if (payload.error?.code === 'INVALID_ANTIFORGERY_TOKEN') csrfToken = undefined
+    if (unsafe && payload.error?.code === 'INVALID_ANTIFORGERY_TOKEN') {
+      csrfToken = undefined
+      headers.set('X-CSRF-TOKEN', await getCsrfToken())
+      const retried = await fetch(path, { ...init, headers, credentials: 'include' })
+      if (!retried.ok) throw new ApiError(retried.status, await safeJson(retried))
+      const disposition = retried.headers.get('Content-Disposition') ?? ''
+      const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+      const quoted = disposition.match(/filename="([^"]+)"/i)?.[1]
+      const raw = encoded ? decodeURIComponent(encoded) : quoted ?? 'download.csv'
+      return { blob: await retried.blob(), filename: raw.split(/[\\/]/).pop() || 'download.csv' }
+    }
     throw new ApiError(response.status, payload)
   }
   const disposition = response.headers.get('Content-Disposition') ?? ''

@@ -1,6 +1,8 @@
 using Erp.Application.Cashier;
+using Erp.Application.Common;
 using Erp.Application.Identity;
 using Erp.Application.Security;
+using Erp.Domain.Cashier;
 
 namespace Erp.Api.Endpoints;
 
@@ -12,13 +14,17 @@ public static class CashierEndpoints
     {
         var group = endpoints.MapGroup("/api/v1/cashier").WithTags("Cashier").RequireAuthorization(policy => policy.RequireRole(OrderOperators));
 
-        group.MapGet("/pending-visits", async (Guid storeId, IIdentityService identity, ICashierService cashier,
+        group.MapGet("/pending-visits", async (Guid storeId, int? page, int? pageSize,
+            IIdentityService identity, ICashierService cashier,
             CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
-            return Results.Ok(await cashier.ListPendingVisitsAsync(current.TenantId, storeId, cancellationToken));
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedPageSize))
+                return EndpointResults.InvalidPagination();
+            return Results.Ok(await cashier.ListPendingVisitsAsync(current.TenantId, storeId, normalizedPage,
+                normalizedPageSize, cancellationToken));
         });
 
         group.MapGet("/service-employees", async (Guid storeId, IIdentityService identity, ICashierService cashier,
@@ -31,13 +37,26 @@ public static class CashierEndpoints
                 cancellationToken));
         });
 
-        group.MapGet("/orders", async (Guid storeId, IIdentityService identity, ICashierService cashier,
+        group.MapGet("/orders", async (Guid storeId, string? query, Guid? customerId, Guid? catalogItemId,
+            Guid? employeeId, string? status, DateOnly? fromDate, DateOnly? toDate, int? page, int? pageSize,
+            IIdentityService identity, ICashierService cashier,
             CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
-            return Results.Ok(await cashier.ListOrdersAsync(current.TenantId, storeId, cancellationToken));
+            if (query?.Trim().Length > 100 || !ValidOrderStatus(status) ||
+                fromDate.HasValue && toDate.HasValue && (toDate < fromDate ||
+                    toDate.Value.DayNumber - fromDate.Value.DayNumber > 3660))
+                return Results.UnprocessableEntity(new
+                {
+                    error = new { code = "VALIDATION_FAILED", message = "消费单查询条件无效" },
+                });
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedPageSize))
+                return EndpointResults.InvalidPagination();
+            return Results.Ok(await cashier.ListOrdersAsync(current.TenantId, storeId,
+                new ServiceOrderSearchCriteria(query, customerId, catalogItemId, employeeId, status, fromDate,
+                    toDate), normalizedPage, normalizedPageSize, cancellationToken));
         });
 
         group.MapGet("/orders/{orderId:guid}", async (Guid orderId, Guid storeId, IIdentityService identity,
@@ -107,14 +126,17 @@ public static class CashierEndpoints
                 cancellationToken));
         }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
 
-        group.MapGet("/price-approvals", async (Guid storeId, string? status, IIdentityService identity,
+        group.MapGet("/price-approvals", async (Guid storeId, string? status, int? page, int? pageSize,
+            IIdentityService identity,
             ICashierService cashier, CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedPageSize))
+                return EndpointResults.InvalidPagination();
             return Results.Ok(await cashier.ListPriceOverrideApprovalsAsync(current.TenantId, storeId, status,
-                cancellationToken));
+                normalizedPage, normalizedPageSize, cancellationToken));
         }).RequireAuthorization(policy => policy.RequireRole(SystemRoles.Owner));
 
         group.MapPost("/price-approvals/{approvalId:guid}/approve", async (Guid approvalId,
@@ -145,6 +167,8 @@ public static class CashierEndpoints
     }
 
     private static bool HasStore(CurrentUserDto user, Guid storeId) => user.Stores.Any(x => x.Id == storeId);
+    private static bool ValidOrderStatus(string? value) => string.IsNullOrWhiteSpace(value) ||
+        Enum.TryParse<ServiceOrderStatus>(value, true, out _);
     private sealed record CreateOrderLineRequest(string? LineType, Guid? ServiceItemId, Guid? ProductItemId,
         Guid? ServiceEmployeeId, int Quantity, int? ActualSeconds, long EnteredPriceMinor,
         string? PriceOverrideReason);

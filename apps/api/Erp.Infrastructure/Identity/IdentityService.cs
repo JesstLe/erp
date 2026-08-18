@@ -1,5 +1,6 @@
 using Erp.Application.Common;
 using Erp.Application.Identity;
+using Erp.Application.Security;
 using Erp.Domain.Organization;
 using Erp.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
@@ -80,13 +81,27 @@ public sealed class IdentityService(
     private async Task<CurrentUserDto> BuildCurrentAsync(ApplicationUser user, CancellationToken cancellationToken)
     {
         var roles = await userManager.GetRolesAsync(user);
-        var stores = await (
-            from userStore in dbContext.UserStores.AsNoTracking()
-            join store in dbContext.Stores.AsNoTracking() on userStore.StoreId equals store.Id
-            where userStore.UserId == user.Id && store.Status == StoreStatus.Enabled
-            orderby userStore.IsDefault descending, store.Name
-            select new AuthorizedStoreDto(store.Id, store.Code, store.Name, userStore.IsDefault))
-            .ToListAsync(cancellationToken);
+        List<AuthorizedStoreDto> stores;
+        if (roles.Contains(SystemRoles.Owner, StringComparer.OrdinalIgnoreCase))
+        {
+            stores = await dbContext.Stores.AsNoTracking().Where(store => store.TenantId == user.TenantId &&
+                    store.Status == StoreStatus.Enabled)
+                .OrderByDescending(store => dbContext.UserStores.Any(link => link.UserId == user.Id &&
+                    link.StoreId == store.Id && link.IsDefault)).ThenBy(store => store.Name)
+                .Select(store => new AuthorizedStoreDto(store.Id, store.Code, store.Name,
+                    dbContext.UserStores.Any(link => link.UserId == user.Id && link.StoreId == store.Id &&
+                        link.IsDefault))).ToListAsync(cancellationToken);
+        }
+        else
+        {
+            stores = await (
+                from userStore in dbContext.UserStores.AsNoTracking()
+                join store in dbContext.Stores.AsNoTracking() on userStore.StoreId equals store.Id
+                where userStore.UserId == user.Id && store.Status == StoreStatus.Enabled
+                orderby userStore.IsDefault descending, store.Name
+                select new AuthorizedStoreDto(store.Id, store.Code, store.Name, userStore.IsDefault))
+                .ToListAsync(cancellationToken);
+        }
 
         return new CurrentUserDto(user.Id, user.TenantId, user.DisplayName, user.UserName ?? string.Empty,
             user.MustChangePassword, roles.ToList(), stores);

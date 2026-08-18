@@ -22,8 +22,8 @@ public sealed record ResolvePaymentChannelReconciliationItemCommand(Guid StoreId
 
 public interface IPaymentChannelReconciliationService
 {
-    Task<IReadOnlyList<PaymentChannelReconciliationRunDto>> ListAsync(Guid tenantId, Guid storeId,
-        DateOnly? fromDate, DateOnly? toDate, CancellationToken cancellationToken);
+    Task<PageResult<PaymentChannelReconciliationRunDto>> ListAsync(Guid tenantId, Guid storeId,
+        DateOnly? fromDate, DateOnly? toDate, int page, int pageSize, CancellationToken cancellationToken);
     Task<Result<PaymentChannelReconciliationRunDto>> StartAsync(Guid tenantId,
         StartPaymentChannelReconciliationCommand command, CancellationToken cancellationToken);
     Task<Result<PaymentChannelReconciliationItemDto>> ResolveAsync(Guid tenantId,

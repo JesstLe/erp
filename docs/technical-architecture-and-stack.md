@@ -8,8 +8,8 @@
 - 第一版服务一个品牌下的总部、区域和多个门店，不开放多商户 SaaS 管理后台。
 - 业务表保留 `tenant_id`，为未来数据隔离和多租户升级保留迁移路径。
 - 新系统从空库开始，不迁移旧系统的会员、余额、订单或历史流水。
-- Windows 服务器只作为当前开发验收和测试环境；正式生产操作系统另行评审。
-- 应用必须保持 Windows 与 Linux 可部署，业务代码不得依赖 Windows 路径、注册表、COM 或 IIS 专属 API。
+- 部署方向已经确定为 Ubuntu Server 24.04 LTS；Windows 资产只保留历史追溯，不再作为实现或验收对象。
+- 业务代码保持跨平台，不依赖 Windows 路径、注册表、COM 或 IIS 专属 API。
 - 第一批开发聚焦系统基础、目录价格、设施接待、顾客基础、收银结算、人工支付和交班审计。
 
 ## 2. 架构选择
@@ -56,7 +56,7 @@ flowchart TB
 | 端到端测试 | Playwright | 覆盖首个收银闭环和高风险操作 |
 | 可观测性 | OpenTelemetry + 结构化日志 | 请求号、业务号和审计号可关联；敏感字段脱敏 |
 | 源码与 CI | GitHub 私有仓库 + GitHub Actions | 自动测试、依赖审计、构建和不可修改发布包 |
-| Windows 测试部署 | IIS + ASP.NET Core Hosting Bundle | Blue/Green 双站点切换和健康检查 |
+| Linux 部署 | Ubuntu Server 24.04 LTS + Nginx + systemd | 回环 Blue/Green、双重健康门禁和失败切回 |
 
 补丁版本在工程初始化时通过锁文件、SDK文件和容器/工具清单固定；升级补丁必须经过自动测试，不在本文长期写死所有补丁号。
 
@@ -78,8 +78,8 @@ erp/
 │   ├── integration/          # PostgreSQL集成测试
 │   └── e2e/                  # 浏览器端到端测试
 ├── deploy/
-│   ├── windows/              # IIS A/B发布和回退脚本
-│   └── containers/           # Linux/容器化部署预留
+│   ├── linux/                # Nginx/systemd A/B发布、备份和回退脚本
+│   └── windows/              # 历史部署资产，不再作为当前目标
 ├── docs/
 └── ERP.slnx
 ```
@@ -138,21 +138,19 @@ erp/
 - EF Core 迁移功能不作为生产结构来源；模型变化必须同时提交 Flyway SQL 和集成测试。
 - 产品图片与服务档案附件使用独立文件元数据表；服务档案、附件关系及文件元数据不可原地更新或删除，补充和纠错新增记录。
 
-## 9. Windows 测试与未来生产
+## 9. Linux 测试与生产基线
 
-当前 Windows 测试服务器采用：
+当前 Ubuntu Server 24.04 LTS 目标采用：
 
-- IIS 承载 ASP.NET Core API 和前端静态资源。
-- PostgreSQL 18 作为受限 Windows 服务，仅监听本机或私有网络。
-- Flyway 使用独立迁移账号运行，应用账号无 DDL 权限。
-- Blue/Green 两套 IIS 站点，健康检查通过后切换。
-- 2核4GB环境限制后台任务并发，不同时执行报表、备份压缩和批量任务。
-
-业务代码和构建产物必须可以在 Linux 上运行。正式生产系统选型时再决定 Windows/IIS、Linux/反向代理或容器平台，不把当前测试部署当成长期生产承诺。
+- Nginx 终止 TLS 并反向代理 ASP.NET Core；应用 Blue/Green 实例只监听回环地址。
+- PostgreSQL 18 仅监听本机或私有网络；Flyway 使用独立迁移账号，应用账号无 DDL 权限。
+- 新版本先在非活动 systemd 槽位完成数据库和应用就绪检查，再由 Nginx 原子切流；入口检查失败恢复原代理。
+- 数据库只做前向迁移；应用回退必须验证 schema 兼容，不能用自动降级 SQL 伪装安全回滚。
+- 2核4GB环境限制后台任务并发，不同时执行报表、备份压缩和批量任务；第一版不上 Kubernetes。
 
 ## 10. 发布与版本更新
 
-第一版采用 GitHub Actions + 受控 PowerShell/IIS A/B 发布脚本：
+第一版采用 GitHub Actions + 受控 Bash/Nginx/systemd A/B 发布脚本：
 
 1. 合并代码后运行格式、单元、集成、前端和安全检查。
 2. 生成带版本、Git提交、校验值和数据库兼容范围的不可修改发布包。
@@ -187,7 +185,7 @@ V1 不采购 Octopus Deploy。待出现多套正式环境、多台服务器、�
 - [x] 单品牌多门店和空库启动已经确认。
 - [x] 第一批模块范围已经确认。
 - [x] 技术栈、模块化单体和数据库治理已经确认。
-- [x] Windows 仅作为当前测试环境已经确认。
+- [x] Ubuntu Server 24.04 LTS 作为当前部署基线已经确认。
 - [x] 首个闭环的页面清单和字段级矩阵完成，见 [V1页面清单与字段级需求矩阵](v1-page-and-field-matrix.md)。
 - [x] 老板、店长、前台、收银员的动作权限及改价初始阈值完成，见 [V1角色权限与审批阈值矩阵](v1-role-permission-and-approval-matrix.md)。
 - [x] 首个闭环的状态机和验收用例已固化，见 [V1核心状态机与验收用例](v1-state-machines-and-acceptance-cases.md)。
@@ -203,5 +201,5 @@ V1 不采购 Octopus Deploy。待出现多套正式环境、多台服务器、�
 - [React 官方版本页](https://react.dev/versions)：React 19.2 为当前稳定主线。
 - [Vite 8 发布说明](https://main.vite.dev/blog/announcing-vite8)：Vite 8 为稳定版本。
 - [Ant Design React 介绍](https://ant.design/docs/react/introduce-cn/)：面向企业级中后台并提供完整 TypeScript 类型。
-- [ASP.NET Core IIS 部署指南](https://learn.microsoft.com/en-us/aspnet/core/tutorials/publish-to-iis?view=aspnetcore-10.0)：支持在 Windows Server 的 IIS 中承载 ASP.NET Core。
+- [ASP.NET Core Linux Nginx 部署指南](https://learn.microsoft.com/en-us/aspnet/core/host-and-deploy/linux-nginx?view=aspnetcore-10.0)：覆盖 Nginx、systemd、反向代理和服务管理。
 - [Flyway 数据库支持矩阵](https://documentation.red-gate.com/flyway/getting-started-with-flyway/system-requirements/supported-databases-and-versions)：支持 PostgreSQL 18 的版本化迁移。
