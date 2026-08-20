@@ -42,6 +42,19 @@ export const Permission = {
 
 export type PermissionCode = typeof Permission[keyof typeof Permission]
 
-export function hasPermission(granted: readonly string[] | undefined, required: PermissionCode): boolean {
-  return granted?.includes(required) ?? false
+export interface AuthorizationBypassEnvironment {
+  DEV: boolean
+  VITE_LOCAL_AUTHORIZATION_BYPASS?: string
+}
+
+export function isLocalAuthorizationBypassEnabled(environment: AuthorizationBypassEnvironment): boolean {
+  return environment.DEV && environment.VITE_LOCAL_AUTHORIZATION_BYPASS === 'true'
+}
+
+export function hasPermission(
+  granted: readonly string[] | undefined,
+  required: PermissionCode,
+  bypass = false,
+): boolean {
+  return bypass || (granted?.includes(required) ?? false)
 }

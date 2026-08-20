@@ -11,7 +11,7 @@ public sealed class Tenant : Entity
     public Tenant(string code, string name)
         : base(Guid.Empty)
     {
-        Code = Require(code, 32, nameof(code));
+        Code = Require(code, 32, nameof(code)).ToUpperInvariant();
         Name = Require(name, 100, nameof(name));
         TenantId = Id;
         Status = TenantStatus.Enabled;
@@ -25,7 +25,12 @@ public sealed class Tenant : Entity
 
     public void UpdateProfile(string code, string name)
     {
-        Code = Require(code, 32, nameof(code)).ToUpperInvariant();
+        var normalizedCode = Require(code, 32, nameof(code)).ToUpperInvariant();
+        if (!string.Equals(Code, normalizedCode, StringComparison.Ordinal))
+        {
+            throw new DomainRuleException("TENANT_CODE_IMMUTABLE", "品牌编码创建后不可修改");
+        }
+
         Name = Require(name, 100, nameof(name));
         Touch();
     }

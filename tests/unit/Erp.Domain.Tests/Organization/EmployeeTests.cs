@@ -57,16 +57,21 @@ public sealed class EmployeeTests
     public void StoreAndTenantProfilesSupportSafeLifecycleChanges()
     {
         var tenant = new Tenant(" brand01 ", " 原品牌 ");
-        tenant.UpdateProfile("new_brand", " 新品牌 ");
+        tenant.UpdateProfile(" brand01 ", " 新品牌 ");
+        var immutableCode = Assert.Throws<DomainRuleException>(() => tenant.UpdateProfile("new_brand", " 新品牌 "));
         var store = new Store(tenant.Id, "s01", "原门店");
-        store.UpdateProfile(" new_store ", " 新门店 ", "Asia/Shanghai");
+        store.UpdateProfile(" s01 ", " 新门店 ", "Asia/Shanghai");
+        var immutableStoreCode = Assert.Throws<DomainRuleException>(() =>
+            store.UpdateProfile("new_store", "新门店", "Asia/Shanghai"));
         store.Disable();
         store.Enable();
 
-        Assert.Equal("NEW_BRAND", tenant.Code);
+        Assert.Equal("BRAND01", tenant.Code);
         Assert.Equal("新品牌", tenant.Name);
-        Assert.Equal("NEW_STORE", store.Code);
+        Assert.Equal("TENANT_CODE_IMMUTABLE", immutableCode.Code);
+        Assert.Equal("S01", store.Code);
         Assert.Equal("新门店", store.Name);
+        Assert.Equal("STORE_CODE_IMMUTABLE", immutableStoreCode.Code);
         Assert.Equal(StoreStatus.Enabled, store.Status);
     }
 }

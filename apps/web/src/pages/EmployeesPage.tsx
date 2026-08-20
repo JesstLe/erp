@@ -33,6 +33,7 @@ import { apiRequest, ApiError } from "../api/client";
 import type { Employee, EmployeeRole, PageResult } from "../api/types";
 import { useAuth } from "../auth/useAuth";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { PASSWORD_POLICY_HINT, passwordRules } from "../security/passwordPolicy";
 
 interface EmployeeValues {
   employeeNo: string;
@@ -490,15 +491,8 @@ export function EmployeesPage() {
                 <Form.Item
                   name="initialPassword"
                   label="初始密码"
-                  rules={[
-                    { required: true },
-                    { min: 12, message: "至少12位" },
-                    {
-                      pattern:
-                        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/,
-                      message: "需同时包含大小写字母、数字和特殊字符",
-                    },
-                  ]}
+                  extra={PASSWORD_POLICY_HINT}
+                  rules={passwordRules("请输入初始密码")}
                 >
                   <Input.Password maxLength={256} autoComplete="new-password" />
                 </Form.Item>
@@ -650,14 +644,8 @@ export function EmployeesPage() {
           <Form.Item
             name="newInitialPassword"
             label="新初始密码"
-            rules={[
-              { required: true },
-              { min: 12, message: "至少12位" },
-              {
-                pattern: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/,
-                message: "需同时包含大小写字母、数字和特殊字符",
-              },
-            ]}
+            extra={PASSWORD_POLICY_HINT}
+            rules={passwordRules("请输入新初始密码")}
           >
             <Input.Password maxLength={256} autoComplete="new-password" />
           </Form.Item>

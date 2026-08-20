@@ -107,7 +107,7 @@ internal sealed class PlatformIdentityService(
                 "当前密码不正确，或新密码不符合安全要求");
         if (!ValidPassword(command.NewPassword))
             return ResultFactory.Failure<PlatformCurrentUserDto>("PASSWORD_CHANGE_FAILED",
-                "新密码至少12位，并包含大小写字母、数字和特殊字符");
+                PasswordPolicy.RequirementText);
 
         user.PasswordHash = Argon2IdPasswordCodec.Hash(command.NewPassword);
         user.MustChangePassword = false;
@@ -130,9 +130,7 @@ internal sealed class PlatformIdentityService(
         if (context is not null) await context.SignOutAsync(PlatformAuthentication.Scheme);
     }
 
-    internal static bool ValidPassword(string password) => password.Length is >= 12 and <= 256 &&
-        password.Any(char.IsUpper) && password.Any(char.IsLower) && password.Any(char.IsDigit) &&
-        password.Any(character => !char.IsLetterOrDigit(character));
+    internal static bool ValidPassword(string password) => PasswordPolicy.IsValid(password);
 
     private async Task SignInAsync(PlatformAdminUserRecord user, bool persistent)
     {

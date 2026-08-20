@@ -65,8 +65,7 @@ public static class PlatformEndpoints
         {
             var current = await ReadyPlatformUser(identity, cancellationToken);
             return current is null ? Results.Forbid() : EndpointResults.From(await service.ApproveAsync(current.Id,
-                new ApproveMerchantRegistrationCommand(applicationId, request.TenantCode ?? string.Empty,
-                    request.StoreCode ?? string.Empty, request.InitialPassword ?? string.Empty,
+                new ApproveMerchantRegistrationCommand(applicationId, request.InitialPassword ?? string.Empty,
                     request.Reason ?? string.Empty, request.ExpectedVersion), cancellationToken));
         });
         platform.MapPost("/registration-applications/{applicationId:guid}/rejection", async (Guid applicationId,
@@ -128,8 +127,7 @@ public static class PlatformEndpoints
         string? ContactMobile, string? ContactEmail, string? DesiredOwnerAccount, string? Note, bool AcceptedTerms);
     private sealed record PlatformLoginRequest(string? Account, string? Password, bool RememberMe);
     private sealed record PlatformChangePasswordRequest(string? CurrentPassword, string? NewPassword);
-    private sealed record ApproveRegistrationRequest(string? TenantCode, string? StoreCode, string? InitialPassword,
-        string? Reason, uint ExpectedVersion);
+    private sealed record ApproveRegistrationRequest(string? InitialPassword, string? Reason, uint ExpectedVersion);
     private sealed record RejectRegistrationRequest(string? Reason, uint ExpectedVersion);
     private sealed record ChangeMerchantStatusRequest(bool Enable, string? Reason, uint ExpectedVersion);
 }

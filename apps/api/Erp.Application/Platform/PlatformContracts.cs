@@ -21,8 +21,8 @@ public sealed record MerchantRegistrationApplicationDto(Guid Id, string Applicat
 public sealed record MerchantRegistrationPageDto(IReadOnlyList<MerchantRegistrationApplicationDto> Items,
     int Total, int Page, int PageSize);
 
-public sealed record ApproveMerchantRegistrationCommand(Guid ApplicationId, string TenantCode, string StoreCode,
-    string InitialPassword, string Reason, uint ExpectedVersion);
+public sealed record ApproveMerchantRegistrationCommand(Guid ApplicationId, string InitialPassword,
+    string Reason, uint ExpectedVersion);
 public sealed record RejectMerchantRegistrationCommand(Guid ApplicationId, string Reason, uint ExpectedVersion);
 
 public sealed record PlatformMerchantDto(Guid Id, string Code, string Name, string Status, int StoreCount,
