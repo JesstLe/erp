@@ -1,6 +1,6 @@
 # 旧系统只读迁移工具
 
-该工具只连接 `https://app5.siweicloud.com`，当前只允许读取已逐项登记的顾客及基础资料 jqGrid 列表。除登录请求外，任何 POST、非白名单路径、HTTP 地址、其他主机或带写入语义的动作都会在发出网络请求之前被拒绝。
+该工具只连接 `https://app5.siweicloud.com`。读取端点逐项登记，包括顾客与基础资料 jqGrid、顾客护理空/列表端点、顾客档案照片索引页和精确的顾客图片目录。除登录请求外，任何 POST、非白名单路径、HTTP 地址、其他主机或带写入语义的动作都会在发出网络请求之前被拒绝。
 
 ## 运行前准备
 
@@ -31,6 +31,17 @@ dotnet run --project tools/Erp.LegacyMigration -- \
 ```
 
 `base-master` 当前包含门店、员工、服务项目、产品、次卡目录、会员卡类、储值方案、设施、品牌、单位、员工工种和来店渠道，不包含已经单独导出的顾客数据。
+
+护理列表和顾客档案照片需要基于同一次顾客导出运行 `extras`。工具逐份读取顾客档案，最多识别两张照片；照片原始字节在落盘前使用同一 AES-256-GCM 密钥加密：
+
+```bash
+dotnet run --project tools/Erp.LegacyMigration -- \
+  extras \
+  --input /安全目录/legacy-customers \
+  --output /安全目录/legacy-extras
+```
+
+`extras` 只允许 `GET /swshop/vip/nurse.php?act=grid`、带数字顾客主键的精确档案读取和 `/swshop/picture/.../member/...` 下的 JPEG、PNG、WebP。页面图标、任意相对路径、其他目录或其他文件类型均被拒绝。顾客档案较多时可从检查点续跑。
 
 工具会把当次验证码保存到输出目录并暂停；操作者读取图片后输入四位数字。登录成功后验证码文件立即删除。
 
@@ -63,6 +74,33 @@ dotnet run --project tools/Erp.LegacyMigration -- \
 ```
 
 画像会重新校验清单、端点登记、记录数和密文 SHA-256，再在内存解密逐行文件。输出只包含字段名、类型、出现/空值/去重数量、最大长度、候选键、格式类别和敏感级别；不包含任何来源值、值摘要、输入路径、账号、Cookie 或密钥。路径穿越、符号链接、重复 JSON 字段、超大文件、密文篡改或数量不一致都会停止处理。
+
+## 受控导入测试品牌
+
+导入与只读导出是两个独立阶段。当前实现被代码双重限制为测试品牌 `B01`，默认只做事务干跑；只有显式增加 `--apply` 才会提交：
+
+```bash
+# 干跑：完整转换、约束检查和计数，最后回滚
+dotnet Erp.LegacyMigration.dll import \
+  --tenant B01 \
+  --input /安全目录/legacy-customers \
+  --input /安全目录/legacy-base-master \
+  --input /安全目录/legacy-extras
+
+# 仅在备份、干跑与对账均通过后执行
+dotnet Erp.LegacyMigration.dll import \
+  --tenant B01 \
+  --input /安全目录/legacy-customers \
+  --input /安全目录/legacy-base-master \
+  --input /安全目录/legacy-extras \
+  --apply
+```
+
+导入按来源实体、来源主键和 SHA-256 建立幂等映射。旧门店使用新系统自动门店编码；员工不自动创建登录账号；服务、产品和会员卡类使用 `LEGACY-*` 技术编码但保留显示名称；顾客手机号使用生产环境原有 Data Protection 和查询 HMAC 加密。顾客备注和照片形成明确标记为“旧系统迁移”的服务档案。
+
+旧系统余额、赠送、累计储值、欠款和积分在缺少不可变流水及字段口径证明时，只进入 `legacy_customer_financial_snapshots` 非消费快照，数据库约束固定 `is_spendable=false`，绝不写入会员可用本金、奖励金或积分账户。无法证明的生日和格式异常进入迁移异常表，不用默认值猜测。
+
+发布包把工具放在 `ops/legacy-migration`，不暴露 HTTP 迁移接口。服务器只允许管理员通过 SSH 在备份后运行，并从 `/etc/erp/erp.env` 读取新系统数据库、密钥环和隐私配置；旧系统账号、密码和导出密钥仍通过临时安全环境提供，不进入发布包。
 
 ## 验证
 

@@ -24,6 +24,25 @@ public static class ReportEndpoints
             }
         });
 
+        group.MapGet("/store-overview", async (DateOnly? fromDate, DateOnly? toDate,
+            IIdentityService identity, IReportService reports, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!current.Roles.Contains(SystemRoles.Owner, StringComparer.OrdinalIgnoreCase))
+                return Results.Forbid();
+            try
+            {
+                return Results.Ok(await reports.GetStoreOverviewAsync(current.TenantId, fromDate, toDate,
+                    cancellationToken));
+            }
+            catch (ArgumentException exception)
+            {
+                return EndpointResults.From(Erp.Application.Common.ResultFactory.Failure<object>(
+                    "VALIDATION_FAILED", exception.Message));
+            }
+        });
+
         return endpoints;
     }
 }

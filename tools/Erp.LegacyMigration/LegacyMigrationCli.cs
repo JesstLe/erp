@@ -14,6 +14,16 @@ public static class LegacyMigrationCli
             return await LegacyProfileCli.RunAsync(args, output, cancellationToken);
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "extras", StringComparison.Ordinal))
+        {
+            return await LegacyExtraExportCli.RunAsync(args, output, cancellationToken);
+        }
+
+        if (args.Length > 0 && string.Equals(args[0], "import", StringComparison.Ordinal))
+        {
+            return await LegacyImportCli.RunAsync(args, output, cancellationToken);
+        }
+
         try
         {
             var options = LegacyCliOptions.Parse(args);
@@ -74,7 +84,7 @@ public static class LegacyMigrationCli
         }
     }
 
-    private static void ValidateCaptcha(string? captcha)
+    internal static void ValidateCaptcha(string? captcha)
     {
         if (captcha is null || captcha.Length != 4 || captcha.Any(character => character is < '0' or > '9'))
         {

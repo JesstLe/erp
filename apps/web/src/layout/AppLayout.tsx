@@ -71,7 +71,7 @@ export function AppLayout() {
     <Sider width={232} collapsedWidth={76} breakpoint="lg" collapsed={collapsed} onBreakpoint={setCollapsed} className="app-sider">
       <div className="app-logo"><span className="app-logo-mark"><BrandLogo /></span>{!collapsed && <strong>门店 ERP</strong>}</div>
       <nav className="sider-menu-scroll" aria-label="主导航">
-        <Menu theme="dark" mode="inline" items={menuItems} selectedKeys={[location.pathname]} onClick={({ key }) => navigate(key)} />
+        <Menu theme="light" mode="inline" items={menuItems} selectedKeys={[location.pathname]} onClick={({ key }) => navigate(key)} />
       </nav>
       <div className="sider-version" title={`版本 ${appVersion} · ${environmentLabel}`}>{collapsed ? `v${appVersion.split('.')[0]}` : `v${appVersion} · ${environmentLabel}`}</div>
     </Sider>

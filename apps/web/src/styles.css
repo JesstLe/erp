@@ -54,19 +54,26 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
 .platform-header-logo { display: block; width: 34px; height: 34px; }
 .platform-content { padding: 24px 28px 48px; overflow: auto; }
 .app-shell { min-height: 100vh; }
-.app-sider { position: sticky !important; top: 0; height: 100vh; height: 100dvh; background: #102b3f !important; box-shadow: 8px 0 30px rgba(7,32,51,.08); }
+.app-sider { position: sticky !important; top: 0; height: 100vh; height: 100dvh; background: #fafafa !important; border-right: 1px solid #e5e7eb; box-shadow: none; }
 .app-sider .ant-layout-sider-children { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.app-logo { height: 72px; display: flex; align-items: center; gap: 12px; padding: 0 20px; color: #fff; font-size: 18px; }
-.app-logo-mark { width: 40px; height: 40px; display: grid; place-items: center; flex: none; filter: drop-shadow(0 7px 13px rgba(0,0,0,.18)); }
+.app-logo { height: 72px; display: flex; align-items: center; gap: 12px; padding: 0 20px; color: #20242c; font-size: 18px; }
+.app-logo-mark { width: 40px; height: 40px; display: grid; place-items: center; flex: none; filter: drop-shadow(0 6px 12px rgba(118,87,232,.16)); }
 .app-logo-mark img { display: block; width: 100%; height: 100%; }
 .app-logo strong { white-space: nowrap; }
 .sider-menu-scroll { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .sider-menu-scroll::-webkit-scrollbar { width: 6px; }
-.sider-menu-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 999px; }
+.sider-menu-scroll::-webkit-scrollbar-thumb { background: #c5c9d0; border-radius: 999px; }
 .sider-menu-scroll::-webkit-scrollbar-track { background: transparent; }
 .app-sider .ant-menu { background: transparent; padding: 10px; border: 0; }
-.app-sider .ant-menu-item { margin-block: 5px; height: 44px; line-height: 44px; }
-.sider-version { flex: 0 0 auto; width: 100%; padding: 12px 8px 16px; border-top: 1px solid rgba(255,255,255,.08); background: #102b3f; text-align: center; font-size: 11px; line-height: 16px; color: rgba(255,255,255,.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-sider .ant-menu-item { position: relative; margin-block: 5px; height: 44px; line-height: 44px; color: #525866; border-radius: 8px; }
+.app-sider .ant-menu-item::after { display: none; }
+.app-sider .ant-menu-item .anticon { color: #7c8494; }
+.app-sider .ant-menu-item:hover { color: #20242c !important; background: #f1f2f4 !important; }
+.app-sider .ant-menu-item-selected { color: #20242c !important; background: #ecedef !important; font-weight: 600; }
+.app-sider .ant-menu-item-selected::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: #7657e8; }
+.app-sider .ant-menu-item-selected .anticon { color: #20242c; }
+.app-sider .ant-menu-item-divider { border-color: #e5e7eb; }
+.sider-version { flex: 0 0 auto; width: 100%; padding: 12px 8px 16px; border-top: 1px solid #e5e7eb; background: #fafafa; text-align: center; font-size: 11px; line-height: 16px; color: #98a2b3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .app-header { height: 72px; padding: 0 28px; background: rgba(255,255,255,.95); display: flex; align-items: center; border-bottom: 1px solid #e8edf2; position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px); }
 .collapse-button { font-size: 18px; margin-right: 22px; }
 .header-context { display: flex; align-items: center; gap: 8px; }
@@ -175,6 +182,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
 .report-metric { min-height: 132px; border: 0; box-shadow: 0 6px 24px rgba(31,55,75,.04); }
 .report-metric > .ant-card-body > span { display: block; margin-top: 10px; color: #8390a3; font-size: 12px; }
 .report-metric.warning { background: #fffaf0; }
+.report-overview-metrics { margin-bottom: 22px; padding: 18px 4px; border-top: 1px solid #edf0f3; border-bottom: 1px solid #edf0f3; }
 .daily-chart { height: 235px; display: flex; align-items: flex-end; justify-content: space-around; gap: 8px; padding: 20px 6px 0; border-bottom: 1px solid #dfe5eb; }
 .daily-column { min-width: 62px; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 5px; }
 .daily-value { color: #64748b; font-size: 11px; white-space: nowrap; }

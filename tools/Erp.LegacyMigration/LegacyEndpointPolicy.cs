@@ -24,6 +24,12 @@ public sealed class LegacyEndpointPolicy
 
         var query = ParseQuery(uri.Query);
         var action = GetSingleValue(query, "act");
+
+        if (method == HttpMethod.Get && IsReviewedCustomerPhotoRead(uri, query, action))
+        {
+            return;
+        }
+
         if (action is not null && ForbiddenActions.Any(forbidden => action.Contains(forbidden, StringComparison.OrdinalIgnoreCase)))
         {
             throw new LegacyMigrationException("请求被安全策略拒绝：检测到写入动作。");
@@ -60,6 +66,43 @@ public sealed class LegacyEndpointPolicy
         }
 
         throw new LegacyMigrationException("请求被安全策略拒绝：端点未列入只读白名单。");
+    }
+
+    private static bool IsReviewedCustomerPhotoRead(
+        Uri uri,
+        Dictionary<string, List<string>> query,
+        string? action)
+    {
+        if (string.Equals(uri.AbsolutePath, "/swshop/base/member.php", StringComparison.Ordinal) &&
+            string.Equals(action, "adds", StringComparison.Ordinal) &&
+            query.Keys.All(key => key is "act" or "id" or "wintop" or "winpid") &&
+            GetSingleValue(query, "id") is { } id && long.TryParse(id, out var numericId) && numericId > 0 &&
+            GetSingleValue(query, "wintop") is "N" && GetSingleValue(query, "winpid") is "2")
+        {
+            return true;
+        }
+
+        if (query.Count != 0 || !uri.AbsolutePath.StartsWith("/swshop/picture/", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return segments.Length == 5 && segments[0] == "swshop" && segments[1] == "picture" &&
+            segments[2].Length is > 0 and <= 32 && segments[2].All(char.IsLetterOrDigit) &&
+            segments[3] == "member" && IsSafeImageFileName(segments[4]);
+    }
+
+    private static bool IsSafeImageFileName(string value)
+    {
+        if (value.Length is < 5 or > 160 || value.Contains("..", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var extension = Path.GetExtension(value);
+        return extension is ".jpg" or ".jpeg" or ".png" or ".webp" or ".JPG" or ".JPEG" or ".PNG" or ".WEBP" &&
+            value[..^extension.Length].All(character => char.IsLetterOrDigit(character) || character is '-' or '_');
     }
 
     private static Dictionary<string, List<string>> ParseQuery(string query)
@@ -132,6 +175,11 @@ public sealed record LegacyEntityDefinition(string Name, string Path, string Act
 
     public static readonly LegacyEntityDefinition CustomerSources = Base("customer-sources", "source");
 
+    public static readonly LegacyEntityDefinition CareRecords = new(
+        "care-records",
+        "/swshop/vip/nurse.php",
+        "grid");
+
     public Uri BuildPageUri(int page, int pageSize)
     {
         var query = string.Join(
@@ -169,11 +217,13 @@ public static class LegacyEntityCatalog
         LegacyEntityDefinition.Brands,
         LegacyEntityDefinition.Units,
         LegacyEntityDefinition.EmployeeTrades,
-        LegacyEntityDefinition.CustomerSources
+        LegacyEntityDefinition.CustomerSources,
+        LegacyEntityDefinition.CareRecords
     ];
 
     public static IReadOnlyList<LegacyEntityDefinition> BaseMasterData { get; } =
-        All.Where(entity => entity != LegacyEntityDefinition.Customers).ToArray();
+        All.Where(entity => entity != LegacyEntityDefinition.Customers && entity != LegacyEntityDefinition.CareRecords)
+            .ToArray();
 
     public static IReadOnlyList<LegacyEntityDefinition> Resolve(string selection)
     {
