@@ -290,8 +290,14 @@ internal sealed partial class LegacyImportService(
             await CompleteRunAsync(runId, result, cancellationToken);
             if (command.DryRun)
             {
-                await transaction.RollbackAsync(cancellationToken);
-                await CleanupFilesAsync(storedFiles);
+                try
+                {
+                    await transaction.RollbackAsync(cancellationToken);
+                }
+                finally
+                {
+                    await CleanupFilesAsync(storedFiles);
+                }
             }
             else
             {
@@ -301,7 +307,15 @@ internal sealed partial class LegacyImportService(
         }
         catch
         {
-            await transaction.RollbackAsync(CancellationToken.None);
+            try
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+            }
+            catch (Exception rollbackException) when (rollbackException is InvalidOperationException or ObjectDisposedException)
+            {
+                // A failed SaveChanges can already leave the provider transaction aborted. Preserve the
+                // original import error, but always continue to remove files written before that failure.
+            }
             await CleanupFilesAsync(storedFiles);
             throw;
         }
@@ -374,7 +388,8 @@ internal sealed partial class LegacyImportService(
         {
             if (!DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var parsed))
                 continue;
-            var result = new DateTimeOffset(DateTime.SpecifyKind(parsed, DateTimeKind.Unspecified), TimeSpan.FromHours(8));
+            var result = new DateTimeOffset(DateTime.SpecifyKind(parsed, DateTimeKind.Unspecified), TimeSpan.FromHours(8))
+                .ToUniversalTime();
             if (result <= DateTimeOffset.UtcNow.AddMinutes(5)) return result;
         }
         return DateTimeOffset.UtcNow;

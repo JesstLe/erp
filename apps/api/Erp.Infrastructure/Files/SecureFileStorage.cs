@@ -91,7 +91,7 @@ public sealed class SecureFileStorage
     public Task TryDeleteUncommittedAsync(StoredFileRecord record)
     {
         try { File.Delete(ResolveStoragePath(record.StorageKey)); }
-        catch (IOException) { }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
         return Task.CompletedTask;
     }
 

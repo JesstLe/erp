@@ -53,7 +53,8 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             Row("member-levels", "905", ("iclevel_name", "旧系统卡类")),
             Row("customers", "906", ("member_name", "旧系统顾客"), ("member_hand", "13900001111"),
                 ("member_shop", "901"), ("member_sex", "女"), ("member_memo", "旧系统服务备注"),
-                ("member_money", "123.45"), ("member_bonus", "10"), ("member_score", "5")),
+                ("member_time2", "2026-08-20 12:00:00"), ("member_money", "123.45"),
+                ("member_bonus", "10"), ("member_score", "5")),
         };
         var png = Convert.FromBase64String(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
@@ -70,6 +71,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal(1, result.Created["service-records"]);
         Assert.Equal(1, result.Created["photos"]);
         Assert.Equal(0, await fixture.CountLegacyRunsAsync("integration-legacy"));
+        Assert.Equal(0, fixture.CountStoredFileBlobs());
     }
 
     [Fact]
@@ -1112,6 +1114,12 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
             "SELECT count(*) FROM legacy_migration_runs WHERE source_system=@source_system", connection);
         command.Parameters.AddWithValue("source_system", sourceSystem);
         return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    public int CountStoredFileBlobs()
+    {
+        var root = Path.Combine(temporaryRoot, "files");
+        return Directory.Exists(root) ? Directory.EnumerateFiles(root, "*.blob", SearchOption.AllDirectories).Count() : 0;
     }
 
     public async Task AssertLoginSecurityEventIsImmutableAsync(Guid eventId)

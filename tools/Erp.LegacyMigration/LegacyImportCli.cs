@@ -6,6 +6,7 @@ using Erp.Application.LegacyMigration;
 using Erp.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Erp.LegacyMigration;
 
@@ -25,6 +26,7 @@ public static class LegacyImportCli
                 $"导入预检完成：品牌={options.TenantCode}，来源记录={dataset.Rows.Count}，照片={dataset.Photos.Count}，模式={(options.Apply ? "执行" : "干跑")}。");
 
             var builder = Host.CreateApplicationBuilder();
+            builder.Logging.SetMinimumLevel(LogLevel.Warning);
             builder.Services.AddErpInfrastructure(builder.Configuration, builder.Environment);
             await using var provider = builder.Services.BuildServiceProvider();
             await using var scope = provider.CreateAsyncScope();
