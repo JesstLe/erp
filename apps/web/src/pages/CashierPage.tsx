@@ -243,6 +243,7 @@ export function CashierPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
   const [settleOrder, setSettleOrder] = useState<ServiceOrder>();
+  const [settleAfterShiftOpen, setSettleAfterShiftOpen] = useState<ServiceOrder>();
   const [shiftAction, setShiftAction] = useState<"open" | "submit">();
   const [reviewShift, setReviewShift] = useState<CashierShiftReview>();
   const [refundPayment, setRefundPayment] = useState<Payment>();
@@ -772,6 +773,10 @@ export function CashierPage() {
       setShiftAction(undefined);
       shiftForm.resetFields();
       await refresh();
+      if (settleAfterShiftOpen) {
+        beginSettlement(settleAfterShiftOpen);
+        setSettleAfterShiftOpen(undefined);
+      }
     },
     onError,
   });
@@ -2134,16 +2139,28 @@ export function CashierPage() {
                 确认金额
               </Button>
             )}
-            {selected.data?.status === "PendingPayment" && (
-              <Button
-                type="primary"
-                icon={<WalletOutlined />}
-                disabled={currentShift.data?.status !== "Open"}
-                onClick={() => beginSettlement(selected.data!)}
-              >
-                收款结算
-              </Button>
-            )}
+            {selected.data?.status === "PendingPayment" &&
+              (currentShift.data?.status === "Open" ? (
+                <Button
+                  type="primary"
+                  icon={<WalletOutlined />}
+                  onClick={() => beginSettlement(selected.data!)}
+                >
+                  收款结算
+                </Button>
+              ) : (
+                <Button
+                  type="primary"
+                  icon={<WalletOutlined />}
+                  onClick={() => {
+                    setSettleAfterShiftOpen(selected.data!);
+                    shiftForm.setFieldsValue({ amountYuan: 0 });
+                    setShiftAction("open");
+                  }}
+                >
+                  开班并结算
+                </Button>
+              ))}
             {selected.data?.status === "PaymentProcessing" &&
               activeChannelOrder.data && (
                 <Button
@@ -2230,7 +2247,7 @@ export function CashierPage() {
                     : selected.data.status === "PendingPayment"
                       ? currentShift.data?.status === "Open"
                         ? "金额已锁定，可按实际收款方式分摊结算。"
-                        : "金额已锁定；请先开班再登记现金或人工外部收款。"
+                        : "金额已锁定；收款须归入当前账号自己的班次，点上方“开班并结算”即可先开班再收款。"
                       : selected.data.status === "PartiallyRefunded"
                         ? `消费单已部分退款 ${money(selected.data.refundedMinor)}；原支付和反向流水均保留。`
                         : selected.data.status === "Refunded"
@@ -3207,7 +3224,10 @@ export function CashierPage() {
       <Modal
         title={shiftAction === "open" ? "开始收银班次" : "提交交班"}
         open={Boolean(shiftAction)}
-        onCancel={() => setShiftAction(undefined)}
+        onCancel={() => {
+          setShiftAction(undefined);
+          setSettleAfterShiftOpen(undefined);
+        }}
         onOk={() => shiftForm.submit()}
         okText={shiftAction === "open" ? "确认开班" : "提交复核"}
         confirmLoading={openShift.isPending || submitShift.isPending}
