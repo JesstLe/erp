@@ -8,6 +8,7 @@
 ![Node.js 24](https://img.shields.io/badge/Node.js-24-5FA04E?logo=nodedotjs&logoColor=white)
 ![Linux](https://img.shields.io/badge/Production-Ubuntu%2024.04-E95420?logo=ubuntu&logoColor=white)
 ![Status](https://img.shields.io/badge/Status-V2%20持续开发-0F766E)
+![License](https://img.shields.io/badge/License-PolyForm%20Noncommercial%201.0.0-B45309)
 
 门店 ERP 不是一个只展示静态表格的后台模板。它以真实门店工作流为中心：顾客预约或到店、设施开始占用、员工完成服务、负责人录入实际服务和商品、系统确认价格与库存、收款结算、会员权益变动、交班复核，最后进入审计和经营报表。
 
@@ -27,6 +28,7 @@
 - [测试、部署与版本更新](#测试部署与版本更新)
 - [旧系统数据迁移](#旧系统数据迁移)
 - [项目边界](#项目边界)
+- [开源与商用限制](#开源与商用限制)
 - [完整文档索引](#完整文档索引)
 
 ## 产品界面
@@ -602,6 +604,12 @@ npm --prefix apps/web audit --omit=dev
 - 生产前仍需完成真实门店业务验收、支付商户验收和备份恢复演练。
 
 准确状态以[开发进度](docs/development-progress.md)、[变更记录](CHANGELOG.md)和各模块手册中的“当前边界”为准。
+
+## 开源与商用限制
+
+本项目以 [PolyForm Noncommercial License 1.0.0](LICENSE) 发布：源代码可见，允许个人学习、研究、测试，以及慈善组织、教育机构、公共研究机构、公共安全或卫生组织、环保组织和政府机构等非商业用途的使用、修改与分发。
+
+禁止将本软件、修改版或基于它的衍生服务用于任何商业目的。商业使用——包括但不限于 SaaS 托管、售卖给门店或品牌、嵌入付费产品、为企业经营活动提供内部系统——都需要另行取得版权方的书面授权。
 
 ## 完整文档索引
 
