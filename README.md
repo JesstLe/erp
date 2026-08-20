@@ -585,6 +585,8 @@ npm --prefix apps/web audit --omit=dev
 - 顾客备注与照片形成带“旧系统迁移”标记的服务档案；旧员工仅导入档案，不自动获得登录账号或权限。
 - 旧余额、赠送、积分和欠款因缺少可审计流水，只保存在数据库的非消费快照中，`is_spendable=false` 由约束固定，不会增加会员可用余额。
 
+2026-08-20 已在生产 Linux 的测试品牌 `B01` 完成备份、真实数据 dry-run、显式导入、幂等复跑和跨品牌对账：导入 2287 位顾客、5 家旧门店、40 名员工、74 个服务、51 个产品、23 个卡类、1874 条历史服务档案和 139 张照片。另一品牌数据保持原样；2287 条旧资金信息仅进入非消费快照，1994 个无法可靠解释的旧生日留空并进入异常清单。
+
 操作与安全边界见[旧系统只读迁移工具](tools/Erp.LegacyMigration/README.md)、[迁移 PRD](docs/legacy-system-data-migration-prd.md)和[字段映射矩阵](docs/legacy-system-field-profile-and-mapping.md)。
 
 ## 项目边界
