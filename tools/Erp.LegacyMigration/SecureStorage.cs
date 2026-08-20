@@ -39,6 +39,29 @@ public sealed class EncryptedPayloadStore : IDisposable
         }
     }
 
+    public async Task WriteEncryptedBytesAsync(
+        string path,
+        ReadOnlyMemory<byte> bytes,
+        CancellationToken cancellationToken)
+    {
+        var plaintext = bytes.ToArray();
+        try
+        {
+            var encrypted = Encrypt(plaintext);
+            await SecureFile.WriteBytesAtomicAsync(path, encrypted, cancellationToken);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(plaintext);
+        }
+    }
+
+    public async Task<byte[]> ReadEncryptedBytesAsync(string path, CancellationToken cancellationToken)
+    {
+        var encrypted = await File.ReadAllBytesAsync(path, cancellationToken);
+        return Decrypt(encrypted);
+    }
+
     public async Task<string> ReadEncryptedTextAsync(string path, CancellationToken cancellationToken)
     {
         var encrypted = await File.ReadAllBytesAsync(path, cancellationToken);

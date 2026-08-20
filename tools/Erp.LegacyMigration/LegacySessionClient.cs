@@ -11,6 +11,8 @@ public sealed class LegacySessionClient : IDisposable
     private const int MaximumHtmlBytes = 2 * 1024 * 1024;
     private const int MaximumCaptchaBytes = 1024 * 1024;
     private const int MaximumGridBytes = 16 * 1024 * 1024;
+    private const int MaximumCustomerEditBytes = 4 * 1024 * 1024;
+    private const int MaximumCustomerPhotoBytes = 10 * 1024 * 1024;
 
     private readonly LegacyEndpointPolicy _policy;
     private readonly HttpClient _client;
@@ -125,6 +127,11 @@ public sealed class LegacySessionClient : IDisposable
         var payload = await ReadLimitedAsync(response.Content, MaximumGridBytes, cancellationToken);
         var json = Encoding.UTF8.GetString(payload);
 
+        if (entity == LegacyEntityDefinition.CareRecords && string.IsNullOrWhiteSpace(json))
+        {
+            return $"{{\"page\":{page},\"total\":0,\"records\":0,\"rows\":[]}}";
+        }
+
         if (json.AsSpan().TrimStart().StartsWith("<", StringComparison.Ordinal) ||
             json.Contains("login/login.php", StringComparison.OrdinalIgnoreCase))
         {
@@ -132,6 +139,37 @@ public sealed class LegacySessionClient : IDisposable
         }
 
         return json;
+    }
+
+    public async Task<string> GetCustomerEditPageAsync(long sourceCustomerId, CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            LegacyEndpointPolicy.Origin,
+            $"/swshop/base/member.php?act=adds&wintop=N&winpid=2&id={sourceCustomerId}");
+        using var response = await SendAsync(HttpMethod.Get, uri, null, cancellationToken);
+        EnsureSuccess(response);
+        var payload = await ReadLimitedAsync(response.Content, MaximumCustomerEditBytes, cancellationToken);
+        var html = Encoding.UTF8.GetString(payload);
+        if (html.Contains("login/login.php", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new LegacyMigrationException("旧系统会话已失效，照片索引导出已安全停止。");
+        }
+
+        return html;
+    }
+
+    public async Task<LegacyImagePayload> GetCustomerPhotoAsync(Uri uri, CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(HttpMethod.Get, uri, null, cancellationToken);
+        EnsureSuccess(response);
+        var mediaType = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant();
+        if (mediaType is not ("image/jpeg" or "image/png" or "image/webp"))
+        {
+            throw new LegacyMigrationException("旧系统顾客照片响应不是允许的图片格式。");
+        }
+
+        var bytes = await ReadLimitedAsync(response.Content, MaximumCustomerPhotoBytes, cancellationToken);
+        return new LegacyImagePayload(mediaType, bytes);
     }
 
     public void Dispose() => _client.Dispose();
@@ -211,3 +249,5 @@ public sealed class LegacySessionClient : IDisposable
         return output.ToArray();
     }
 }
+
+public sealed record LegacyImagePayload(string ContentType, byte[] Bytes);

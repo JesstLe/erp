@@ -1,6 +1,7 @@
 using Erp.Application.Reports;
 using Erp.Domain.Cashier;
 using Erp.Domain.Facilities;
+using Erp.Domain.Organization;
 using Erp.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -49,6 +50,14 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
             x.StartedAtUtc < toUtc && (x.EndedAtUtc == null || x.EndedAtUtc >= fromUtc)).ToListAsync(cancellationToken);
         var facilities = await db.Facilities.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId)
             .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
+        var storedValue = await db.MemberTopupOrders.AsNoTracking().Where(x =>
+                x.TenantId == tenantId && x.StoreId == storeId &&
+                x.Status != Erp.Domain.Customers.MemberTopupStatus.Cancelled)
+            .Select(x => new
+            {
+                Principal = x.PrincipalMinor - x.RefundedPrincipalMinor,
+                Bonus = x.BonusMinor - x.RevokedBonusMinor,
+            }).ToListAsync(cancellationToken);
 
         var dates = Enumerable.Range(0, endDate.DayNumber - startDate.DayNumber + 1)
             .Select(offset => startDate.AddDays(offset)).ToList();
@@ -134,11 +143,144 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
             .Sum(x => x.AmountMinor);
         var pending = allAllocations.Where(x => x.ReconciliationStatus == ReconciliationStatus.Pending)
             .Sum(x => x.AmountMinor);
+        var todayRevenue = daily.SingleOrDefault(x => x.Date == today)?.NetRevenueMinor;
+        if (!todayRevenue.HasValue)
+        {
+            var todayFromUtc = ToUtc(today, timeZone);
+            var todayToUtc = ToUtc(today.AddDays(1), timeZone);
+            var todaySettled = await db.Payments.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                    x.StoreId == storeId && x.BusinessType == PaymentBusinessType.ServiceOrder &&
+                    (x.Status == PaymentStatus.Paid || x.Status == PaymentStatus.PartiallyRefunded ||
+                     x.Status == PaymentStatus.Refunded) && x.PaidAtUtc >= todayFromUtc &&
+                    x.PaidAtUtc < todayToUtc)
+                .SumAsync(x => (long?)x.PaidMinor, cancellationToken) ?? 0;
+            var todayRefunded = await db.Refunds.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                    x.StoreId == storeId && x.Status == RefundStatus.Completed &&
+                    x.CompletedAtUtc >= todayFromUtc && x.CompletedAtUtc < todayToUtc &&
+                    db.Payments.Any(payment => payment.Id == x.PaymentId &&
+                        payment.BusinessType == PaymentBusinessType.ServiceOrder))
+                .SumAsync(x => (long?)x.AmountMinor, cancellationToken) ?? 0;
+            todayRevenue = todaySettled - todayRefunded;
+        }
         var summary = new OperationsSummaryDto(settled, recorded - refunded, pending, refunded,
-            settled - refunded, payments.Count, visits.Count,
-            payments.Count == 0 ? 0 : settled / payments.Count, daily.Sum(x => x.FacilityActiveSeconds));
+            settled - refunded, todayRevenue.Value, payments.Count, visits.Count,
+            payments.Count == 0 ? 0 : settled / payments.Count, daily.Sum(x => x.FacilityActiveSeconds),
+            storedValue.Sum(x => x.Principal), storedValue.Sum(x => x.Bonus),
+            storedValue.Sum(x => checked(x.Principal + x.Bonus)));
         return new OperationsReportDto(startDate, endDate, timeZoneId, summary, daily, paymentMix,
             servicePerformance, employeeCommissions, facilityUsage);
+    }
+
+    public async Task<BrandStoreFinancialOverviewDto> GetStoreOverviewAsync(Guid tenantId,
+        DateOnly? fromDate, DateOnly? toDate, CancellationToken cancellationToken)
+    {
+        var stores = await db.Stores.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                x.Status == StoreStatus.Enabled).OrderBy(x => x.Code).ToListAsync(cancellationToken);
+        if (stores.Count == 0)
+            throw new ArgumentException("当前品牌没有可用门店");
+
+        var referenceTimeZone = TimeZoneInfo.FindSystemTimeZoneById(stores[0].TimeZoneId);
+        var referenceToday = DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTime(clock.GetUtcNow(), referenceTimeZone).DateTime);
+        var endDate = toDate ?? referenceToday;
+        var startDate = fromDate ?? endDate.AddDays(-6);
+        ValidateDateRange(startDate, endDate);
+
+        var periods = stores.ToDictionary(store => store.Id, store =>
+        {
+            var zone = TimeZoneInfo.FindSystemTimeZoneById(store.TimeZoneId);
+            var localToday = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(clock.GetUtcNow(), zone).DateTime);
+            return new StorePeriod(localToday, ToUtc(startDate, zone), ToUtc(endDate.AddDays(1), zone),
+                ToUtc(localToday, zone), ToUtc(localToday.AddDays(1), zone));
+        });
+        var storeIds = stores.Select(x => x.Id).ToArray();
+        var minimumUtc = periods.Values.Min(x => x.PeriodFromUtc < x.TodayFromUtc
+            ? x.PeriodFromUtc : x.TodayFromUtc);
+        var maximumUtc = periods.Values.Max(x => x.PeriodToUtc > x.TodayToUtc
+            ? x.PeriodToUtc : x.TodayToUtc);
+
+        var payments = await db.Payments.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                storeIds.Contains(x.StoreId) && x.BusinessType == PaymentBusinessType.ServiceOrder &&
+                (x.Status == PaymentStatus.Paid || x.Status == PaymentStatus.PartiallyRefunded ||
+                 x.Status == PaymentStatus.Refunded) && x.PaidAtUtc >= minimumUtc && x.PaidAtUtc < maximumUtc)
+            .Select(x => new { x.StoreId, x.PaidMinor, x.PaidAtUtc }).ToListAsync(cancellationToken);
+        var refunds = await db.Refunds.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                storeIds.Contains(x.StoreId) && x.Status == RefundStatus.Completed &&
+                x.CompletedAtUtc >= minimumUtc && x.CompletedAtUtc < maximumUtc &&
+                db.Payments.Any(payment => payment.Id == x.PaymentId &&
+                    payment.BusinessType == PaymentBusinessType.ServiceOrder))
+            .Select(x => new { x.StoreId, x.AmountMinor, x.CompletedAtUtc }).ToListAsync(cancellationToken);
+        var storedValues = await db.MemberTopupOrders.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                storeIds.Contains(x.StoreId) &&
+                x.Status != Erp.Domain.Customers.MemberTopupStatus.Cancelled)
+            .Select(x => new
+            {
+                x.StoreId,
+                Principal = x.PrincipalMinor - x.RefundedPrincipalMinor,
+                Bonus = x.BonusMinor - x.RevokedBonusMinor,
+            }).ToListAsync(cancellationToken);
+        var pendingAllocations = await (from allocation in db.PaymentAllocations.AsNoTracking()
+            join payment in db.Payments.AsNoTracking() on allocation.PaymentId equals payment.Id
+            where payment.TenantId == tenantId && storeIds.Contains(payment.StoreId) &&
+                  allocation.ReconciliationStatus == ReconciliationStatus.Pending &&
+                  (payment.Status == PaymentStatus.Paid || payment.Status == PaymentStatus.PartiallyRefunded ||
+                   payment.Status == PaymentStatus.Refunded)
+            select new { payment.StoreId, allocation.AmountMinor }).ToListAsync(cancellationToken);
+        var shifts = await db.CashierShifts.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                storeIds.Contains(x.StoreId) &&
+                (x.Status == CashierShiftStatus.Open || x.Status == CashierShiftStatus.ReviewPending))
+            .Select(x => new { x.StoreId, x.Status, x.PendingReconciliationMinor })
+            .ToListAsync(cancellationToken);
+        var runs = await db.PaymentChannelReconciliationRuns.AsNoTracking().Where(x =>
+                x.TenantId == tenantId && storeIds.Contains(x.StoreId) &&
+                x.BusinessDate >= startDate && x.BusinessDate <= endDate &&
+                (x.Status == PaymentChannelReconciliationRunStatus.Matched ||
+                 x.Status == PaymentChannelReconciliationRunStatus.Differences))
+            .Select(x => new { x.Id, x.StoreId, x.Provider, x.BusinessDate, x.AttemptNo })
+            .ToListAsync(cancellationToken);
+        var latestRuns = runs.GroupBy(x => new { x.StoreId, x.Provider, x.BusinessDate })
+            .Select(group => group.OrderByDescending(x => x.AttemptNo).ThenByDescending(x => x.Id).First())
+            .ToList();
+        var latestRunIds = latestRuns.Select(x => x.Id).ToArray();
+        var unresolvedRunIds = await db.PaymentChannelReconciliationItems.AsNoTracking().Where(x =>
+                latestRunIds.Contains(x.RunId) &&
+                x.Status != PaymentChannelReconciliationItemStatus.Matched &&
+                x.Status != PaymentChannelReconciliationItemStatus.Resolved)
+            .Select(x => x.RunId).ToListAsync(cancellationToken);
+
+        var rows = stores.Select(store =>
+        {
+            var period = periods[store.Id];
+            var storePayments = payments.Where(x => x.StoreId == store.Id &&
+                x.PaidAtUtc >= period.PeriodFromUtc && x.PaidAtUtc < period.PeriodToUtc).ToList();
+            var storeRefunds = refunds.Where(x => x.StoreId == store.Id &&
+                x.CompletedAtUtc >= period.PeriodFromUtc && x.CompletedAtUtc < period.PeriodToUtc).ToList();
+            var todayPayments = payments.Where(x => x.StoreId == store.Id &&
+                x.PaidAtUtc >= period.TodayFromUtc &&
+                x.PaidAtUtc < period.TodayToUtc).Sum(x => x.PaidMinor);
+            var todayRefunds = refunds.Where(x => x.StoreId == store.Id &&
+                x.CompletedAtUtc >= period.TodayFromUtc &&
+                x.CompletedAtUtc < period.TodayToUtc).Sum(x => x.AmountMinor);
+            var topups = storedValues.Where(x => x.StoreId == store.Id).ToList();
+            var pending = pendingAllocations.Where(x => x.StoreId == store.Id).ToList();
+            var storeShifts = shifts.Where(x => x.StoreId == store.Id).ToList();
+            var storeRunIds = latestRuns.Where(x => x.StoreId == store.Id).Select(x => x.Id).ToHashSet();
+            return new StoreFinancialOverviewDto(store.Id, store.Code, store.Name, store.TimeZoneId,
+                period.LocalDate, todayPayments - todayRefunds, storePayments.Sum(x => x.PaidMinor),
+                storeRefunds.Sum(x => x.AmountMinor),
+                storePayments.Sum(x => x.PaidMinor) - storeRefunds.Sum(x => x.AmountMinor),
+                topups.Sum(x => x.Principal), topups.Sum(x => x.Bonus),
+                topups.Sum(x => checked(x.Principal + x.Bonus)), pending.Sum(x => x.AmountMinor),
+                pending.Count, unresolvedRunIds.Count(storeRunIds.Contains),
+                storeShifts.Count(x => x.Status == CashierShiftStatus.Open),
+                storeShifts.Count(x => x.Status == CashierShiftStatus.ReviewPending),
+                storeShifts.Where(x => x.Status == CashierShiftStatus.ReviewPending)
+                    .Sum(x => x.PendingReconciliationMinor ?? 0));
+        }).ToList();
+
+        return new BrandStoreFinancialOverviewDto(startDate, endDate, rows.Sum(x => x.TodayRevenueMinor),
+            rows.Sum(x => x.PeriodNetRevenueMinor), rows.Sum(x => x.StoredValueNetMinor),
+            rows.Sum(x => x.PendingReconciliationMinor), rows.Sum(x => x.ChannelDifferenceCount), rows);
     }
 
     private static long AllocateRefundDeduction(long commissionMinor, long refundedMinor, long receivableMinor)
@@ -153,4 +295,14 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
         var local = DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Unspecified);
         return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, timeZone), TimeSpan.Zero);
     }
+
+    private static void ValidateDateRange(DateOnly startDate, DateOnly endDate)
+    {
+        if (endDate < startDate) throw new ArgumentException("开始日期不得晚于结束日期");
+        if (endDate.DayNumber - startDate.DayNumber > 91) throw new ArgumentException("单次报表最多查询92天");
+        if (endDate == DateOnly.MaxValue) throw new ArgumentException("结束日期超出允许范围");
+    }
+
+    private sealed record StorePeriod(DateOnly LocalDate, DateTimeOffset PeriodFromUtc, DateTimeOffset PeriodToUtc,
+        DateTimeOffset TodayFromUtc, DateTimeOffset TodayToUtc);
 }

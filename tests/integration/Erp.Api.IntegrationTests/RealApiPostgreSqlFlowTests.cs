@@ -11,7 +11,9 @@ using Erp.Application.Inventory;
 using Erp.Application.Organization;
 using Erp.Application.Scheduling;
 using Erp.Application.Platform;
+using Erp.Application.Reports;
 using Erp.Application.Security;
+using Erp.Application.LegacyMigration;
 using Erp.Infrastructure.Seed;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -33,12 +35,50 @@ public sealed class RealApiPostgreSqlTestGroup : ICollectionFixture<RealApiPostg
 public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
 {
     [Fact]
+    public async Task LegacyImportDryRunTransformsB01DataAndRollsBack()
+    {
+        static LegacySourceRow Row(string entity, string id, params (string Key, string? Value)[] fields) =>
+            new(entity, id, new string('a', 64),
+                fields.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal));
+        var rows = new[]
+        {
+            Row("stores", "901", ("shop_code", "901"), ("shop_name", "旧系统演练店"), ("shop_stop", "0")),
+            Row("employee-trades", "1", ("ework_code", "TECH"), ("ework_name", "技师")),
+            Row("employees", "902", ("emplee_name", "旧系统员工"), ("emplee_ework", "1"),
+                ("emplee_shop", "901")),
+            Row("services", "903", ("goods_name", "<b>旧系统服务</b>"), ("goods_status", "0")),
+            Row("units", "1", ("unit_name", "盒")),
+            Row("products", "904", ("goods_name", "旧系统产品"), ("goods_unit1", "1"),
+                ("goods_status", "0")),
+            Row("member-levels", "905", ("iclevel_name", "旧系统卡类")),
+            Row("customers", "906", ("member_name", "旧系统顾客"), ("member_hand", "13900001111"),
+                ("member_shop", "901"), ("member_sex", "女"), ("member_memo", "旧系统服务备注"),
+                ("member_money", "123.45"), ("member_bonus", "10"), ("member_score", "5")),
+        };
+        var png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+        var dataset = new LegacyImportDataset("B01", "integration-legacy", new string('b', 64),
+            "integration-v1", rows,
+            [new LegacySourcePhoto("906", 1, "image/png", new string('c', 64), png)]);
+
+        var result = await fixture.RunLegacyImportAsync(new LegacyImportCommand(dataset, DryRun: true));
+
+        Assert.True(result.DryRun);
+        Assert.False(result.AlreadyCompleted);
+        Assert.Equal(1, result.Created["stores"]);
+        Assert.Equal(1, result.Created["customers"]);
+        Assert.Equal(1, result.Created["service-records"]);
+        Assert.Equal(1, result.Created["photos"]);
+        Assert.Equal(0, await fixture.CountLegacyRunsAsync("integration-legacy"));
+    }
+
+    [Fact]
     public async Task CoreStoreFlowRunsThroughRealHttpApiAndPostgreSql()
     {
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202608200031", ready?.SchemaVersion);
+        Assert.Equal("202608200032", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {
@@ -655,6 +695,28 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         });
         Assert.Equal("Completed", completedRefund.Status);
 
+        var reportDate = CurrentShanghaiDate();
+        var storeReport = await client.GetFromJsonAsync<OperationsReportDto>(
+            $"/api/v1/reports/operations?storeId={storeId}&fromDate={reportDate:yyyy-MM-dd}" +
+            $"&toDate={reportDate:yyyy-MM-dd}");
+        Assert.Equal(14_000L, storeReport!.Summary.NetRevenueMinor);
+        Assert.Equal(30_000L, storeReport.Summary.StoredValuePrincipalMinor);
+        Assert.Equal(6_000L, storeReport.Summary.StoredValueBonusMinor);
+        Assert.Equal(36_000L, storeReport.Summary.StoredValueNetMinor);
+
+        var storeOverview = await client.GetFromJsonAsync<BrandStoreFinancialOverviewDto>(
+            $"/api/v1/reports/store-overview?fromDate={reportDate:yyyy-MM-dd}" +
+            $"&toDate={reportDate:yyyy-MM-dd}");
+        Assert.Equal(2, storeOverview!.Stores.Count);
+        Assert.Equal(24_000L, storeOverview.TodayRevenueMinor);
+        Assert.Equal(46_000L, storeOverview.StoredValueNetMinor);
+        var primaryStoreOverview = Assert.Single(storeOverview.Stores, x => x.StoreId == storeId);
+        Assert.Equal(14_000L, primaryStoreOverview.PeriodNetRevenueMinor);
+        Assert.Equal(36_000L, primaryStoreOverview.StoredValueNetMinor);
+        var secondStoreOverview = Assert.Single(storeOverview.Stores, x => x.StoreId == secondStore.Id);
+        Assert.Equal(10_000L, secondStoreOverview.PeriodNetRevenueMinor);
+        Assert.Equal(10_000L, secondStoreOverview.StoredValueNetMinor);
+
         var redeemedPass = await PostAsync<ServicePassDto>(client,
             $"/api/v1/membership-benefits/service-passes/{issuedPass.Id}/redeem", new
             {
@@ -1033,6 +1095,24 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
         BaseAddress = new Uri("https://localhost"),
         HandleCookies = true,
     }) ?? throw new InvalidOperationException("测试应用尚未初始化");
+
+    public async Task<LegacyImportResult> RunLegacyImportAsync(LegacyImportCommand command)
+    {
+        if (factory is null) throw new InvalidOperationException("测试应用尚未初始化");
+        await using var scope = factory.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<ILegacyImportService>()
+            .ImportAsync(command, CancellationToken.None);
+    }
+
+    public async Task<int> CountLegacyRunsAsync(string sourceSystem)
+    {
+        await using var connection = new NpgsqlConnection(database.GetConnectionString());
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT count(*) FROM legacy_migration_runs WHERE source_system=@source_system", connection);
+        command.Parameters.AddWithValue("source_system", sourceSystem);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+    }
 
     public async Task AssertLoginSecurityEventIsImmutableAsync(Guid eventId)
     {

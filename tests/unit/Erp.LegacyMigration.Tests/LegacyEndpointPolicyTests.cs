@@ -14,6 +14,31 @@ public sealed class LegacyEndpointPolicyTests
         _policy.EnsureAllowed(HttpMethod.Get, uri);
     }
 
+    [Fact]
+    public void AllowsReviewedCareGridGet()
+    {
+        _policy.EnsureAllowed(HttpMethod.Get,
+            new Uri("https://app5.siweicloud.com/swshop/vip/nurse.php?act=grid&page=1&rows=100"));
+    }
+
+    [Theory]
+    [InlineData("https://app5.siweicloud.com/swshop/base/member.php?act=adds&wintop=N&winpid=2&id=2259")]
+    [InlineData("https://app5.siweicloud.com/swshop/picture/21091626/member/example_1.jpg")]
+    public void AllowsOnlyReviewedCustomerPhotoGets(string value)
+    {
+        _policy.EnsureAllowed(HttpMethod.Get, new Uri(value));
+    }
+
+    [Theory]
+    [InlineData("https://app5.siweicloud.com/swshop/base/member.php?act=adds&id=2259")]
+    [InlineData("https://app5.siweicloud.com/swshop/base/member.php?act=adds&wintop=N&winpid=2&id=abc")]
+    [InlineData("https://app5.siweicloud.com/swshop/picture/21091626/member/../secret.jpg")]
+    [InlineData("https://app5.siweicloud.com/swshop/picture/21091626/member/example.exe")]
+    public void RejectsUnreviewedCustomerPhotoGets(string value)
+    {
+        Assert.Throws<LegacyMigrationException>(() => _policy.EnsureAllowed(HttpMethod.Get, new Uri(value)));
+    }
+
     [Theory]
     [InlineData("shop")]
     [InlineData("emplee")]

@@ -55,6 +55,13 @@ dotnet publish "$repository_root/apps/api/Erp.Api/Erp.Api.csproj" -c Release \
   --no-restore --self-contained false -p:UseAppHost=false -p:Version="$version" \
   -p:InformationalVersion="$version+$git_commit" -o "$app_directory"
 
+log '发布仅供服务器管理员运行的旧系统迁移工具'
+legacy_tool_directory="$staging_directory/ops/legacy-migration"
+dotnet restore "$repository_root/tools/Erp.LegacyMigration/Erp.LegacyMigration.csproj" --locked-mode
+dotnet publish "$repository_root/tools/Erp.LegacyMigration/Erp.LegacyMigration.csproj" -c Release \
+  --no-restore --self-contained false -p:UseAppHost=false -p:Version="$version" \
+  -p:InformationalVersion="$version+$git_commit" -o "$legacy_tool_directory"
+
 log '审计、测试并构建 React 前端'
 npm --prefix "$repository_root/apps/web" ci
 npm --prefix "$repository_root/apps/web" run lint
