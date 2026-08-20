@@ -4,19 +4,38 @@ using Erp.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Erp.Infrastructure.Security;
 
 internal sealed record PermissionRequirement(string Permission) : IAuthorizationRequirement;
 
-internal sealed class PermissionAuthorizationHandler(ErpDbContext db, UserManager<ApplicationUser> userManager)
+internal static class LocalAuthorizationBypass
+{
+    public static bool IsEnabled(string environmentName, string? configured) =>
+        string.Equals(environmentName, Environments.Development, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(configured, "true", StringComparison.OrdinalIgnoreCase);
+}
+
+internal sealed class PermissionAuthorizationHandler(ErpDbContext db, UserManager<ApplicationUser> userManager,
+    IHostEnvironment environment, IConfiguration configuration)
     : AuthorizationHandler<PermissionRequirement>
 {
     protected override async Task HandleRequirementAsync(AuthorizationHandlerContext context,
         PermissionRequirement requirement)
     {
         if (context.User.Identity?.IsAuthenticated != true) return;
+
+        var localBypassEnabled = LocalAuthorizationBypass.IsEnabled(environment.EnvironmentName,
+            configuration["ERP_LOCAL_AUTHORIZATION_BYPASS"]);
+        if (localBypassEnabled)
+        {
+            context.Succeed(requirement);
+            return;
+        }
+
         var userIdText = userManager.GetUserId(context.User);
         if (!Guid.TryParse(userIdText, out var userId)) return;
 

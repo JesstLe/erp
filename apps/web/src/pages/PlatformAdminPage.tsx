@@ -7,12 +7,13 @@ import { apiRequest, ApiError, resetCsrfToken } from '../api/client'
 import type { LoginSecurityEvent, MerchantRegistrationApplication, PlatformCurrentUser, PlatformMerchant, PlatformPage } from '../api/types'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { BrandLogo } from '../components/BrandLogo'
+import { PASSWORD_POLICY_HINT, passwordRules } from '../security/passwordPolicy'
 
 const requestError = (error: unknown) => error instanceof ApiError ? error.message : '操作失败，请稍后重试'
 const time = (value?: string) => value ? new Date(value).toLocaleString() : '—'
 const pageSize = 20
 
-interface ApprovalValues { tenantCode: string; storeCode: string; initialPassword: string; reason: string }
+interface ApprovalValues { initialPassword: string; reason: string }
 interface ReasonValues { reason: string }
 
 export function PlatformAdminPage() {
@@ -148,7 +149,7 @@ export function PlatformAdminPage() {
       { title: '负责人账号', dataIndex: 'desiredOwnerAccount' },
       { title: '提交时间', dataIndex: 'createdAtUtc', render: time },
       { title: '状态', dataIndex: 'status', render: (value: string) => <Tag color={value === 'PendingReview' ? 'gold' : value === 'Approved' ? 'green' : 'red'}>{value}</Tag> },
-      { title: '操作', render: (_: unknown, row: MerchantRegistrationApplication) => row.status === 'PendingReview' ? <Space><Button type="primary" size="small" onClick={() => { setApproval(row); approvalForm.setFieldsValue({ tenantCode: '', storeCode: 'S01', initialPassword: '', reason: '资料审核通过' }) }}>批准</Button><Button danger size="small" onClick={() => setRejection(row)}>驳回</Button></Space> : row.reviewReason ?? '—' },
+      { title: '操作', render: (_: unknown, row: MerchantRegistrationApplication) => row.status === 'PendingReview' ? <Space><Button type="primary" size="small" onClick={() => { setApproval(row); approvalForm.setFieldsValue({ initialPassword: '', reason: '资料审核通过' }) }}>批准</Button><Button danger size="small" onClick={() => setRejection(row)}>驳回</Button></Space> : row.reviewReason ?? '—' },
     ]} /></Card>
   const merchantView = <Card variant="borderless" title="全部商户" extra={<Space wrap>
     <Input allowClear value={merchantQuery} placeholder="输入即查：商户名称或编码"
@@ -195,7 +196,7 @@ export function PlatformAdminPage() {
       { key: 'merchants', label: <span><ShopOutlined />全部商户</span>, children: merchantView },
       { key: 'security', label: <span><AuditOutlined />登录日志</span>, children: securityView },
     ]} /></Layout.Content>
-    <Modal title={`批准申请：${approval?.merchantName ?? ''}`} open={!!approval} onCancel={() => setApproval(undefined)} onOk={() => approvalForm.submit()} confirmLoading={approveMutation.isPending} destroyOnHidden><Form form={approvalForm} layout="vertical" onFinish={(values) => approveMutation.mutate(values)}><Form.Item name="tenantCode" label="商户编码" rules={[{ required: true }, { pattern: /^[A-Z0-9_-]{2,32}$/ }]}><Input placeholder="例如 B002" /></Form.Item><Form.Item name="storeCode" label="首店编码" rules={[{ required: true }, { pattern: /^[A-Z0-9_-]{2,32}$/ }]}><Input /></Form.Item><Form.Item name="initialPassword" label="负责人初始密码" extra="保存后不再回显；至少12位，包含大小写、数字和特殊字符" rules={[{ required: true }, { min: 12 }]}><Input.Password /></Form.Item><Form.Item name="reason" label="审批原因" rules={[{ required: true }, { min: 2, max: 500 }]}><Input.TextArea /></Form.Item></Form></Modal>
+    <Modal title={`批准申请：${approval?.merchantName ?? ''}`} open={!!approval} onCancel={() => setApproval(undefined)} onOk={() => approvalForm.submit()} confirmLoading={approveMutation.isPending} destroyOnHidden><Form form={approvalForm} layout="vertical" onFinish={(values) => approveMutation.mutate(values)}><Typography.Paragraph type="secondary">品牌编码由系统按日期和流水号生成，首店编码自动为 S001；编码创建后不可修改。</Typography.Paragraph><Form.Item name="initialPassword" label="负责人初始密码" extra={`保存后不再回显；${PASSWORD_POLICY_HINT}`} rules={passwordRules('请输入负责人初始密码')}><Input.Password maxLength={256} /></Form.Item><Form.Item name="reason" label="审批原因" rules={[{ required: true }, { min: 2, max: 500 }]}><Input.TextArea /></Form.Item></Form></Modal>
     <Modal title={`驳回申请：${rejection?.merchantName ?? ''}`} open={!!rejection} onCancel={() => setRejection(undefined)} onOk={() => reasonForm.submit()} confirmLoading={rejectMutation.isPending} okButtonProps={{ danger: true }} destroyOnHidden><Form form={reasonForm} layout="vertical" onFinish={(values) => rejectMutation.mutate(values)}><Form.Item name="reason" label="驳回原因" rules={[{ required: true }, { min: 2, max: 500 }]}><Input.TextArea /></Form.Item></Form></Modal>
     <Modal title={`${statusMerchant?.status === 'Enabled' ? '停用' : '恢复'}商户：${statusMerchant?.name ?? ''}`} open={!!statusMerchant} onCancel={() => setStatusMerchant(undefined)} onOk={() => statusForm.submit()} confirmLoading={statusMutation.isPending} okButtonProps={{ danger: statusMerchant?.status === 'Enabled' }} destroyOnHidden><Form form={statusForm} layout="vertical" onFinish={(values) => statusMutation.mutate(values)}><Form.Item name="reason" label="操作原因" rules={[{ required: true }, { min: 2, max: 500 }]}><Input.TextArea /></Form.Item></Form></Modal>
   </Layout>

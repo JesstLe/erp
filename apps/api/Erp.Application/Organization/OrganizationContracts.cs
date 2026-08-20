@@ -11,7 +11,7 @@ public sealed record StoreProfileDto(Guid Id, string Code, string Name, string T
 public sealed record OrganizationSettingsDto(BrandProfileDto Brand, IReadOnlyList<StoreProfileDto> Stores);
 
 public sealed record UpdateBrandProfileCommand(string Code, string Name, uint ExpectedVersion, Guid OperatorId);
-public sealed record CreateStoreCommand(string Code, string Name, string TimeZoneId, Guid OperatorId);
+public sealed record CreateStoreCommand(string Name, string TimeZoneId, Guid OperatorId);
 public sealed record UpdateStoreCommand(Guid StoreId, string Code, string Name, string TimeZoneId,
     uint ExpectedVersion, Guid OperatorId);
 public sealed record ChangeStoreStatusCommand(Guid StoreId, bool Enable, string Reason, uint ExpectedVersion,

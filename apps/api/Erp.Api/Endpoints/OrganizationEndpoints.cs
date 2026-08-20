@@ -34,7 +34,7 @@ public static class OrganizationEndpoints
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             return current is null ? Results.Unauthorized() : EndpointResults.From(await organization.CreateStoreAsync(
-                current.TenantId, new CreateStoreCommand(request.Code ?? string.Empty, request.Name ?? string.Empty,
+                current.TenantId, new CreateStoreCommand(request.Name ?? string.Empty,
                     request.TimeZoneId ?? string.Empty, current.Id), cancellationToken));
         });
 

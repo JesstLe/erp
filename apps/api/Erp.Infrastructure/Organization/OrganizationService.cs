@@ -13,7 +13,8 @@ using Npgsql;
 
 namespace Erp.Infrastructure.Organization;
 
-public sealed class OrganizationService(ErpDbContext db, IHttpContextAccessor httpContextAccessor)
+public sealed class OrganizationService(ErpDbContext db, IHttpContextAccessor httpContextAccessor,
+    BusinessCodeGenerator codeGenerator)
     : IOrganizationService
 {
     public async Task<OrganizationSettingsDto?> GetSettingsAsync(Guid tenantId,
@@ -36,8 +37,8 @@ public sealed class OrganizationService(ErpDbContext db, IHttpContextAccessor ht
         if (tenant.Version != command.ExpectedVersion)
             return ResultFactory.Failure<BrandProfileDto>("VERSION_CONFLICT", "品牌资料已变化，请刷新后重试");
         var code = command.Code.Trim().ToUpperInvariant();
-        if (await db.Tenants.AnyAsync(x => x.Id != tenantId && x.Code == code, cancellationToken))
-            return ResultFactory.Failure<BrandProfileDto>("DUPLICATE_TENANT_CODE", "品牌编码已存在");
+        if (!string.Equals(tenant.Code, code, StringComparison.Ordinal))
+            return ResultFactory.Failure<BrandProfileDto>("TENANT_CODE_IMMUTABLE", "品牌编码创建后不可修改");
         var before = new { tenant.Code, tenant.Name };
         try
         {
@@ -67,14 +68,12 @@ public sealed class OrganizationService(ErpDbContext db, IHttpContextAccessor ht
     public async Task<Result<StoreProfileDto>> CreateStoreAsync(Guid tenantId, CreateStoreCommand command,
         CancellationToken cancellationToken)
     {
-        var code = command.Code.Trim().ToUpperInvariant();
         if (!ValidTimeZone(command.TimeZoneId))
             return ResultFactory.Failure<StoreProfileDto>("INVALID_TIME_ZONE", "门店时区无效");
-        if (await db.Stores.AnyAsync(x => x.TenantId == tenantId && x.Code == code, cancellationToken))
-            return ResultFactory.Failure<StoreProfileDto>("DUPLICATE_STORE_CODE", "门店编码已存在");
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
+            var code = await codeGenerator.NextStoreCodeAsync(tenantId, cancellationToken);
             var store = new Store(tenantId, code, command.Name, command.TimeZoneId);
             db.Stores.Add(store);
             await db.SaveChangesAsync(cancellationToken);
@@ -110,9 +109,8 @@ public sealed class OrganizationService(ErpDbContext db, IHttpContextAccessor ht
         if (!ValidTimeZone(command.TimeZoneId))
             return ResultFactory.Failure<StoreProfileDto>("INVALID_TIME_ZONE", "门店时区无效");
         var code = command.Code.Trim().ToUpperInvariant();
-        if (await db.Stores.AnyAsync(x => x.TenantId == tenantId && x.Id != store.Id && x.Code == code,
-                cancellationToken))
-            return ResultFactory.Failure<StoreProfileDto>("DUPLICATE_STORE_CODE", "门店编码已存在");
+        if (!string.Equals(store.Code, code, StringComparison.Ordinal))
+            return ResultFactory.Failure<StoreProfileDto>("STORE_CODE_IMMUTABLE", "门店编码创建后不可修改");
         var before = new { store.Code, store.Name, store.TimeZoneId };
         try
         {

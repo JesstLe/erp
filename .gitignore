@@ -26,6 +26,8 @@ playwright-report/
 test-results/
 artifacts/runtime/
 artifacts/releases/
+legacy-exports/
+**/legacy-exports/
 
 # IDE / OS
 .idea/

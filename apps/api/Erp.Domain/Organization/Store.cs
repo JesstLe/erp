@@ -11,7 +11,7 @@ public sealed class Store : Entity
     public Store(Guid tenantId, string code, string name, string timeZoneId = "Asia/Shanghai")
         : base(tenantId)
     {
-        Code = Normalize(code, 32, nameof(code));
+        Code = Normalize(code, 32, nameof(code)).ToUpperInvariant();
         Name = Normalize(name, 100, nameof(name));
         TimeZoneId = Normalize(timeZoneId, 64, nameof(timeZoneId));
         Status = StoreStatus.Enabled;
@@ -33,7 +33,12 @@ public sealed class Store : Entity
 
     public void UpdateProfile(string code, string name, string timeZoneId)
     {
-        Code = Normalize(code, 32, nameof(code)).ToUpperInvariant();
+        var normalizedCode = Normalize(code, 32, nameof(code)).ToUpperInvariant();
+        if (!string.Equals(Code, normalizedCode, StringComparison.Ordinal))
+        {
+            throw new DomainRuleException("STORE_CODE_IMMUTABLE", "门店编码创建后不可修改");
+        }
+
         Name = Normalize(name, 100, nameof(name));
         TimeZoneId = Normalize(timeZoneId, 64, nameof(timeZoneId));
         Touch();

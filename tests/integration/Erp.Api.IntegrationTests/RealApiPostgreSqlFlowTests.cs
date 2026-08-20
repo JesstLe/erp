@@ -38,7 +38,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202608190030", ready?.SchemaVersion);
+        Assert.Equal("202608200031", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {
@@ -71,18 +71,30 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal("集成测试品牌已更新", brand.Name);
         var secondStore = await PostAsync<StoreProfileDto>(client, "/api/v1/organization/stores", new
         {
-            code = "S02", name = "集成测试二店", timeZoneId = "Asia/Shanghai",
+            name = "集成测试二店", timeZoneId = "Asia/Shanghai",
         });
         Assert.Equal("Enabled", secondStore.Status);
+        Assert.Equal("S002", secondStore.Code);
         var ownerWithAllStores = await client.GetFromJsonAsync<CurrentUserDto>("/api/v1/auth/me");
         Assert.Contains(ownerWithAllStores!.Stores, store => store.Id == secondStore.Id);
+        using (var immutableStoreCode = await SendAsync(client, HttpMethod.Put,
+                   $"/api/v1/organization/stores/{secondStore.Id}", new
+                   {
+                       code = "S999", name = "集成测试二店", timeZoneId = "Asia/Shanghai",
+                       expectedVersion = secondStore.Version,
+                   }))
+        {
+            Assert.Equal(HttpStatusCode.Conflict, immutableStoreCode.StatusCode);
+            Assert.Contains("STORE_CODE_IMMUTABLE", await immutableStoreCode.Content.ReadAsStringAsync(),
+                StringComparison.Ordinal);
+        }
         secondStore = await PutAsync<StoreProfileDto>(client,
             $"/api/v1/organization/stores/{secondStore.Id}", new
             {
-                code = "S02A", name = "集成测试二店已更新", timeZoneId = "Asia/Shanghai",
+                code = secondStore.Code, name = "集成测试二店已更新", timeZoneId = "Asia/Shanghai",
                 expectedVersion = secondStore.Version,
             });
-        Assert.Equal("S02A", secondStore.Code);
+        Assert.Equal("S002", secondStore.Code);
         secondStore = await PostAsync<StoreProfileDto>(client,
             $"/api/v1/organization/stores/{secondStore.Id}/status", new
             {
@@ -819,7 +831,6 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         application = await PostAsync<MerchantRegistrationApplicationDto>(client,
             $"/api/v1/platform/registration-applications/{application.Id}/approval", new
             {
-                tenantCode = "B02", storeCode = "S01",
                 initialPassword = RealApiPostgreSqlFixture.MerchantInitialPassword,
                 reason = "平台端到端审核通过", expectedVersion = application.Version,
             });
@@ -827,8 +838,9 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.NotNull(application.TenantId);
 
         var merchants = await client.GetFromJsonAsync<PageResponse<PlatformMerchantDto>>(
-            "/api/v1/platform/merchants?query=B02&page=1&pageSize=20");
+            "/api/v1/platform/merchants?page=1&pageSize=100");
         var merchant = Assert.Single(merchants!.Items, x => x.Id == application.TenantId);
+        Assert.Matches("^B[0-9]{12}$", merchant.Code);
         Assert.Equal("Enabled", merchant.Status);
         Assert.Equal(1, merchant.StoreCount);
         Assert.Equal(1, merchant.LoginAccountCount);
@@ -849,6 +861,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             rememberMe = false,
         });
         Assert.True(merchantLogin.MustChangePassword);
+        Assert.Equal("S001", Assert.Single(merchantLogin.Stores).Code);
         merchantLogin = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/change-password", new
         {
             currentPassword = RealApiPostgreSqlFixture.MerchantInitialPassword,
@@ -875,7 +888,6 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         otherBrandApplication = await PostAsync<MerchantRegistrationApplicationDto>(client,
             $"/api/v1/platform/registration-applications/{otherBrandApplication.Id}/approval", new
             {
-                tenantCode = "B03", storeCode = "S01",
                 initialPassword = RealApiPostgreSqlFixture.MerchantInitialPassword,
                 reason = "跨品牌隔离自动回归审核", expectedVersion = otherBrandApplication.Version,
             });

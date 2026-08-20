@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Erp.Application.Common;
 using Erp.Application.Platform;
 using Erp.Application.Security;
@@ -10,6 +9,7 @@ using Erp.Domain.Customers;
 using Erp.Domain.Organization;
 using Erp.Domain.Platform;
 using Erp.Infrastructure.Identity;
+using Erp.Infrastructure.Organization;
 using Erp.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -24,7 +24,8 @@ internal sealed partial class PlatformAdminService(
     PlatformRegistrationPrivacyService registrationPrivacy,
     LoginSecurityEventWriter securityEvents,
     IHttpContextAccessor httpContextAccessor,
-    TimeProvider timeProvider) : IPlatformAdminService
+    TimeProvider timeProvider,
+    BusinessCodeGenerator codeGenerator) : IPlatformAdminService
 {
     private static readonly string[] MerchantRoleNames =
     [
@@ -54,13 +55,7 @@ internal sealed partial class PlatformAdminService(
     {
         if (!PlatformIdentityService.ValidPassword(command.InitialPassword))
             return ResultFactory.Failure<MerchantRegistrationApplicationDto>("VALIDATION_FAILED",
-                "初始密码至少12位，并包含大小写字母、数字和特殊字符");
-        var tenantCode = command.TenantCode.Trim().ToUpperInvariant();
-        var storeCode = command.StoreCode.Trim().ToUpperInvariant();
-        if (!CodePattern().IsMatch(tenantCode) || !CodePattern().IsMatch(storeCode))
-            return ResultFactory.Failure<MerchantRegistrationApplicationDto>("VALIDATION_FAILED",
-                "商户和门店编码只能包含大写字母、数字、下划线或连字符，长度为2到32位");
-
+                PasswordPolicy.RequirementText);
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -75,19 +70,18 @@ internal sealed partial class PlatformAdminService(
             if (application.Status != MerchantRegistrationStatus.PendingReview)
                 return ResultFactory.Failure<MerchantRegistrationApplicationDto>("REGISTRATION_ALREADY_REVIEWED",
                     "该注册申请已经处理");
-            if (await db.Tenants.AnyAsync(x => x.Code == tenantCode, cancellationToken))
-                return ResultFactory.Failure<MerchantRegistrationApplicationDto>("DUPLICATE_TENANT_CODE",
-                    "商户编码已存在");
             if (await db.Users.AnyAsync(x => x.NormalizedUserName == application.NormalizedDesiredOwnerAccount,
                     cancellationToken))
                 return ResultFactory.Failure<MerchantRegistrationApplicationDto>("DUPLICATE_ACCOUNT",
                     "负责人账号已存在");
 
             var now = timeProvider.GetUtcNow();
+            var tenantCode = await codeGenerator.NextBrandCodeAsync(cancellationToken);
             var tenant = new Tenant(tenantCode, application.MerchantName);
-            var store = new Store(tenant.Id, storeCode, application.StoreName, "Asia/Shanghai");
             db.Tenants.Add(tenant);
             await db.SaveChangesAsync(cancellationToken);
+            var storeCode = await codeGenerator.NextStoreCodeAsync(tenant.Id, cancellationToken);
+            var store = new Store(tenant.Id, storeCode, application.StoreName, "Asia/Shanghai");
             db.Stores.Add(store);
 
             var roles = MerchantRoleNames.ToDictionary(roleName => roleName, roleName => new ApplicationRole
@@ -321,6 +315,4 @@ internal sealed partial class PlatformAdminService(
     private static bool IsUniqueViolation(DbUpdateException exception) =>
         exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 
-    [GeneratedRegex("^[A-Z0-9_-]{2,32}$", RegexOptions.CultureInvariant)]
-    private static partial Regex CodePattern();
 }

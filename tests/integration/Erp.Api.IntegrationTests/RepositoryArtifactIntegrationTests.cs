@@ -36,6 +36,21 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
+    public void AutomaticBusinessCodesUseAForwardOnlySequenceMigration()
+    {
+        var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
+            "V202608200031__automatic_business_code_sequences.sql"));
+        var generator = File.ReadAllText(Path.Combine(RepositoryRoot, "apps", "api", "Erp.Infrastructure",
+            "Organization", "BusinessCodeGenerator.cs"));
+
+        Assert.Contains("CREATE TABLE platform_code_sequences", migration, StringComparison.Ordinal);
+        Assert.Contains("ON CONFLICT (sequence_name, scope_key)", generator, StringComparison.Ordinal);
+        Assert.Contains("current_value = platform_code_sequences.current_value + 1", generator,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("SELECT MAX(code)", generator, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void DatabaseMigrationsAreUniquelyVersionedAndNonDestructive()
     {
         var migrationDirectory = Path.Combine(RepositoryRoot, "db", "migrations");

@@ -26,7 +26,7 @@ public sealed partial class PlatformAdminBootstrapper(
         var password = Required("ERP_PLATFORM_ADMIN_PASSWORD", 256);
         if (!AccountPattern().IsMatch(account)) throw new InvalidOperationException("平台管理员账号格式不正确");
         if (!Platform.PlatformIdentityService.ValidPassword(password))
-            throw new InvalidOperationException("平台管理员密码至少12位，并包含大小写字母、数字和特殊字符");
+            throw new InvalidOperationException(PasswordPolicy.RequirementText);
         var now = timeProvider.GetUtcNow();
         var user = new PlatformAdminUserRecord
         {
