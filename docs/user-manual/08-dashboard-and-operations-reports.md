@@ -12,7 +12,7 @@
 
 ## 2. 今日经营工作台
 
-![今日经营工作台](assets/27-dashboard-live-metrics.png)
+![今日经营工作台](../design-qa/sidebar-implementation-1720x914.png)
 
 登录后的首页显示当天实时数据：
 

@@ -29,11 +29,18 @@
 - [旧系统数据迁移](#旧系统数据迁移)
 - [项目边界](#项目边界)
 - [开源与商用限制](#开源与商用限制)
+- [文档与截图状态](#文档与截图状态)
 - [完整文档索引](#完整文档索引)
 
 ## 产品界面
 
-所有截图均来自本地虚构数据，不包含参考系统或真实门店的顾客、员工、手机号、资金和支付密钥。
+所有截图均来自本地虚构数据，不包含参考系统或真实门店的顾客、员工、手机号、资金和支付密钥。截图按“当前可复现页面”维护，不再用同一张通用截图冒充待支付、复核、退款等不同业务状态；这类瞬时状态以步骤、状态机和验收用例为准。
+
+### 登录
+
+![当前登录页](docs/user-manual/assets/01-login.png)
+
+登录页截图于 2026-08-22 使用当前工作区代码重新采集。商户账号与平台管理员使用独立身份边界；首次登录、锁定、退出和改密均进入安全事件日志。
 
 ### 经营工作台
 
@@ -55,7 +62,7 @@
 
 ### 顾客与会员
 
-![顾客与会员](docs/user-manual/assets/13-membership-accounts.png)
+![顾客列表](docs/user-manual/assets/10-customer-list.png)
 
 顾客档案、会员卡、储值本金、赠送奖励、积分和次卡分别管理。会员消费固定先扣本金，只有同卡本金已经用完时才允许使用赠送奖励。
 
@@ -70,14 +77,14 @@
 
 | 页面 | 截图 |
 |---|---|
-| 产品目录与图片 | [产品目录](docs/user-manual/assets/34-product-catalog.png) · [产品图片](docs/user-manual/assets/47-product-images.png) |
-| 价格管理 | [价格版本](docs/user-manual/assets/36-product-versioned-price.png) |
-| 商品库存 | [库存余额与流水](docs/user-manual/assets/45-product-inventory.png) |
-| 门店设施配置 | [跨店设施配置](docs/user-manual/assets/49-facility-configuration-management.png) |
-| 员工与权限 | [员工账号](docs/user-manual/assets/28-employee-accounts.png) |
+| 设施开始使用 | [开始使用表单](docs/user-manual/assets/06-facility-start.png) |
+| 顾客建档 | [新增顾客](docs/user-manual/assets/11-customer-create.png) |
+| 商户入驻 | [注册申请](docs/user-manual/assets/02-merchant-registration.png) |
+| 收银工作台 | [消费单工作台](docs/user-manual/assets/15-cashier-orders.png) · [新建消费单](docs/user-manual/assets/16-cashier-create.png) |
+| 收银班次 | [开始收银班次](docs/user-manual/assets/18-payment-shift-overview.png) |
+| 经营分析 | [经营总览](docs/user-manual/assets/25-operations-report-overview.png) · [项目与设施明细](docs/user-manual/assets/26-operations-report-details.png) |
 | 支付渠道 | [微信/支付宝配置](docs/user-manual/assets/44-payment-channel-configuration.png) |
-| 审计记录 | [审计列表](docs/user-manual/assets/23-audit-events.png) · [审计详情](docs/user-manual/assets/24-audit-detail.png) |
-| 收银交班 | [提交交班](docs/user-manual/assets/21-shift-handover.png) · [独立复核](docs/user-manual/assets/32-shift-independent-review.png) |
+| 审计记录 | [审计列表](docs/user-manual/assets/23-audit-events.png) |
 
 </details>
 
@@ -621,6 +628,12 @@ npm --prefix apps/web audit --omit=dev
 
 禁止将本软件、修改版或基于它的衍生服务用于任何商业目的。商业使用——包括但不限于 SaaS 托管、售卖给门店或品牌、嵌入付费产品、为企业经营活动提供内部系统——都需要另行取得版权方的书面授权。
 
+## 文档与截图状态
+
+README、模块手册和截图已按 2026-08-22 当前代码基线复核。当前使用说明以本 README、[模块化用户手册](docs/user-manual/README.md)、[开发进度](docs/development-progress.md)和 [Changelog](CHANGELOG.md) 为准；早期合并版《V1 用户使用手册》仅保留为历史归档，不再作为当前操作依据。
+
+本轮删除了文件名与画面状态不一致、重复冒充不同业务状态以及已经被自动编码、库存调整、人工收款和交班规则更新淘汰的截图。完整判定、保留清单和后续补拍规则见[文档与截图新鲜度审计](docs/documentation-and-screenshot-freshness-2026-08-22.md)。
+
 ## 完整文档索引
 
 ### 用户手册
@@ -663,6 +676,7 @@ npm --prefix apps/web audit --omit=dev
 - [电商自动选品调研与设计](docs/ecommerce-auto-selection-research.md)
 - [技术架构与开发基线](docs/technical-architecture-and-stack.md)
 - [开发进度与验证证据](docs/development-progress.md)
+- [文档与截图新鲜度审计](docs/documentation-and-screenshot-freshness-2026-08-22.md)
 - [变更记录](CHANGELOG.md)
 
 ## 开发约定
