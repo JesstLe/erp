@@ -89,16 +89,14 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
-    public void MergedUserManualReferencesExistingScreenshots()
+    public void CurrentManualIndexDeclaresScreenshotFreshnessAudit()
     {
-        var manualPath = Path.Combine(RepositoryRoot, "docs", "user-manual", "ERP-V1-user-manual.md");
-        var manual = File.ReadAllText(manualPath);
-        var imagePaths = MarkdownImagePattern().Matches(manual).Select(match => match.Groups[1].Value).ToList();
+        var manualIndex = File.ReadAllText(Path.Combine(RepositoryRoot, "docs", "user-manual", "README.md"));
+        var auditPath = Path.Combine(RepositoryRoot, "docs", "documentation-and-screenshot-freshness-2026-08-22.md");
 
-        Assert.NotEmpty(imagePaths);
-        Assert.All(imagePaths, relativePath =>
-            Assert.True(File.Exists(Path.Combine(Path.GetDirectoryName(manualPath)!, relativePath)),
-                $"用户手册截图不存在：{relativePath}"));
+        Assert.Contains("documentation-and-screenshot-freshness-2026-08-22.md", manualIndex, StringComparison.Ordinal);
+        Assert.True(File.Exists(auditPath), "缺少当前文档与截图新鲜度审计");
+        Assert.Contains("已移除截图的判定规则", File.ReadAllText(auditPath), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -588,6 +586,29 @@ public sealed partial class RepositoryArtifactIntegrationTests
                 Assert.True(File.Exists(Path.Combine(manualDirectory, relativePath)),
                     $"用户手册截图不存在：{Path.GetFileName(manualPath)} -> {relativePath}"));
         }
+    }
+
+    [Fact]
+    public void CurrentManualScreenshotAssetsAreReferencedAndContentUnique()
+    {
+        var manualDirectory = Path.Combine(RepositoryRoot, "docs", "user-manual");
+        var assetDirectory = Path.Combine(manualDirectory, "assets");
+        var assets = Directory.GetFiles(assetDirectory, "*.png").Order().ToList();
+        var manualText = string.Join('\n', Directory.GetFiles(manualDirectory, "*.md")
+            .Select(File.ReadAllText));
+
+        Assert.NotEmpty(assets);
+        Assert.All(assets, asset =>
+            Assert.Contains($"assets/{Path.GetFileName(asset)}", manualText, StringComparison.Ordinal));
+
+        var duplicateGroups = assets
+            .GroupBy(asset => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                File.ReadAllBytes(asset))), StringComparer.Ordinal)
+            .Where(group => group.Count() > 1)
+            .Select(group => string.Join(", ", group.Select(Path.GetFileName)))
+            .ToList();
+        Assert.True(duplicateGroups.Count == 0,
+            $"当前手册截图内容重复，禁止复制成不同业务含义：{string.Join("; ", duplicateGroups)}");
     }
 
     private static string FindRepositoryRoot()

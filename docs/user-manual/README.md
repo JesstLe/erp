@@ -2,9 +2,9 @@
 
 版本：V2 开发版（包含完整 V1 与已验收 V2 模块）
 
-本手册按模块持续合并。只有模块已经具备可运行代码、通过对应窄测试并完成界面截图后，才会加入正式使用步骤。
+本手册按模块持续合并。模块具备可运行代码并通过对应验证后才会加入正式使用步骤；截图不是交付前置条件，只有能够从当前代码和虚构数据稳定复现、且与文件名业务状态一致的截图才会保留。
 
-完整合并版：[门店 ERP V1 用户使用手册](ERP-V1-user-manual.md)
+当前完整入口：[项目 README](../../README.md)。早期[门店 ERP V1 合并手册](ERP-V1-user-manual.md)仅供追溯，不作为当前操作依据。
 
 ## 目录
 
@@ -29,4 +29,4 @@
 19. [次卡、积分与储值部分退款](19-service-passes-points-and-partial-topup-refunds.md)
 20. [商户注册、平台管理与登录安全日志](20-platform-registration-security-and-administration.md)
 
-截图统一保存在 `docs/user-manual/assets/`，示例数据必须是本地虚构数据，不得包含参考系统里的真实顾客、员工、手机号或资金信息。
+截图统一保存在 `docs/user-manual/assets/`，示例数据必须是本地虚构数据，不得包含参考系统里的真实顾客、员工、手机号或资金信息。当前保留截图、删除原因和补拍规则见[文档与截图新鲜度审计](../documentation-and-screenshot-freshness-2026-08-22.md)。
