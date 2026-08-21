@@ -50,7 +50,15 @@ public sealed class CashierShift : Entity
         PendingReconciliationMinor = pendingReconciliationMinor;
         HandoverNote = Normalize(note, 500, "交班备注");
         SubmittedAtUtc = now;
-        Status = CashierShiftStatus.ReviewPending;
+        if (CashDifferenceMinor == 0 && PendingReconciliationMinor == 0)
+        {
+            ClosedAtUtc = now;
+            Status = CashierShiftStatus.Closed;
+        }
+        else
+        {
+            Status = CashierShiftStatus.ReviewPending;
+        }
         Touch();
     }
 

@@ -203,7 +203,7 @@ flowchart LR
 6. 使用现金、会员本金/奖励、微信、支付宝或允许的组合方式结算。
 7. 结算成功后形成支付、会员、库存、提成和审计快照。
 
-页面还承担退款审批、真实渠道付款码/查单、改价审批、开班、提交交班和独立复核。因为这些操作影响资金，系统保留请求号、状态和审计记录。
+页面还承担退款审批、真实渠道付款码/查单、改价审批、开班、提交交班和独立复核。交班账实一致且没有人工外部待核对时自动关班；只有存在现金差额或待核对金额时才进入独立复核。因为这些操作影响资金，系统保留请求号、状态和审计记录。
 
 详细操作：[服务录单与金额确认](docs/user-manual/05-service-order-and-price-confirmation.md) · [支付与交班](docs/user-manual/06-payments-and-cashier-shifts.md) · [退款与冲正](docs/user-manual/13-payment-refunds-and-topup-reversals.md)
 

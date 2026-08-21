@@ -810,8 +810,12 @@ export function CashierPage() {
           }),
         },
       ),
-    onSuccess: async () => {
-      message.success("交班已提交，等待独立复核");
+    onSuccess: async (shift) => {
+      message.success(
+        shift.status === "Closed"
+          ? "账实一致且没有外部待核对，班次已自动关闭"
+          : "交班已提交，存在差额或外部待核对，等待独立复核",
+      );
       setShiftAction(undefined);
       shiftForm.resetFields();
       await refresh();
@@ -3256,7 +3260,7 @@ export function CashierPage() {
           setSettleAfterShiftOpen(undefined);
         }}
         onOk={() => shiftForm.submit()}
-        okText={shiftAction === "open" ? "确认开班" : "提交复核"}
+        okText={shiftAction === "open" ? "确认开班" : "确认交班"}
         confirmLoading={openShift.isPending || submitShift.isPending}
         destroyOnHidden
       >
@@ -3266,7 +3270,7 @@ export function CashierPage() {
           title={
             shiftAction === "open"
               ? "备用金只用于计算本班次理论现金，不计入营业收入。"
-              : "提交后冻结本班次范围；现金差额和外部待核对金额必须由另一名有权限人员复核。"
+              : "提交后冻结本班次范围；账实一致且没有外部待核对时自动关班，否则进入独立复核。"
           }
           className="modal-alert"
         />

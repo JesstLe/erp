@@ -623,7 +623,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal(6_000L, Assert.Single(accountsAfterTopupRefund,
             account => account.AccountType == "Bonus").BalanceUnits);
 
-        _ = await PostAsync<CashierShiftDto>(client, "/api/v1/payments/shifts/open", new
+        var secondStoreShift = await PostAsync<CashierShiftDto>(client, "/api/v1/payments/shifts/open", new
         {
             storeId = secondStore.Id, openingCashMinor = 0L, commandId = Guid.NewGuid(),
         });
@@ -765,6 +765,19 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var secondStoreOverview = Assert.Single(storeOverview.Stores, x => x.StoreId == secondStore.Id);
         Assert.Equal(10_000L, secondStoreOverview.PeriodNetRevenueMinor);
         Assert.Equal(10_000L, secondStoreOverview.StoredValueNetMinor);
+
+        var autoClosedSecondStoreShift = await PostAsync<CashierShiftDto>(client,
+            $"/api/v1/payments/shifts/{secondStoreShift.Id}/submit", new
+            {
+                storeId = secondStore.Id, expectedVersion = secondStoreShift.Version,
+                submittedCashMinor = 10_000L, note = "无差额自动关班回归", commandId = Guid.NewGuid(),
+            });
+        Assert.Equal("Closed", autoClosedSecondStoreShift.Status);
+        Assert.Equal(10_000L, autoClosedSecondStoreShift.ExpectedCashMinor);
+        Assert.Equal(0L, autoClosedSecondStoreShift.CashDifferenceMinor);
+        Assert.Equal(0L, autoClosedSecondStoreShift.PendingReconciliationMinor);
+        Assert.NotNull(autoClosedSecondStoreShift.ClosedAtUtc);
+        Assert.Null(autoClosedSecondStoreShift.ReviewedBy);
 
         var submittedPrimaryShift = await PostAsync<CashierShiftDto>(client,
             $"/api/v1/payments/shifts/{primaryShift.Id}/submit", new
