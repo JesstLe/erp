@@ -1,12 +1,12 @@
 # 旧系统字段画像与初步映射矩阵
 
-日期：2026-08-20
-状态：真实字段画像与安全映射完成；B01 基础档案受控导入已实现，资金权益仍保持阻断
+日期：2026-08-21
+状态：基础档案与护理结构化记录真实字段画像、安全映射已完成；护理图片全量导出于2026-08-22暂缓，B01 受控重建待执行，资金权益仍保持阻断
 关联文档：[旧系统数据只读导出与迁移 PRD](legacy-system-data-migration-prd.md)
 
 ## 1. 本轮结论
 
-本轮离线校验 2026-08-20 最终 AES-256-GCM 导出文件后，对 13 个模块、2545 条记录、213 个来源字段完成结构画像。画像报告只包含字段名、JSON 类型、出现/空值/去重数量、最大字符串长度、候选唯一键、格式类别和敏感级别，不包含任何来源字段值、值摘要、文件路径、账号、Cookie 或密钥。
+本轮离线校验最新 AES-256-GCM 导出文件后，对14个模块、4294条记录、230个来源字段完成结构画像：基础资料258条、顾客2293条、护理记录1743条。画像报告只包含字段名、JSON类型、出现/空值/去重数量、最大字符串长度、候选唯一键、格式类别和敏感级别，不包含任何来源字段值、值摘要、文件路径、账号、Cookie或密钥。
 
 当前可以确认：旧系统数据不能直接复制到新系统业务表。必须经过“来源留痕 → 暂存 → 标准化 → 关系映射 → 异常隔离 → 对账 → 受控导入”。其中顾客基础资料、组织和目录主数据大部分可以映射；会员资金、会员等级权益、充值规则、次卡规则和设施门店关系存在阻断项，未经补充数据或规则确认不得导入。
 
@@ -14,7 +14,8 @@
 
 | 模块 | 记录数 | 字段数 | 当前判断 |
 |---|---:|---:|---|
-| 顾客 `customers` | 2287 | 30 | 基础档案可转换；资金与权益字段阻断 |
+| 顾客 `customers` | 2293 | 30 | 基础档案可转换；资金与权益字段阻断 |
+| 护理记录 `care-records` | 1743 | 17 | 可转换成无收费历史服务档案；顾客关联完整；图片按检查点单独加密导出，当前暂缓且不得标记全量完成 |
 | 门店 `stores` | 5 | 22 | 核心字段可映射；门店扩展资料需决定是否保留 |
 | 员工 `employees` | 40 | 28 | 核心字段可映射；薪酬/押金及旧功能标志阻断 |
 | 服务项目 `services` | 74 | 32 | 目录可转换；价格、提成和旧活动规则需确认 |
@@ -28,7 +29,7 @@
 | 员工工种 `employee-trades` | 4 | 4 | 可作为岗位/工种字典 |
 | 顾客来源 `customer-sources` | 8 | 4 | 可作为顾客来源字典 |
 
-213 个字段中，画像识别出 40 个资金敏感字段、17 个个人信息字段和 12 个自由文本风险字段。三个字段包含 HTML 形态：`customers.member_code`、`products.goods_name`、`services.goods_name`。转换时只能使用受限解析器提取文本或标识，禁止把旧 HTML 原样写入或渲染到新系统。
+230个字段中，画像识别出40个资金敏感字段、22个个人信息字段和13个自由文本风险字段。三个基础字段包含HTML形态：`customers.member_code`、`products.goods_name`、`services.goods_name`。转换时只能使用受限解析器提取文本或标识，禁止把旧HTML原样写入或渲染到新系统。
 
 ## 3. 映射处理等级
 
@@ -185,11 +186,11 @@
 |---|---|---|
 | `customers.member_id` | `D` | 顾客来源映射键，生成 `customers.id` |
 | `customers.member_name` | `D` | `customers.name`，保留原名 |
-| `customers.member_hand` | `T` | 清洗手机号后加密保存并生成查询 HMAC；2287 条非空但只有 2286 个不同值，至少一组重复候选必须人工复核 |
-| `customers.member_shop` | `T` | 通过门店代码映射到 `home_store_id`；当前只出现 4 种门店值，而门店表有 5 条，需对账 |
+| `customers.member_hand` | `T` | 清洗手机号后加密保存并生成查询HMAC；2293条非空但只有2292个不同值，至少一组重复候选必须人工复核 |
+| `customers.member_shop` | `T` | 来源值实际呈文本门店名称；导入时按旧门店主键、`shop_code`、清洗后的 `shop_name` 依次匹配到 `home_store_id`。非空值无法唯一匹配时整批中止，禁止回退第一家门店；当前只出现4种门店值，而门店表有5条，仍需逐店对账 |
 | `customers.member_source` | `T` | 映射顾客来源规范代码 |
 | `customers.member_sex` | `T` | 转换为 `CustomerGender` 枚举 |
-| `customers.member_birthday` | `T` | 212 条空；其余包含日期、整数、数值和文本多种形态。只接受可证明的日期格式，其他进入异常清单 |
+| `customers.member_birthday` | `T` | 213条空；其余包含日期、整数、数值和文本多种形态。只接受可证明的日期格式，其他进入异常清单 |
 | `customers.member_code` | `R` | 每条唯一但全部呈 HTML 形态；需安全解析并确认它代表会员卡号还是页面链接，确认前不得写 `membership_cards.card_no` |
 | `customers.member_iclevel` | `T` | 通过 23 个会员等级映射到 `card_type_id` |
 | `customers.member_time1` | `T` | 全量日期时间，作为旧建档时间候选 |
@@ -200,6 +201,20 @@
 | `customers.member_audit` | `R` | 审核/状态字段含义待确认，不能直接决定顾客停用 |
 | `customers.member_memo` | `E` | 自由文本且可能含个人信息；若保留，需加密、字段权限和查看审计 |
 | `customers.member_email`, `customers.member_end`, `customers.member_parent` | `A` | 当前全空，仅原始归档 |
+
+### 4.11 护理记录与图片
+
+| 来源字段 | 等级 | 新系统目标/处理 |
+|---|---|---|
+| `care-records.bill_id` | `D` | 护理记录来源映射键，生成独立 `customer_service_records.id`；不可使用不存在的 `nurse_id` |
+| `care-records.bill_member` | `D` | 按旧顾客来源主键关联 `customers`；本次1743条全部命中，缺失或未映射时记录异常并跳过该条 |
+| `care-records.bill_shop` | `T` | 1743条非空、覆盖5种旧门店值；按旧门店主键、代码或清洗后的名称唯一映射`store_id`，非空未命中时中止整批，禁止默认门店兜底 |
+| `care-records.bill_time1`, `care-records.bill_date` | `T` | 优先解析发生时间，写入历史服务档案 `occurred_at_utc`；保留来源时间语义，不冒充迁移时间 |
+| `care-records.bill_intro` | `T` | 护理症状/说明，安全清洗后写入服务档案标题/说明字段 |
+| `care-records.bill_plan` | `T` | 护理或处理方案，安全清洗后写入服务档案正文 |
+| `care-records.bill_next`, `care-records.bill_emplee`, `care-records.bill_memo` | `T` | 组合为下次护理、护理人员和补充备注；仅为历史记录，不自动创建员工登录或排班 |
+| `care-records.bill_code`, `care-records.member_code`, `care-records.member_hand`, `care-records.member_name`, `care-records.bill_time2`, `care-records.bill_user1`, `care-records.bill_user2` | `A/E` | 作为来源核对和追溯字段保留；手机号不重复写入服务档案，账号字段不迁移为新系统权限 |
+| 护理图片索引 | `T` | 每条最多两张，只接受精确 `/picture/.../nurse/` JPEG/PNG/WebP；加密校验后写入 `stored_files` 并关联服务档案，不生成消费金额 |
 
 ## 5. 当前新系统模型缺口
 
@@ -239,4 +254,4 @@
 4. 使用脱敏/合成夹具实现转换器测试，再在隔离测试库中使用真实加密导出数据演练。
 5. 完成源数量、目标数量、金额、余额、余次、积分和外键完整性对账后，才申请正式导入批准。
 
-当前结论不授权任何旧系统写操作，也不授权把这些数据写入本地、测试或生产的新 ERP 数据库。
+当前结论不授权任何旧系统写操作；旧源始终只读。用户已单独授权把经过加密校验的数据写入并增删改查新 ERP 的 `B01` 测试品牌，用于重建和端到端验收；该授权不扩展到其他品牌或正式生产商户数据。

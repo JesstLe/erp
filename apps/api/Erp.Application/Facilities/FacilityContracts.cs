@@ -46,11 +46,11 @@ public sealed record CreateFacilityGroupCommand(Guid StoreId, string DisplayName
 public sealed record UpdateFacilityGroupCommand(Guid StoreId, Guid GroupId, string DisplayName, int SortOrder,
     uint ExpectedVersion, Guid OperatorId);
 public sealed record CreateFacilityTypeCommand(string DisplayName, Guid OperatorId);
-public sealed record CreateFacilityCommand(Guid StoreId, Guid GroupId, Guid? FacilityTypeId, string? Code,
+public sealed record CreateFacilityCommand(Guid StoreId, Guid GroupId, Guid? FacilityTypeId,
     string DisplayName, string? ServiceName, string? EquipmentName, long? ReferencePriceMinor,
     int SortOrder, int DefaultCleaningMinutes, bool AllowReservation, Guid OperatorId);
 public sealed record UpdateFacilityCommand(Guid StoreId, Guid FacilityId, Guid GroupId, Guid? FacilityTypeId,
-    string? Code, string DisplayName, string? ServiceName, string? EquipmentName, long? ReferencePriceMinor,
+    string DisplayName, string? ServiceName, string? EquipmentName, long? ReferencePriceMinor,
     int SortOrder, int DefaultCleaningMinutes, bool AllowReservation, FacilityLifecycleStatus LifecycleStatus,
     uint ExpectedVersion, Guid OperatorId);
 public sealed record StartFacilitySessionCommand(Guid StoreId, Guid FacilityId, Guid? CustomerId,

@@ -31,7 +31,7 @@ public static class SupplyChainEndpoints
             if (current is null) return Results.Unauthorized();
             if (!IsOwner(current)) return Results.Forbid();
             return EndpointResults.From(await service.SaveSupplierAsync(current.TenantId,
-                new SaveSupplierCommand(null, request.Code, request.Name, request.ContactName,
+                new SaveSupplierCommand(null, request.Name, request.ContactName,
                     request.Mobile, request.SettlementTerms, null, current.Id), cancellationToken),
                 value => Results.Created($"/api/v1/supply-chain/suppliers/{value.Id}", value));
         }).RequireAuthorization(SystemPermissions.SupplyChainManage);
@@ -43,7 +43,7 @@ public static class SupplyChainEndpoints
             if (current is null) return Results.Unauthorized();
             if (!IsOwner(current)) return Results.Forbid();
             return EndpointResults.From(await service.SaveSupplierAsync(current.TenantId,
-                new SaveSupplierCommand(supplierId, request.Code, request.Name, request.ContactName,
+                new SaveSupplierCommand(supplierId, request.Name, request.ContactName,
                     request.Mobile, request.SettlementTerms, request.ExpectedVersion, current.Id),
                 cancellationToken));
         }).RequireAuthorization(SystemPermissions.SupplyChainManage);
@@ -208,7 +208,7 @@ public static class SupplyChainEndpoints
     private static bool IsOwner(CurrentUserDto user) =>
         user.Permissions.Contains(SystemPermissions.SupplyChainManage);
     private static bool HasStore(CurrentUserDto user, Guid storeId) => user.Stores.Any(x => x.Id == storeId);
-    private sealed record SaveSupplierRequest(string Code, string Name, string? ContactName,
+    private sealed record SaveSupplierRequest(string Name, string? ContactName,
         string? Mobile, string? SettlementTerms, uint? ExpectedVersion);
     private sealed record SupplierStatusRequest(bool Enable, uint ExpectedVersion);
     private sealed record PurchaseLineRequest(Guid ProductItemId, int Quantity, long UnitCostMinor,

@@ -13,13 +13,21 @@ public sealed record LegacySourcePhoto(
     string PlainSha256,
     byte[] Content);
 
+public sealed record LegacySourceCarePhoto(
+    string SourceCareRecordId,
+    int Slot,
+    string ContentType,
+    string PlainSha256,
+    byte[] Content);
+
 public sealed record LegacyImportDataset(
     string TenantCode,
     string SourceSystem,
     string SourceFingerprintSha256,
     string ImportVersion,
     IReadOnlyList<LegacySourceRow> Rows,
-    IReadOnlyList<LegacySourcePhoto> Photos);
+    IReadOnlyList<LegacySourcePhoto> Photos,
+    IReadOnlyList<LegacySourceCarePhoto>? CarePhotos = null);
 
 public sealed record LegacyImportCommand(LegacyImportDataset Dataset, bool DryRun);
 

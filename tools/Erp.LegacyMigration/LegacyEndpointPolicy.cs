@@ -25,7 +25,7 @@ public sealed class LegacyEndpointPolicy
         var query = ParseQuery(uri.Query);
         var action = GetSingleValue(query, "act");
 
-        if (method == HttpMethod.Get && IsReviewedCustomerPhotoRead(uri, query, action))
+        if (method == HttpMethod.Get && IsReviewedPhotoRead(uri, query, action))
         {
             return;
         }
@@ -38,6 +38,17 @@ public sealed class LegacyEndpointPolicy
         if (method == HttpMethod.Post &&
             string.Equals(uri.AbsolutePath, "/swshop/login/login.php", StringComparison.Ordinal) &&
             string.Equals(action, "login", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        // The nursing page obtains its read-only jqGrid column model through an empty POST
+        // before issuing the GET that returns rows. This exact initialization endpoint has
+        // been reviewed in the legacy UI; every other non-login POST remains denied.
+        if (method == HttpMethod.Post &&
+            string.Equals(uri.AbsolutePath, "/swshop/vip/nurse.php", StringComparison.Ordinal) &&
+            string.Equals(action, "custom", StringComparison.Ordinal) &&
+            query.Count == 1)
         {
             return;
         }
@@ -58,6 +69,12 @@ public sealed class LegacyEndpointPolicy
             return;
         }
 
+        if (string.Equals(uri.AbsolutePath, "/swshop/vip/nurse.php", StringComparison.Ordinal) &&
+            action is null && query.Count == 0)
+        {
+            return;
+        }
+
         if (LegacyEntityCatalog.All.Any(entity =>
             string.Equals(uri.AbsolutePath, entity.Path, StringComparison.Ordinal) &&
             string.Equals(action, entity.Action, StringComparison.Ordinal)))
@@ -68,7 +85,7 @@ public sealed class LegacyEndpointPolicy
         throw new LegacyMigrationException("请求被安全策略拒绝：端点未列入只读白名单。");
     }
 
-    private static bool IsReviewedCustomerPhotoRead(
+    private static bool IsReviewedPhotoRead(
         Uri uri,
         Dictionary<string, List<string>> query,
         string? action)
@@ -82,6 +99,16 @@ public sealed class LegacyEndpointPolicy
             return true;
         }
 
+        if (string.Equals(uri.AbsolutePath, "/swshop/vip/nurse.php", StringComparison.Ordinal) &&
+            string.Equals(action, "adds", StringComparison.Ordinal) &&
+            query.Keys.All(key => key is "act" or "id" or "wintop" or "winpid") &&
+            GetSingleValue(query, "id") is { } careId && long.TryParse(careId, out var numericCareId) &&
+            numericCareId > 0 && GetSingleValue(query, "wintop") is "N" &&
+            GetSingleValue(query, "winpid") is "1")
+        {
+            return true;
+        }
+
         if (query.Count != 0 || !uri.AbsolutePath.StartsWith("/swshop/picture/", StringComparison.Ordinal))
         {
             return false;
@@ -90,7 +117,7 @@ public sealed class LegacyEndpointPolicy
         var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
         return segments.Length == 5 && segments[0] == "swshop" && segments[1] == "picture" &&
             segments[2].Length is > 0 and <= 32 && segments[2].All(char.IsLetterOrDigit) &&
-            segments[3] == "member" && IsSafeImageFileName(segments[4]);
+            segments[3] is "member" or "nurse" && IsSafeImageFileName(segments[4]);
     }
 
     private static bool IsSafeImageFileName(string value)
@@ -182,15 +209,37 @@ public sealed record LegacyEntityDefinition(string Name, string Path, string Act
 
     public Uri BuildPageUri(int page, int pageSize)
     {
-        var query = string.Join(
-            '&',
+        var queryParts = new List<string>
+        {
             $"act={Uri.EscapeDataString(Action)}",
             "_search=false",
             $"nd={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}",
             $"rows={pageSize}",
             $"page={page}",
             "sidx=",
-            "sord=asc");
+            "sord=asc"
+        };
+
+        // The nursing grid does not return its history unless the same reviewed search
+        // parameters used by the UI are present. Use a bounded, deterministic full-history
+        // interval so a migration run cannot silently produce an empty care-record export.
+        if (this == CareRecords)
+        {
+            queryParts.AddRange(
+            [
+                "search_find=Y",
+                "search_bdate=2019-01-01",
+                $"search_edate={DateOnly.FromDateTime(DateTime.UtcNow.AddHours(8)):yyyy-MM-dd}",
+                "search_area=0",
+                "search_zone=0",
+                "search_shop=0",
+                $"search_shopv={Uri.EscapeDataString("全部")}",
+                "search_nusort=0",
+                "search_member="
+            ]);
+        }
+
+        var query = string.Join('&', queryParts);
 
         return new Uri(LegacyEndpointPolicy.Origin, $"{Path}?{query}");
     }

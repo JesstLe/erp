@@ -9,6 +9,7 @@ using Erp.Domain.Cashier;
 using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
 using Erp.Infrastructure.Persistence;
+using Erp.Infrastructure.Organization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -17,7 +18,7 @@ using Npgsql;
 namespace Erp.Infrastructure.Customers;
 
 internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService privacy, TimeProvider clock,
-    IHttpContextAccessor httpContextAccessor) : ICustomerService
+    IHttpContextAccessor httpContextAccessor, BusinessCodeGenerator codeGenerator) : ICustomerService
 {
     public async Task<PageResult<CustomerSummaryDto>> SearchAsync(Guid tenantId, Guid storeId, string? query,
         int page, int pageSize, CancellationToken cancellationToken)
@@ -462,7 +463,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         CancellationToken cancellationToken)
     {
         if (command.CommandId == Guid.Empty) return ResultFactory.Failure<MemberCardTypeDto>("VALIDATION_FAILED", "缺少幂等请求号");
-        var requestHash = RequestHash($"CARD_TYPE_CREATE|{command.Code}|{command.Name}|{command.ValidityDays}");
+        var requestHash = RequestHash($"CARD_TYPE_CREATE|{command.Name}|{command.ValidityDays}");
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var replay = await ReplayAsync<MemberCardTypeDto>(tenantId, command.CommandId, requestHash, async id =>
         {
@@ -475,7 +476,8 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         try
         {
             var now = clock.GetUtcNow();
-            var cardType = new MemberCardType(tenantId, command.Code, command.Name, command.ValidityDays);
+            var code = await codeGenerator.NextMemberCardTypeCodeAsync(tenantId, cancellationToken);
+            var cardType = new MemberCardType(tenantId, code, command.Name, command.ValidityDays);
             db.MemberCardTypes.Add(cardType);
             AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, cardType.Id, now);
             AddAudit(tenantId, null, command.OperatorId, "membership.card_type.create", "MemberCardType", cardType.Id,
@@ -492,7 +494,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         catch (DbUpdateException exception) when (IsUniqueViolation(exception))
         {
             await RollbackIfActiveAsync(transaction, cancellationToken);
-            return ResultFactory.Failure<MemberCardTypeDto>("DUPLICATE_MEMBER_CARD_TYPE", "卡类编号已经存在");
+            return ResultFactory.Failure<MemberCardTypeDto>("CODE_GENERATION_CONFLICT", "卡类编号生成冲突，请重试");
         }
     }
 

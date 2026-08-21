@@ -23,7 +23,7 @@ public static class LegacyImportCli
             using var payloadStore = new EncryptedPayloadStore(key);
             dataset = await new LegacyImportDatasetLoader(payloadStore).LoadAsync(options, cancellationToken);
             await output.WriteLineAsync(
-                $"导入预检完成：品牌={options.TenantCode}，来源记录={dataset.Rows.Count}，照片={dataset.Photos.Count}，模式={(options.Apply ? "执行" : "干跑")}。");
+                $"导入预检完成：品牌={options.TenantCode}，来源记录={dataset.Rows.Count}，顾客照片={dataset.Photos.Count}，护理照片={dataset.CarePhotos?.Count ?? 0}，模式={(options.Apply ? "执行" : "干跑")}。");
 
             var builder = Host.CreateApplicationBuilder();
             builder.Logging.SetMinimumLevel(LogLevel.Warning);
@@ -54,7 +54,10 @@ public static class LegacyImportCli
         finally
         {
             if (dataset is not null)
+            {
                 foreach (var photo in dataset.Photos) CryptographicOperations.ZeroMemory(photo.Content);
+                foreach (var photo in dataset.CarePhotos ?? []) CryptographicOperations.ZeroMemory(photo.Content);
+            }
             if (key is not null) CryptographicOperations.ZeroMemory(key);
         }
     }
@@ -126,7 +129,7 @@ public sealed class LegacyImportDatasetLoader(EncryptedPayloadStore payloadStore
             ["units"] = "unit_id",
             ["employee-trades"] = "ework_id",
             ["customer-sources"] = "source_id",
-            ["care-records"] = "nurse_id",
+            ["care-records"] = "bill_id",
         };
 
     public async Task<LegacyImportDataset> LoadAsync(
@@ -142,28 +145,94 @@ public sealed class LegacyImportDatasetLoader(EncryptedPayloadStore payloadStore
         if (manifests.Length == 0) throw new LegacyMigrationException("导入目录没有找到清单。");
         var rows = new List<LegacySourceRow>();
         var photos = new List<LegacySourcePhoto>();
+        var carePhotos = new List<LegacySourceCarePhoto>();
         var fingerprintParts = new List<string>();
         var entities = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var manifestPath in manifests)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            using var document = JsonDocument.Parse(await File.ReadAllTextAsync(manifestPath, cancellationToken));
-            var entity = document.RootElement.GetProperty("entity").GetString()
-                ?? throw new LegacyMigrationException("导入清单缺少实体名。");
-            if (!entities.Add(entity)) throw new LegacyMigrationException($"导入包含重复模块：{entity}。");
-            if (entity == "customer-photos")
+            foreach (var manifestPath in manifests)
             {
-                await LoadPhotosAsync(manifestPath, document.RootElement, photos, fingerprintParts, cancellationToken);
-                continue;
+                cancellationToken.ThrowIfCancellationRequested();
+                using var document = JsonDocument.Parse(await File.ReadAllTextAsync(manifestPath, cancellationToken));
+                var entity = document.RootElement.GetProperty("entity").GetString()
+                    ?? throw new LegacyMigrationException("导入清单缺少实体名。");
+                if (!entities.Add(entity)) throw new LegacyMigrationException($"导入包含重复模块：{entity}。");
+                if (entity == "customer-photos")
+                {
+                    await LoadPhotosAsync(
+                        manifestPath,
+                        document.RootElement,
+                        photos,
+                        fingerprintParts,
+                        cancellationToken);
+                    continue;
+                }
+                if (entity == "care-record-photos")
+                {
+                    await LoadCarePhotosAsync(
+                        manifestPath,
+                        document.RootElement,
+                        carePhotos,
+                        fingerprintParts,
+                        cancellationToken);
+                    continue;
+                }
+                await LoadRowsAsync(manifestPath, document.RootElement, rows, fingerprintParts, cancellationToken);
             }
-            await LoadRowsAsync(manifestPath, document.RootElement, rows, fingerprintParts, cancellationToken);
-        }
 
-        var fingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
-            string.Join('\n', fingerprintParts.Order(StringComparer.Ordinal)))));
-        return new LegacyImportDataset(options.TenantCode, "siweicloud-swshop", fingerprint,
-            options.ImportVersion, rows, photos);
+            ValidatePhotoRelationships(rows, photos, carePhotos);
+            var fingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
+                string.Join('\n', fingerprintParts.Order(StringComparer.Ordinal)))));
+            return new LegacyImportDataset(options.TenantCode, "siweicloud-swshop", fingerprint,
+                options.ImportVersion, rows, photos, carePhotos);
+        }
+        catch
+        {
+            foreach (var photo in photos)
+            {
+                CryptographicOperations.ZeroMemory(photo.Content);
+            }
+            foreach (var photo in carePhotos)
+            {
+                CryptographicOperations.ZeroMemory(photo.Content);
+            }
+            throw;
+        }
+    }
+
+    private async Task LoadCarePhotosAsync(
+        string manifestPath,
+        JsonElement manifest,
+        List<LegacySourceCarePhoto> photos,
+        List<string> fingerprintParts,
+        CancellationToken cancellationToken)
+    {
+        ValidateCommonManifest(manifest);
+        EnsureNoFailedIds(manifest, "failedCareRecordIds", "护理照片清单仍含失败记录，拒绝不完整导入。");
+        foreach (var photo in manifest.GetProperty("photos").EnumerateArray())
+        {
+            var sourceId = photo.GetProperty("sourceCareRecordId").GetInt64()
+                .ToString(CultureInfo.InvariantCulture);
+            var slot = photo.GetProperty("slot").GetInt32();
+            var contentType = RequireString(photo, "contentType");
+            var plainHash = RequireString(photo, "plainSha256");
+            var encryptedHash = RequireString(photo, "encryptedSha256");
+            ValidatePhotoMetadata(sourceId, slot, contentType, plainHash, encryptedHash);
+            var path = ResolveChild(manifestPath, RequireString(photo, "file"));
+            if (await SecureFile.Sha256Async(path, cancellationToken) != encryptedHash)
+                throw new LegacyMigrationException("护理照片密文摘要不一致。");
+            var bytes = await payloadStore.ReadEncryptedBytesAsync(path, cancellationToken);
+            if (Convert.ToHexStringLower(SHA256.HashData(bytes)) != plainHash)
+            {
+                CryptographicOperations.ZeroMemory(bytes);
+                throw new LegacyMigrationException("护理照片明文摘要不一致。");
+            }
+            photos.Add(new LegacySourceCarePhoto(sourceId, slot, contentType, plainHash, bytes));
+            fingerprintParts.Add($"care-record-photos:{sourceId}:{slot}:{encryptedHash}");
+        }
+        if (photos.Count != manifest.GetProperty("photoCount").GetInt32())
+            throw new LegacyMigrationException("护理照片清单数量不一致。");
     }
 
     private async Task LoadRowsAsync(string manifestPath, JsonElement manifest, List<LegacySourceRow> rows,
@@ -214,6 +283,7 @@ public sealed class LegacyImportDatasetLoader(EncryptedPayloadStore payloadStore
         List<string> fingerprintParts, CancellationToken cancellationToken)
     {
         ValidateCommonManifest(manifest);
+        EnsureNoFailedIds(manifest, "failedCustomerIds", "顾客照片清单仍含失败记录，拒绝不完整导入。");
         foreach (var photo in manifest.GetProperty("photos").EnumerateArray())
         {
             var sourceCustomerId = photo.GetProperty("sourceCustomerId").GetInt64().ToString(CultureInfo.InvariantCulture);
@@ -221,6 +291,7 @@ public sealed class LegacyImportDatasetLoader(EncryptedPayloadStore payloadStore
             var contentType = RequireString(photo, "contentType");
             var plainHash = RequireString(photo, "plainSha256");
             var encryptedHash = RequireString(photo, "encryptedSha256");
+            ValidatePhotoMetadata(sourceCustomerId, slot, contentType, plainHash, encryptedHash);
             var path = ResolveChild(manifestPath, RequireString(photo, "file"));
             if (await SecureFile.Sha256Async(path, cancellationToken) != encryptedHash)
                 throw new LegacyMigrationException("顾客照片密文摘要不一致。");
@@ -244,6 +315,56 @@ public sealed class LegacyImportDatasetLoader(EncryptedPayloadStore payloadStore
             RequireString(manifest, "encryption") != "AES-256-GCM/ERPLEG1")
             throw new LegacyMigrationException("导入清单未通过安全校验。");
     }
+
+    private static void EnsureNoFailedIds(JsonElement manifest, string property, string message)
+    {
+        if (manifest.TryGetProperty(property, out var failed) &&
+            failed.ValueKind == JsonValueKind.Array &&
+            failed.GetArrayLength() > 0)
+        {
+            throw new LegacyMigrationException(message);
+        }
+    }
+
+    private static void ValidatePhotoMetadata(
+        string sourceId,
+        int slot,
+        string contentType,
+        string plainHash,
+        string encryptedHash)
+    {
+        if (!long.TryParse(sourceId, NumberStyles.None, CultureInfo.InvariantCulture, out var numericId) ||
+            numericId <= 0 || slot is < 1 or > 2)
+            throw new LegacyMigrationException("照片清单包含无效来源主键或槽位。");
+        if (contentType is not ("image/jpeg" or "image/png" or "image/webp"))
+            throw new LegacyMigrationException("照片清单包含不允许的图片格式。");
+        if (!IsSha256(plainHash) || !IsSha256(encryptedHash))
+            throw new LegacyMigrationException("照片清单包含无效摘要。");
+    }
+
+    private static void ValidatePhotoRelationships(
+        IReadOnlyList<LegacySourceRow> rows,
+        List<LegacySourcePhoto> customerPhotos,
+        List<LegacySourceCarePhoto> carePhotos)
+    {
+        var customerIds = rows.Where(row => row.Entity == "customers")
+            .Select(row => row.SourceId)
+            .ToHashSet(StringComparer.Ordinal);
+        var careIds = rows.Where(row => row.Entity == "care-records")
+            .Select(row => row.SourceId)
+            .ToHashSet(StringComparer.Ordinal);
+        if (customerPhotos.Any(photo => !customerIds.Contains(photo.SourceCustomerId)) ||
+            carePhotos.Any(photo => !careIds.Contains(photo.SourceCareRecordId)))
+            throw new LegacyMigrationException("照片清单包含无法关联的来源记录。");
+        if (customerPhotos.Select(photo => (photo.SourceCustomerId, photo.Slot)).Distinct().Count() !=
+            customerPhotos.Count ||
+            carePhotos.Select(photo => (photo.SourceCareRecordId, photo.Slot)).Distinct().Count() !=
+            carePhotos.Count)
+            throw new LegacyMigrationException("照片清单包含重复来源槽位。");
+    }
+
+    private static bool IsSha256(string value) =>
+        value.Length == 64 && value.All(character => Uri.IsHexDigit(character));
 
     private static string ResolveChild(string manifestPath, string relative)
     {

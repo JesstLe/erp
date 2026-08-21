@@ -10,7 +10,7 @@ public sealed record EmployeeDto(Guid Id, string EmployeeNo, string DisplayName,
 
 public sealed record RoleDto(Guid Id, string Code, string Name);
 
-public sealed record CreateEmployeeCommand(string EmployeeNo, string DisplayName, string PositionCode,
+public sealed record CreateEmployeeCommand(string DisplayName, string PositionCode,
     IReadOnlyList<Guid> StoreIds, bool CreateLoginAccount, string? Account, string? InitialPassword,
     IReadOnlyList<string> Roles, Guid OperatorId);
 

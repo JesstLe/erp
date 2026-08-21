@@ -72,6 +72,7 @@ internal sealed partial class LegacyImportService(
             var storeRows = Rows(rows, "stores");
             var storesBySource = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
             var storesByLegacyCode = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+            var storesByLegacyName = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
             foreach (var row in storeRows)
             {
                 if (TryMapped(maps, row, out var mappedStoreId))
@@ -79,6 +80,8 @@ internal sealed partial class LegacyImportService(
                     storesBySource[row.SourceId] = mappedStoreId;
                     var legacyCode = Field(row, "shop_code");
                     if (!string.IsNullOrWhiteSpace(legacyCode)) storesByLegacyCode[legacyCode] = mappedStoreId;
+                    var legacyName = CleanText(Field(row, "shop_name"), 100);
+                    if (legacyName is not null) AddStoreAlias(storesByLegacyName, legacyName, mappedStoreId);
                     Increment(skipped, "stores");
                     continue;
                 }
@@ -99,6 +102,7 @@ internal sealed partial class LegacyImportService(
                 storesBySource[row.SourceId] = store.Id;
                 var sourceCode = Field(row, "shop_code");
                 if (!string.IsNullOrWhiteSpace(sourceCode)) storesByLegacyCode[sourceCode] = store.Id;
+                AddStoreAlias(storesByLegacyName, name, store.Id);
                 await AddMapAsync(runId, tenant.Id, row, "organization_stores", store.Id, maps, cancellationToken);
                 Increment(created, "stores");
             }
@@ -139,7 +143,8 @@ internal sealed partial class LegacyImportService(
                 var employee = new Employee(tenant.Id, $"LEGACY-{row.SourceId}", name, position, null);
                 if (LooksDisabled(Field(row, "emplee_end"))) employee.Deactivate();
                 db.Employees.Add(employee);
-                var storeId = ResolveStore(row, "emplee_shop", storesBySource, storesByLegacyCode, defaultStoreId);
+                var storeId = ResolveStore(row, "emplee_shop", storesBySource, storesByLegacyCode,
+                    storesByLegacyName, defaultStoreId);
                 db.EmployeeStores.Add(new EmployeeStore(tenant.Id, employee.Id, storeId, true));
                 await AddMapAsync(runId, tenant.Id, row, "organization_employees", employee.Id, maps, cancellationToken);
                 Increment(created, "employees");
@@ -214,7 +219,8 @@ internal sealed partial class LegacyImportService(
                     continue;
                 }
 
-                var homeStoreId = ResolveStore(row, "member_shop", storesBySource, storesByLegacyCode, defaultStoreId);
+                var homeStoreId = ResolveStore(row, "member_shop", storesBySource, storesByLegacyCode,
+                    storesByLegacyName, defaultStoreId);
                 var birthDate = ParseBirthDate(Field(row, "member_birthday"));
                 if (birthDate is null && !string.IsNullOrWhiteSpace(Field(row, "member_birthday")))
                 {
@@ -254,7 +260,8 @@ internal sealed partial class LegacyImportService(
                     SourceSha256 = CombinedHash(row.SourceSha256, photos.Select(x => x.PlainSha256))
                 };
                 if (TryMapped(maps, noteSource, out _)) { Increment(skipped, "service-records"); continue; }
-                var storeId = ResolveStore(row, "member_shop", storesBySource, storesByLegacyCode, defaultStoreId);
+                var storeId = ResolveStore(row, "member_shop", storesBySource, storesByLegacyCode,
+                    storesByLegacyName, defaultStoreId);
                 var record = new ServiceRecord(tenant.Id, storeId, customerMap.TargetId, null,
                     ParseOccurredAt(Field(row, "member_time2"), Field(row, "member_time1")),
                     "旧系统顾客档案备注（迁移）", memo, null,
@@ -282,6 +289,81 @@ internal sealed partial class LegacyImportService(
                 db.ServiceRecords.Add(record);
                 await AddMapAsync(runId, tenant.Id, noteSource, "customer_service_records", record.Id, maps,
                     cancellationToken);
+                Increment(created, "service-records");
+            }
+
+            var carePhotosByRecord = (dataset.CarePhotos ?? [])
+                .GroupBy(x => x.SourceCareRecordId, StringComparer.Ordinal)
+                .ToDictionary(x => x.Key, x => x.OrderBy(photo => photo.Slot).ToArray(), StringComparer.Ordinal);
+            foreach (var row in Rows(rows, "care-records"))
+            {
+                carePhotosByRecord.TryGetValue(row.SourceId, out var carePhotos);
+                carePhotos ??= [];
+                var noteSource = row with
+                {
+                    Entity = "care-record-service-record",
+                    SourceSha256 = CombinedHash(row.SourceSha256, carePhotos.Select(x => x.PlainSha256))
+                };
+                if (TryMapped(maps, noteSource, out _))
+                {
+                    Increment(skipped, "care-records");
+                    continue;
+                }
+
+                var sourceCustomerId = Field(row, "bill_member")?.Trim();
+                if (string.IsNullOrWhiteSpace(sourceCustomerId) ||
+                    !maps.TryGetValue(("customers", sourceCustomerId), out var customerMap))
+                {
+                    await AddExceptionAsync(runId, tenant.Id, row, "bill_member", "CUSTOMER_NOT_MAPPED", "Error",
+                        "护理记录对应顾客未能安全映射，已跳过", cancellationToken);
+                    Increment(exceptions, "care-records");
+                    continue;
+                }
+
+                var storeId = ResolveStore(row, "bill_shop", storesBySource, storesByLegacyCode,
+                    storesByLegacyName, defaultStoreId);
+                var followUpParts = new[]
+                {
+                    CleanText(Field(row, "bill_next"), 100) is { } next ? $"下次护理：{next}" : null,
+                    CleanText(Field(row, "bill_emplee"), 100) is { } employee ? $"护理人员：{employee}" : null,
+                    CleanText(Field(row, "bill_memo"), 1_700)
+                }.Where(value => value is not null);
+                var followUp = CleanText(string.Join("；", followUpParts), 2_000);
+                var record = new ServiceRecord(
+                    tenant.Id,
+                    storeId,
+                    customerMap.TargetId,
+                    null,
+                    ParseOccurredAt(Field(row, "bill_time1"), Field(row, "bill_date")),
+                    CleanText(Field(row, "bill_intro"), 2_000),
+                    CleanText(Field(row, "bill_plan"), 4_000),
+                    followUp,
+                    DeterministicGuid($"{tenant.Id:N}:legacy-care-record:{row.SourceId}"),
+                    operatorId,
+                    DateTimeOffset.UtcNow);
+                foreach (var photo in carePhotos)
+                {
+                    if (photo.Content.LongLength > SecureFileStorage.MaximumImageBytes)
+                    {
+                        await AddExceptionAsync(runId, tenant.Id, row, $"care_image{photo.Slot}",
+                            "PHOTO_TOO_LARGE", "Warning", "历史护理照片超过5MB，未导入附件", cancellationToken);
+                        Increment(exceptions, "care-photos");
+                        continue;
+                    }
+                    await using var content = new MemoryStream(photo.Content, writable: false);
+                    var stored = await fileStorage.StoreImageAsync(tenant.Id, storeId,
+                        StoredFilePurposes.ServiceRecordImage, operatorId,
+                        new FileUploadInput($"legacy-care-{row.SourceId}-slot-{photo.Slot}.jpg", photo.ContentType,
+                            photo.Content.LongLength, content), cancellationToken);
+                    storedFiles.Add(stored);
+                    db.StoredFiles.Add(stored);
+                    record.AttachImage(stored.Id);
+                    Increment(created, "care-photos");
+                }
+                db.ServiceRecords.Add(record);
+                await AddMapAsync(runId, tenant.Id, noteSource, "customer_service_records", record.Id, maps,
+                    cancellationToken);
+                Increment(created, "care-records");
                 Increment(created, "service-records");
             }
 
@@ -328,7 +410,8 @@ internal sealed partial class LegacyImportService(
             throw new InvalidOperationException("本迁移切片只允许写入测试品牌 B01");
         if (dataset.SourceFingerprintSha256.Length != 64 || !dataset.SourceFingerprintSha256.All(Uri.IsHexDigit))
             throw new InvalidOperationException("来源指纹无效");
-        if (dataset.Rows.Count > 20_000 || dataset.Photos.Count > 20_000)
+        if (dataset.Rows.Count > 20_000 || dataset.Photos.Count > 20_000 ||
+            (dataset.CarePhotos?.Count ?? 0) > 20_000)
             throw new InvalidOperationException("迁移数据超过安全上限");
         if (dataset.Rows.Any(row => row.SourceSha256.Length != 64 || !row.SourceSha256.All(Uri.IsHexDigit)))
             throw new InvalidOperationException("来源记录摘要无效");
@@ -396,12 +479,25 @@ internal sealed partial class LegacyImportService(
     }
 
     private static Guid ResolveStore(LegacySourceRow row, string field,
-        Dictionary<string, Guid> bySource, Dictionary<string, Guid> byCode, Guid fallback)
+        Dictionary<string, Guid> bySource, Dictionary<string, Guid> byCode,
+        Dictionary<string, Guid> byName, Guid fallback)
     {
-        var value = Field(row, field) ?? string.Empty;
+        var value = Field(row, field)?.Trim() ?? string.Empty;
+        if (value.Length == 0) return fallback;
         if (bySource.TryGetValue(value, out var byId)) return byId;
         if (byCode.TryGetValue(value, out var byLegacyCode)) return byLegacyCode;
-        return fallback;
+        if (byName.TryGetValue(value, out var byLegacyName)) return byLegacyName;
+        throw new InvalidOperationException(
+            $"旧系统{row.Entity}记录 {row.SourceId} 的门店值“{value}”无法映射；已拒绝回退到默认门店");
+    }
+
+    private static void AddStoreAlias(Dictionary<string, Guid> aliases, string alias, Guid storeId)
+    {
+        var normalized = alias.Trim();
+        if (normalized.Length == 0) return;
+        if (aliases.TryGetValue(normalized, out var existing) && existing != storeId)
+            throw new InvalidOperationException($"旧系统门店名称“{normalized}”不唯一，无法安全迁移");
+        aliases[normalized] = storeId;
     }
 
     private static string CombinedHash(string rowHash, IEnumerable<string> photoHashes)

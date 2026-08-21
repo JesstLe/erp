@@ -11,13 +11,15 @@ using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
 using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Persistence;
+using Erp.Infrastructure.Organization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 namespace Erp.Infrastructure.Facilities;
 
-public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpContextAccessor httpContextAccessor) : IFacilityService
+public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpContextAccessor httpContextAccessor,
+    BusinessCodeGenerator codeGenerator) : IFacilityService
 {
     private static readonly FacilitySessionStatus[] OpenSessionStatuses = [FacilitySessionStatus.Active, FacilitySessionStatus.Paused];
 
@@ -179,11 +181,12 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
     {
         var validGroup = await db.FacilityGroups.AnyAsync(x => x.Id == command.GroupId && x.TenantId == tenantId && x.StoreId == command.StoreId, cancellationToken);
         if (!validGroup) return ResultFactory.Failure<FacilityBoardItemDto>("VALIDATION_FAILED", "所属服务区无效");
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             var typeId = await ResolveTypeIdAsync(tenantId, command.FacilityTypeId, cancellationToken);
             if (!typeId.HasValue) return ResultFactory.Failure<FacilityBoardItemDto>("VALIDATION_FAILED", "设施类型无效");
-            var code = string.IsNullOrWhiteSpace(command.Code) ? $"F-{Guid.CreateVersion7():N}"[..10] : command.Code;
+            var code = await codeGenerator.NextFacilityCodeAsync(command.StoreId, cancellationToken);
             var facility = new Facility(tenantId, command.StoreId, command.GroupId, typeId.Value, code,
                 command.DisplayName, command.SortOrder, command.DefaultCleaningMinutes, command.AllowReservation,
                 command.ServiceName, command.EquipmentName, command.ReferencePriceMinor);
@@ -191,10 +194,19 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
             AddAudit(tenantId, command.StoreId, command.OperatorId, "facility.create", "Facility", facility.Id, null,
                 "Created", Guid.CreateVersion7(), null, clock.GetUtcNow(), ConfigurationState(facility));
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return await GetItemAsync(tenantId, command.StoreId, facility.Id, cancellationToken);
         }
-        catch (DomainRuleException exception) { return ResultFactory.Failure<FacilityBoardItemDto>("VALIDATION_FAILED", exception.Message); }
-        catch (DbUpdateException exception) when (IsUniqueViolation(exception)) { return ResultFactory.Failure<FacilityBoardItemDto>("DUPLICATE_FACILITY_CODE", "同一门店的设施编号不能重复"); }
+        catch (DomainRuleException exception)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<FacilityBoardItemDto>(exception.Code, exception.Message);
+        }
+        catch (DbUpdateException exception) when (IsUniqueViolation(exception))
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<FacilityBoardItemDto>("CODE_GENERATION_CONFLICT", "服务位编号生成冲突，请重试");
+        }
     }
 
     public async Task<Result<FacilityConfigurationItemDto>> UpdateFacilityAsync(Guid tenantId,
@@ -217,8 +229,7 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
         var previous = ConfigurationState(facility);
         try
         {
-            var code = string.IsNullOrWhiteSpace(command.Code) ? facility.Code : command.Code;
-            facility.Update(command.GroupId, typeId.Value, code, command.DisplayName, command.SortOrder,
+            facility.Update(command.GroupId, typeId.Value, facility.Code, command.DisplayName, command.SortOrder,
                 command.DefaultCleaningMinutes, command.AllowReservation, command.ServiceName, command.EquipmentName,
                 command.ReferencePriceMinor, command.LifecycleStatus);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "facility.update", "Facility", facility.Id,

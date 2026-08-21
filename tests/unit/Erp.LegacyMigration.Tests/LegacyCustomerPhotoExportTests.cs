@@ -36,4 +36,18 @@ public sealed class LegacyCustomerPhotoExportTests
         Assert.Equal(2, photos.Count);
         Assert.Equal([1, 2], photos.Select(x => x.Slot));
     }
+
+    [Fact]
+    public void ResolvesRelativeCarePhotoAgainstNursePage()
+    {
+        const string html = """
+            <img src="../picture/21091626/nurse/120260626133419.jpg">
+            """;
+
+        var photos = LegacyCustomerPhotoExportEngine.ParseCarePhotoUris(html);
+
+        var photo = Assert.Single(photos);
+        Assert.Equal("https://app5.siweicloud.com/swshop/picture/21091626/nurse/120260626133419.jpg",
+            photo.Uri.AbsoluteUri);
+    }
 }

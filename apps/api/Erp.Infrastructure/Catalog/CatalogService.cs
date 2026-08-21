@@ -4,6 +4,7 @@ using Erp.Domain.Catalog;
 using Erp.Domain.Common;
 using Erp.Infrastructure.Persistence;
 using Erp.Infrastructure.Files;
+using Erp.Infrastructure.Organization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -11,7 +12,7 @@ using System.Text.Json;
 namespace Erp.Infrastructure.Catalog;
 
 public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor httpContextAccessor,
-    SecureFileStorage fileStorage) : ICatalogService
+    SecureFileStorage fileStorage, BusinessCodeGenerator codeGenerator) : ICatalogService
 {
     public async Task<IReadOnlyList<ServiceItemDto>> ListServiceItemsAsync(Guid tenantId, string? query,
         CatalogItemStatus? status, bool includeCommission, CancellationToken cancellationToken)
@@ -33,25 +34,30 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
 
     public async Task<Result<ServiceItemDto>> CreateServiceItemAsync(Guid tenantId, CreateServiceItemCommand command, CancellationToken cancellationToken)
     {
-        if (await dbContext.ServiceItems.AnyAsync(x => x.TenantId == tenantId && x.Code == command.Code.Trim(), cancellationToken))
-        {
-            return ResultFactory.Failure<ServiceItemDto>("DUPLICATE_CODE", "项目编码已经存在");
-        }
-
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
-            var item = new ServiceItem(tenantId, command.Code, command.Name, command.StandardDurationMinutes);
+            var code = await codeGenerator.NextServiceItemCodeAsync(tenantId, cancellationToken);
+            var item = new ServiceItem(tenantId, code, command.Name, command.StandardDurationMinutes);
             item.ConfigureCommission(command.CommissionMode, command.CommissionRateBasisPoints,
                 command.CommissionFixedMinor);
             dbContext.ServiceItems.Add(item);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.service_item.create", "ServiceItem", item.Id,
                 null, item.Status.ToString());
             await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return ResultFactory.Success(Map(item));
         }
         catch (DomainRuleException exception)
         {
+            await transaction.RollbackAsync(cancellationToken);
             return ResultFactory.Failure<ServiceItemDto>(exception.Code, exception.Message);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<ServiceItemDto>("CODE_GENERATION_CONFLICT",
+                "项目编码生成冲突，请重试");
         }
     }
 
@@ -135,21 +141,28 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
     public async Task<Result<ProductItemDto>> CreateProductItemAsync(Guid tenantId, CreateProductItemCommand command,
         CancellationToken cancellationToken)
     {
-        var code = command.Code.Trim().ToUpperInvariant();
-        if (await dbContext.Set<ProductItem>().AnyAsync(x => x.TenantId == tenantId && x.Code == code, cancellationToken))
-            return ResultFactory.Failure<ProductItemDto>("DUPLICATE_CODE", "产品编码已经存在");
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         try
         {
+            var code = await codeGenerator.NextProductItemCodeAsync(tenantId, cancellationToken);
             var item = new ProductItem(tenantId, code, command.Name, command.UnitName, command.TrackInventory);
             dbContext.Set<ProductItem>().Add(item);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.product_item.create", "ProductItem", item.Id,
                 null, item.Status.ToString());
             await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return ResultFactory.Success(Map(item));
         }
         catch (DomainRuleException exception)
         {
+            await transaction.RollbackAsync(cancellationToken);
             return ResultFactory.Failure<ProductItemDto>(exception.Code, exception.Message);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<ProductItemDto>("CODE_GENERATION_CONFLICT",
+                "产品编码生成冲突，请重试");
         }
     }
 

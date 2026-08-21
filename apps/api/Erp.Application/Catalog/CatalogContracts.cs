@@ -6,7 +6,7 @@ namespace Erp.Application.Catalog;
 public sealed record ServiceItemDto(Guid Id, string Code, string Name, int StandardDurationMinutes, string Status,
     uint Version, string? CommissionMode, int? CommissionRateBasisPoints, long? CommissionFixedMinor);
 
-public sealed record CreateServiceItemCommand(string Code, string Name, int StandardDurationMinutes,
+public sealed record CreateServiceItemCommand(string Name, int StandardDurationMinutes,
     CommissionMode CommissionMode, int? CommissionRateBasisPoints, long? CommissionFixedMinor, Guid OperatorId,
     Guid? StoreId);
 public sealed record UpdateServiceItemCommand(Guid Id, string Name, int StandardDurationMinutes,
@@ -17,7 +17,7 @@ public sealed record DeleteCatalogItemCommand(Guid Id, uint ExpectedVersion, Gui
 public sealed record ProductItemDto(Guid Id, string Code, string Name, string UnitName, bool TrackInventory,
     Guid? ImageFileId, string Status, uint Version);
 
-public sealed record CreateProductItemCommand(string Code, string Name, string UnitName, bool TrackInventory,
+public sealed record CreateProductItemCommand(string Name, string UnitName, bool TrackInventory,
     Guid OperatorId, Guid? StoreId);
 public sealed record UpdateProductItemCommand(Guid Id, string Name, string UnitName, bool TrackInventory,
     CatalogItemStatus Status, uint ExpectedVersion, Guid OperatorId, Guid? StoreId);

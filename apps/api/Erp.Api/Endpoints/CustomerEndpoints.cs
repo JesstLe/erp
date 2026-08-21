@@ -143,7 +143,7 @@ public static class CustomerEndpoints
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
             return current is null ? Results.Unauthorized() : EndpointResults.From(await customers.CreateCardTypeAsync(current.TenantId,
-                new CreateMemberCardTypeCommand(request.Code ?? string.Empty, request.Name ?? string.Empty,
+                new CreateMemberCardTypeCommand(request.Name ?? string.Empty,
                     request.ValidityDays, request.CommandId, current.Id), cancellationToken));
         }).RequireAuthorization(SystemPermissions.MembershipCardTypeManage);
 
@@ -274,7 +274,7 @@ public static class CustomerEndpoints
     private sealed record PreviewCustomerMergeRequest(Guid StoreId, Guid TargetCustomerId);
     private sealed record MergeCustomerRequest(Guid StoreId, Guid TargetCustomerId,
         uint ExpectedSourceVersion, uint ExpectedTargetVersion, string? Reason, Guid CommandId);
-    private sealed record CreateCardTypeRequest(string? Code, string? Name, int? ValidityDays, Guid CommandId);
+    private sealed record CreateCardTypeRequest(string? Name, int? ValidityDays, Guid CommandId);
     private sealed record OpenMembershipRequest(Guid StoreId, Guid CardTypeId, string? CardNo, string? Note, Guid CommandId);
     private sealed record RevealCustomerMobileRequest(Guid StoreId, string? Purpose, Guid CommandId);
     private sealed record ExportCustomersRequest(Guid StoreId, string? Query, bool IncludeFullMobile,
