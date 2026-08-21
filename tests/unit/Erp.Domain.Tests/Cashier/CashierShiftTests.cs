@@ -19,11 +19,23 @@ public sealed class CashierShiftTests
     }
 
     [Fact]
-    public void ReviewMustBeIndependent()
+    public void BalancedShiftWithoutPendingExternalClosesAutomatically()
     {
         var shift = CreateShift(0);
         shift.Submit(0, 0, 0, null, Now.AddHours(8));
 
+        Assert.Equal(CashierShiftStatus.Closed, shift.Status);
+        Assert.Equal(Now.AddHours(8), shift.ClosedAtUtc);
+        Assert.Null(shift.ReviewedBy);
+    }
+
+    [Fact]
+    public void ReviewMustBeIndependentWhenDifferenceRequiresReview()
+    {
+        var shift = CreateShift(0);
+        shift.Submit(0, 0, 1, null, Now.AddHours(8));
+
+        Assert.Equal(CashierShiftStatus.ReviewPending, shift.Status);
         Assert.Throws<DomainRuleException>(() => shift.Review(shift.OperatorId, null, Now.AddHours(9)));
     }
 
