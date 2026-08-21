@@ -64,6 +64,7 @@ import { useAuthorization } from "../security/useAuthorization";
 import {
   cashAmountMinor as calculateCashAmountMinor,
   cashTenderedMinorForSubmission,
+  hasAllocationCategory,
 } from "./cashierRules";
 
 interface OrderLineValues {
@@ -616,11 +617,25 @@ export function CashierPage() {
           })),
         }),
       }),
-    onSuccess: async (result) => {
+    onSuccess: async (result, variables) => {
+      const includesManualExternal = hasAllocationCategory(
+        variables.values.allocations,
+        paymentMethods.data ?? [],
+        "ManualExternal",
+      );
+      const includesMemberAccount = hasAllocationCategory(
+        variables.values.allocations,
+        paymentMethods.data ?? [],
+        "InternalAccount",
+      );
       message.success(
         result.cashChangeMinor
           ? `结算完成，应找零 ${money(result.cashChangeMinor)}`
-          : "结算完成；会员余额已写入不可变扣款流水",
+          : includesManualExternal
+            ? "人工收款已记录，消费单已结算；金额已计入当前班次的人工外部收款待核对"
+            : includesMemberAccount
+              ? "结算完成；会员余额已写入不可变扣款流水"
+              : "收款已记录，消费单已结算",
       );
       setSettleOrder(undefined);
       setMemberVerification(undefined);
@@ -1184,6 +1199,12 @@ export function CashierPage() {
         : sum,
     0,
   );
+  const hasRealChannelMethod = paymentMethods.data?.some(
+    (method) => method.category === "ChannelExternal",
+  );
+  const hasManualExternalMethod = paymentMethods.data?.some(
+    (method) => method.category === "ManualExternal",
+  );
   const memberAccounts: SettlementMemberAccount[] =
     settlementCustomer.data?.cards.flatMap((card) =>
       card.accounts.map((account) => ({
@@ -1314,7 +1335,7 @@ export function CashierPage() {
       ),
     },
     {
-      title: "理论现金",
+      title: "理论现金（仅现金）",
       dataIndex: ["shift", "expectedCashMinor"],
       align: "right" as const,
       render: (value?: number) =>
@@ -1334,7 +1355,7 @@ export function CashierPage() {
         ),
     },
     {
-      title: "外部待核对",
+      title: "人工外部收款待核对",
       dataIndex: ["shift", "pendingReconciliationMinor"],
       align: "right" as const,
       render: (value?: number) =>
@@ -2897,9 +2918,15 @@ export function CashierPage() {
         destroyOnHidden
       >
         <Alert
-          type="warning"
+          type={hasRealChannelMethod ? "warning" : "info"}
           showIcon
-          title="会员余额只按服务端账户扣减；真实微信/支付宝必须等待渠道确认，人工登记不会伪装成渠道确认。"
+          title={
+            hasRealChannelMethod
+              ? "会员余额只按服务端账户扣减；真实微信/支付宝必须等待渠道确认，人工登记不会伪装成渠道确认。"
+              : hasManualExternalMethod
+                ? "真实微信/支付宝渠道当前停用；仍可选择现金、微信人工登记或支付宝人工登记完成结算。人工登记金额会进入当前班次的“人工外部收款待核对”。"
+                : "真实微信/支付宝渠道当前停用；仍可选择现金完成结算。"
+          }
           className="modal-alert"
         />
         <Form<SettleValues>

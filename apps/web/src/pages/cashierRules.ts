@@ -1,6 +1,15 @@
 interface AllocationInput { methodId?: string; amountYuan?: number }
 interface MethodInput { id: string; category: string }
 
+export function hasAllocationCategory(
+  allocations: AllocationInput[],
+  methods: MethodInput[],
+  category: string,
+): boolean {
+  return allocations.some((line) =>
+    methods.find((item) => item.id === line.methodId)?.category === category)
+}
+
 export function cashAmountMinor(allocations: AllocationInput[], methods: MethodInput[]): number {
   return allocations.reduce((sum, line) => {
     const method = methods.find((item) => item.id === line.methodId)
