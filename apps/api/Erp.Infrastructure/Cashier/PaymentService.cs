@@ -259,7 +259,7 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                 return await FailureAndRollback<CashierShiftDto>(transaction, "FORBIDDEN_ACTION", "较大现金差额或外部待核对金额必须由最高权限复核", cancellationToken);
             var now = clock.GetUtcNow();
             var previous = shift.Status.ToString();
-            shift.Review(command.ReviewerId, command.Reason, now);
+            shift.Review(command.ReviewerId, command.Reason, now, command.IsOwner);
             AddReceipt(tenantId, command.CommandId, command.ReviewerId, hash, shift.Id, now);
             AddAudit(tenantId, command.StoreId, command.ReviewerId, "cashier_shift.review", "CashierShift", shift.Id,
                 previous, shift.Status.ToString(), command.CommandId, command.Reason, now);

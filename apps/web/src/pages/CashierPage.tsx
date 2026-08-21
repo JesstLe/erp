@@ -62,6 +62,7 @@ import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { Permission } from "../security/permissions";
 import { useAuthorization } from "../security/useAuthorization";
 import {
+  canActivateShiftReview,
   cashAmountMinor as calculateCashAmountMinor,
   cashTenderedMinorForSubmission,
   hasAllocationCategory,
@@ -1375,7 +1376,13 @@ export function CashierPage() {
             size="small"
             type="primary"
             icon={<CheckCircleOutlined />}
-            disabled={item.shift.operatorId === auth.user?.id}
+            disabled={
+              !canActivateShiftReview(
+                item.shift.operatorId,
+                auth.user?.id,
+                isOwner,
+              )
+            }
             onClick={(event) => {
               event.stopPropagation();
               reviewForm.setFieldsValue({

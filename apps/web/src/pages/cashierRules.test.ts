@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { cashAmountMinor, cashTenderedMinorForSubmission, hasAllocationCategory } from './cashierRules'
+import {
+  canActivateShiftReview,
+  cashAmountMinor,
+  cashTenderedMinorForSubmission,
+  hasAllocationCategory,
+} from './cashierRules'
 
 const methods = [
   { id: 'cash', category: 'Cash' },
@@ -32,5 +37,19 @@ describe('cashier cash presentation rules', () => {
 
     expect(hasAllocationCategory(allocations, paymentMethods, 'ManualExternal')).toBe(true)
     expect(hasAllocationCategory(allocations, paymentMethods, 'ChannelExternal')).toBe(false)
+  })
+})
+
+describe('cashier shift review authorization presentation', () => {
+  it('keeps self review disabled for a non-owner', () => {
+    expect(canActivateShiftReview('operator-1', 'operator-1', false)).toBe(false)
+  })
+
+  it('allows an owner to review their own shift as the final business fallback', () => {
+    expect(canActivateShiftReview('owner-1', 'owner-1', true)).toBe(true)
+  })
+
+  it('allows an authorized user to review another operator shift', () => {
+    expect(canActivateShiftReview('operator-1', 'manager-1', false)).toBe(true)
   })
 })
