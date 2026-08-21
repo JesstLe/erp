@@ -1,6 +1,14 @@
 interface AllocationInput { methodId?: string; amountYuan?: number }
 interface MethodInput { id: string; category: string }
 
+export function canActivateShiftReview(
+  shiftOperatorId: string,
+  currentUserId: string | undefined,
+  isOwner: boolean,
+): boolean {
+  return isOwner || shiftOperatorId !== currentUserId
+}
+
 export function hasAllocationCategory(
   allocations: AllocationInput[],
   methods: MethodInput[],

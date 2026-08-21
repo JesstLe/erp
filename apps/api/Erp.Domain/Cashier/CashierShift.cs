@@ -62,10 +62,11 @@ public sealed class CashierShift : Entity
         Touch();
     }
 
-    public void Review(Guid reviewerId, string? reason, DateTimeOffset now)
+    public void Review(Guid reviewerId, string? reason, DateTimeOffset now, bool isOwner = false)
     {
         if (Status != CashierShiftStatus.ReviewPending) throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前班次不在待复核状态");
-        if (reviewerId == OperatorId) throw new DomainRuleException("FORBIDDEN_ACTION", "交班复核人不能是本班次收银员本人");
+        if (reviewerId == OperatorId && !isOwner)
+            throw new DomainRuleException("FORBIDDEN_ACTION", "非最高权限账号不能复核本人提交的交班");
         var normalizedReason = Normalize(reason, 500, "复核说明");
         if ((CashDifferenceMinor != 0 || PendingReconciliationMinor > 0) && normalizedReason is null)
             throw new DomainRuleException("VALIDATION_FAILED", "存在差额或待核对外部收款时必须填写复核说明");

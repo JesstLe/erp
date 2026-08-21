@@ -40,6 +40,19 @@ public sealed class CashierShiftTests
     }
 
     [Fact]
+    public void OwnerCanReviewOwnShiftAsFinalBusinessFallback()
+    {
+        var shift = CreateShift(0);
+        shift.Submit(9_900, 0, 0, "实交为零", Now.AddHours(8));
+
+        shift.Review(shift.OperatorId, "最高权限确认现金短款并完成异常关班", Now.AddHours(9), isOwner: true);
+
+        Assert.Equal(CashierShiftStatus.Closed, shift.Status);
+        Assert.Equal(shift.OperatorId, shift.ReviewedBy);
+        Assert.Equal("最高权限确认现金短款并完成异常关班", shift.ReviewReason);
+    }
+
+    [Fact]
     public void DifferenceOrPendingExternalRequiresReviewReason()
     {
         var shift = CreateShift(0);

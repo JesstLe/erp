@@ -790,6 +790,17 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal(0L, submittedPrimaryShift.CashDifferenceMinor);
         Assert.Equal(11_000L, submittedPrimaryShift.PendingReconciliationMinor);
 
+        var ownerSelfReviewedShift = await PostAsync<CashierShiftDto>(client,
+            $"/api/v1/payments/shifts/{submittedPrimaryShift.Id}/review", new
+            {
+                storeId, expectedVersion = submittedPrimaryShift.Version,
+                reason = "最高权限确认外部待核对款项并完成关班", commandId = Guid.NewGuid(),
+            });
+        Assert.Equal("Closed", ownerSelfReviewedShift.Status);
+        Assert.Equal(login.Id, ownerSelfReviewedShift.ReviewedBy);
+        Assert.Equal("最高权限确认外部待核对款项并完成关班", ownerSelfReviewedShift.ReviewReason);
+        Assert.Equal(11_000L, ownerSelfReviewedShift.PendingReconciliationMinor);
+
         var redeemedPass = await PostAsync<ServicePassDto>(client,
             $"/api/v1/membership-benefits/service-passes/{issuedPass.Id}/redeem", new
             {
