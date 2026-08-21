@@ -89,7 +89,7 @@ export function FacilityConfigurationPage() {
         ? apiRequest('/api/v1/facilities', { method: 'POST', body: JSON.stringify(body) })
         : apiRequest(`/api/v1/facilities/${editingFacility?.id}`, { method: 'PUT', body: JSON.stringify(body) })
     },
-    onSuccess: async () => { message.success(editingFacility === 'new' ? '服务位已创建' : '服务位已更新'); setEditingFacility(undefined); facilityForm.resetFields(); await refresh() },
+    onSuccess: async () => { message.success(editingFacility === 'new' ? '服务位已创建，编号已由系统自动分配' : '服务位已更新'); setEditingFacility(undefined); facilityForm.resetFields(); await refresh() },
     onError,
   })
 
@@ -156,7 +156,8 @@ export function FacilityConfigurationPage() {
       {editingFacility !== 'new' && editingFacility && <Descriptions size="small" bordered column={2} className="modal-alert" items={[{ key: 'store', label: '门店', children: configuration.data?.storeName }, { key: 'using', label: '当前占用', children: editingFacility.hasOpenSession ? '正在使用，不可维护或停用' : '未占用' }]} />}
       <Form<FacilityValues> form={facilityForm} layout="vertical" onFinish={(values) => saveFacility.mutate(values)} initialValues={{ groupId: newFacilityGroupId }}>
         <Space align="start" className="full-width"><Form.Item name="groupId" label="所属服务区" rules={[{ required: true }]} className="grow"><Select options={configuration.data?.groups.map((group) => ({ value: group.id, label: group.displayName }))} /></Form.Item><Form.Item name="displayName" label="服务位名称" rules={[{ required: true }, { max: 50 }]} className="grow"><Input placeholder="例如 A01服务位" maxLength={50} /></Form.Item></Space>
-        <Space align="start" className="full-width"><Form.Item name="code" label="服务位编号（可选）" rules={[{ max: 40 }]} className="grow"><Input placeholder="留空时系统自动生成" maxLength={40} /></Form.Item><Form.Item name="facilityTypeId" label="设施类型（可选）" className="grow"><Select allowClear placeholder="留空使用通用类型" options={types.data?.map((type) => ({ value: type.id, label: type.displayName }))} /></Form.Item></Space>
+        {editingFacility === 'new' ? <Alert type="info" showIcon title="保存后系统将自动生成当前门店内唯一编号，例如 F0001。" className="modal-alert" /> : <Form.Item label="服务位编号" extra="系统永久标识，创建后不可修改。"><Input value={editingFacility?.code ?? ''} disabled /></Form.Item>}
+        <Form.Item name="facilityTypeId" label="设施类型（可选）"><Select allowClear placeholder="留空使用通用类型" options={types.data?.map((type) => ({ value: type.id, label: type.displayName }))} /></Form.Item>
         <Space align="start" className="full-width"><Form.Item name="serviceName" label="服务名称（可选）" rules={[{ max: 120 }]} className="grow"><Input placeholder="例如 基础护理" maxLength={120} /></Form.Item><Form.Item name="equipmentName" label="内部设施名称（可选）" rules={[{ max: 120 }]} className="grow"><Input placeholder="例如 护理床、仪器名称" maxLength={120} /></Form.Item></Space>
         <Space align="start" className="full-width"><Form.Item name="referencePriceYuan" label="参考单价（元，可选）" className="grow"><InputNumber min={0} max={100000000} precision={2} prefix="¥" className="full-width" /></Form.Item><Form.Item name="lifecycleStatus" label="使用状态" rules={[{ required: true }]} className="grow"><Select disabled={Boolean(editingFacility !== 'new' && editingFacility?.hasOpenSession)} options={lifecycleOptions} /></Form.Item></Space>
         <Space align="start"><Form.Item name="sortOrder" label="显示顺序" rules={[{ required: true }]}><InputNumber precision={0} /></Form.Item><Form.Item name="defaultCleaningMinutes" label="默认清洁分钟（可选）"><InputNumber min={0} max={1440} precision={0} /></Form.Item></Space>

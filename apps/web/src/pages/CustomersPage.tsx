@@ -275,8 +275,8 @@ export function CustomersPage() {
         method: "POST",
         body: JSON.stringify({ ...values, commandId: commandId() }),
       }),
-    onSuccess: async () => {
-      message.success("卡类已发布");
+    onSuccess: async (cardType) => {
+      message.success(`卡类已发布，系统编号 ${cardType.code}`);
       setCardTypeOpen(false);
       cardTypeForm.resetFields();
       await queryClient.invalidateQueries({ queryKey: ["member-card-types"] });
@@ -1486,13 +1486,12 @@ export function CustomersPage() {
           layout="vertical"
           onFinish={(values) => createCardType.mutate(values)}
         >
-          <Form.Item
-            name="code"
-            label="卡类编号"
-            rules={[{ required: true }, { max: 40 }]}
-          >
-            <Input placeholder="例如 VIP" maxLength={40} />
-          </Form.Item>
+          <Alert
+            type="info"
+            showIcon
+            title="发布后由系统自动生成品牌内唯一编号，例如 CT000001。"
+            className="modal-alert"
+          />
           <Form.Item
             name="name"
             label="卡类名称"

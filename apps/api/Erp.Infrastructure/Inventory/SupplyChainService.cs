@@ -10,6 +10,7 @@ using Erp.Domain.Common;
 using Erp.Domain.Inventory;
 using Erp.Domain.Organization;
 using Erp.Infrastructure.Persistence;
+using Erp.Infrastructure.Organization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -18,7 +19,7 @@ using Npgsql;
 namespace Erp.Infrastructure.Inventory;
 
 internal sealed class SupplyChainService(ErpDbContext db, TimeProvider clock,
-    IHttpContextAccessor httpContextAccessor) : ISupplyChainService
+    IHttpContextAccessor httpContextAccessor, BusinessCodeGenerator codeGenerator) : ISupplyChainService
 {
     public async Task<PageResult<SupplierDto>> ListSuppliersAsync(Guid tenantId, string? keyword,
         bool includeDisabled, int page, int pageSize, CancellationToken cancellationToken)
@@ -42,6 +43,7 @@ internal sealed class SupplyChainService(ErpDbContext db, TimeProvider clock,
     public async Task<Result<SupplierDto>> SaveSupplierAsync(Guid tenantId, SaveSupplierCommand command,
         CancellationToken cancellationToken)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
             Supplier supplier;
@@ -58,7 +60,8 @@ internal sealed class SupplyChainService(ErpDbContext db, TimeProvider clock,
             }
             else
             {
-                supplier = new Supplier(tenantId, command.Code, command.Name, command.ContactName,
+                var code = await codeGenerator.NextSupplierCodeAsync(tenantId, cancellationToken);
+                supplier = new Supplier(tenantId, code, command.Name, command.ContactName,
                     command.Mobile, command.SettlementTerms);
                 db.Suppliers.Add(supplier);
             }
@@ -66,11 +69,24 @@ internal sealed class SupplyChainService(ErpDbContext db, TimeProvider clock,
                 "supplier.create", "Supplier", supplier.Id, previous,
                 supplier.Status.ToString(), Guid.CreateVersion7(), null);
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return ResultFactory.Success(ToSupplierDto(supplier));
         }
-        catch (DomainRuleException exception) { return Failure<SupplierDto>(exception); }
+        catch (DomainRuleException exception)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return Failure<SupplierDto>(exception);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<SupplierDto>("VERSION_CONFLICT", "供应商已变化，请刷新后重试");
+        }
         catch (Exception exception) when (IsConflict(exception))
-        { return ResultFactory.Failure<SupplierDto>("DUPLICATE_SUPPLIER_CODE", "供应商编码已存在"); }
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<SupplierDto>("CODE_GENERATION_CONFLICT", "供应商编码生成冲突，请重试");
+        }
     }
 
     public async Task<Result<SupplierDto>> ChangeSupplierStatusAsync(Guid tenantId,

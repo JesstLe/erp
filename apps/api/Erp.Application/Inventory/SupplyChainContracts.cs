@@ -4,7 +4,7 @@ namespace Erp.Application.Inventory;
 
 public sealed record SupplierDto(Guid Id, string Code, string Name, string? ContactName, string? Mobile,
     string? SettlementTerms, string Status, uint Version);
-public sealed record SaveSupplierCommand(Guid? Id, string Code, string Name, string? ContactName,
+public sealed record SaveSupplierCommand(Guid? Id, string Name, string? ContactName,
     string? Mobile, string? SettlementTerms, uint? ExpectedVersion, Guid OperatorId);
 public sealed record ChangeSupplierStatusCommand(Guid SupplierId, bool Enable, uint ExpectedVersion,
     Guid OperatorId);

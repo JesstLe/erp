@@ -9,7 +9,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { Permission } from '../security/permissions'
 import { useAuthorization } from '../security/useAuthorization'
 
-interface ProductForm { code?: string; name: string; unitName: string; trackInventory: boolean; status: string }
+interface ProductForm { name: string; unitName: string; trackInventory: boolean; status: string }
 
 function requestError(error: unknown): string {
   return error instanceof ApiError ? error.message : '操作失败，请稍后重试'
@@ -30,7 +30,7 @@ export function ProductsPage() {
     mutationFn: (values: ProductForm) => editing
       ? apiRequest<ProductItem>(`/api/v1/catalog/products/${editing.id}`, { method: 'PUT', body: JSON.stringify({ ...values, expectedVersion: editing.version }) })
       : apiRequest<ProductItem>('/api/v1/catalog/products', { method: 'POST', body: JSON.stringify(values) }),
-    onSuccess: async () => { message.success(editing ? '产品档案已更新' : '产品档案已创建；图片可以稍后上传'); setOpen(false); setEditing(undefined); form.resetFields(); await refresh() },
+    onSuccess: async (item) => { message.success(editing ? '产品档案已更新' : `产品档案已创建，系统编码 ${item.code}；图片可以稍后上传`); setOpen(false); setEditing(undefined); form.resetFields(); await refresh() },
     onError: (error) => message.error(requestError(error)),
   })
   const updateStatus = useMutation({
@@ -51,11 +51,11 @@ export function ProductsPage() {
     setImageFiles([{ uid: crypto.randomUUID(), name: file.name, size: file.size, type: file.type, status: 'done', originFileObj: file as UploadFile['originFileObj'] }]); return false
   }
   const showCreate = () => { setEditing(undefined); form.resetFields(); form.setFieldsValue({ unitName: '件', trackInventory: false, status: 'ENABLED' }); setOpen(true) }
-  const showEdit = (item: ProductItem) => { setEditing(item); form.setFieldsValue({ code: item.code, name: item.name, unitName: item.unitName, trackInventory: item.trackInventory, status: item.status }); setOpen(true) }
+  const showEdit = (item: ProductItem) => { setEditing(item); form.setFieldsValue({ name: item.name, unitName: item.unitName, trackInventory: item.trackInventory, status: item.status }); setOpen(true) }
   const reset = () => { setQueryText(''); setStatus(undefined) }
 
   return <div className="page-stack">
-    <div className="page-heading"><div><Typography.Title level={2}>产品目录</Typography.Title><Typography.Paragraph>支持查询、修改、停用与恢复；图片可选，标准售价由最高权限账号在价格版本中统一发布。</Typography.Paragraph></div>{canManage && <Button type="primary" icon={<PlusOutlined />} onClick={showCreate}>新建产品</Button>}</div>
+    <div className="page-heading"><div><Typography.Title level={2}>产品目录</Typography.Title><Typography.Paragraph>产品编码由系统按品牌自动升序生成且永久不变；图片可选，标准售价由最高权限账号在价格版本中统一发布。</Typography.Paragraph></div>{canManage && <Button type="primary" icon={<PlusOutlined />} onClick={showCreate}>新建产品</Button>}</div>
     <Alert type="info" showIcon title="删除仅用于从未上传图片、设置价格、进入订单或库存的误建产品；已有业务记录的产品请停用。" />
     <Card variant="borderless"><Space wrap><Input value={queryText} onChange={(event) => setQueryText(event.target.value)} allowClear placeholder="输入产品编码或名称，自动匹配" maxLength={100} style={{ width: 300 }} prefix={<SearchOutlined />} suffix={normalizedQuery !== appliedQuery || query.isFetching ? <LoadingOutlined spin /> : null} aria-label="实时查询产品" /><Select value={status} onChange={setStatus} allowClear placeholder="全部状态" style={{ width: 140 }} options={[{ value: 'ENABLED', label: '启用' }, { value: 'DISABLED', label: '停用' }]} /><Button onClick={reset}>重置</Button><Typography.Text type="secondary">输入后自动加载，无需点击查询</Typography.Text></Space></Card>
     {query.error && <Alert type="error" showIcon title={requestError(query.error)} />}
@@ -69,7 +69,7 @@ export function ProductsPage() {
 
     <Modal title={editing ? '编辑产品' : '新建产品'} open={open} onCancel={() => { setOpen(false); setEditing(undefined) }} onOk={() => form.submit()} confirmLoading={save.isPending} okText="保存产品" cancelText="取消" destroyOnHidden>
       {save.error && <Alert type="error" showIcon title={requestError(save.error)} className="modal-alert" />}
-      <Form<ProductForm> form={form} layout="vertical" onFinish={(values) => save.mutate(values)} requiredMark="optional"><Form.Item name="code" label={editing ? '产品编码（只读）' : '产品编码'} rules={[{ required: true }, { max: 40 }]} extra={editing ? '编码用于关联历史记录，创建后不可修改。' : undefined}><Input disabled={Boolean(editing)} maxLength={40} placeholder="例如 PD001" /></Form.Item><Form.Item name="name" label="产品名称" rules={[{ required: true }, { max: 120 }]}><Input maxLength={120} /></Form.Item><Form.Item name="unitName" label="计量单位" rules={[{ required: true }, { max: 20 }]}><Input maxLength={20} placeholder="件、盒、套等" /></Form.Item><Form.Item name="trackInventory" valuePropName="checked"><Checkbox>跟踪门店库存</Checkbox></Form.Item>{editing && <Form.Item name="status" label="状态" rules={[{ required: true }]}><Select options={[{ value: 'ENABLED', label: '启用' }, { value: 'DISABLED', label: '停用' }]} /></Form.Item>}<Alert type="warning" showIcon title={editing ? '产品产生订单或库存记录后，库存跟踪属性将被锁定；名称、单位和状态仍可按规则维护。' : '产品保存后可上传可选图片；跟踪库存的产品需先录入期初或收货。'} /></Form>
+      <Form<ProductForm> form={form} layout="vertical" onFinish={(values) => save.mutate(values)} requiredMark="optional">{editing ? <Form.Item label="产品编码" extra="系统永久标识，创建后不可修改。"><Input value={editing.code} disabled /></Form.Item> : <Alert type="info" showIcon title="保存后系统将自动生成品牌内唯一编码，例如 PD000001。" className="modal-alert" />}<Form.Item name="name" label="产品名称" rules={[{ required: true }, { max: 120 }]}><Input maxLength={120} /></Form.Item><Form.Item name="unitName" label="计量单位" rules={[{ required: true }, { max: 20 }]}><Input maxLength={20} placeholder="件、盒、套等" /></Form.Item><Form.Item name="trackInventory" valuePropName="checked"><Checkbox>跟踪门店库存</Checkbox></Form.Item>{editing && <Form.Item name="status" label="状态" rules={[{ required: true }]}><Select options={[{ value: 'ENABLED', label: '启用' }, { value: 'DISABLED', label: '停用' }]} /></Form.Item>}<Alert type="warning" showIcon title={editing ? '产品产生订单或库存记录后，库存跟踪属性将被锁定；名称、单位和状态仍可按规则维护。' : '产品保存后可上传可选图片；跟踪库存的产品需先录入期初或收货。'} /></Form>
     </Modal>
     <Modal title={`${imageProduct?.name ?? ''} · ${imageProduct?.imageFileId ? '更换图片' : '上传图片'}`} open={Boolean(imageProduct)} onCancel={() => { setImageProduct(undefined); setImageFiles([]) }} onOk={submitImage} confirmLoading={uploadImage.isPending} okText="保存图片" destroyOnHidden>
       {uploadImage.error && <Alert type="error" showIcon title={requestError(uploadImage.error)} className="modal-alert" />}

@@ -7,6 +7,7 @@ using Erp.Domain.Common;
 using Erp.Domain.Organization;
 using Erp.Infrastructure.Persistence;
 using Erp.Infrastructure.Platform;
+using Erp.Infrastructure.Organization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -14,7 +15,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Erp.Infrastructure.Identity;
 
 internal sealed partial class EmployeeService(ErpDbContext db, UserManager<ApplicationUser> userManager,
-    IHttpContextAccessor httpContextAccessor, LoginSecurityEventWriter securityEvents) : IEmployeeService
+    IHttpContextAccessor httpContextAccessor, LoginSecurityEventWriter securityEvents,
+    BusinessCodeGenerator codeGenerator) : IEmployeeService
 {
     private static readonly Dictionary<string, string> RoleNames = new()
     {
@@ -75,16 +77,13 @@ internal sealed partial class EmployeeService(ErpDbContext db, UserManager<Appli
     public async Task<Result<EmployeeDto>> CreateAsync(Guid tenantId, CreateEmployeeCommand command,
         CancellationToken cancellationToken)
     {
-        var employeeNo = command.EmployeeNo.Trim().ToUpperInvariant();
         var displayName = command.DisplayName.Trim();
         var positionCode = command.PositionCode.Trim();
         var storeIds = command.StoreIds.Distinct().ToList();
-        if (!EmployeeNoPattern().IsMatch(employeeNo) || displayName.Length is < 2 or > 100 || positionCode.Length is < 2 or > 40)
-            return ResultFactory.Failure<EmployeeDto>("VALIDATION_FAILED", "请检查员工工号、姓名和岗位");
+        if (displayName.Length is < 2 or > 100 || positionCode.Length is < 2 or > 40)
+            return ResultFactory.Failure<EmployeeDto>("VALIDATION_FAILED", "请检查员工姓名和岗位");
         if (storeIds.Count == 0)
             return ResultFactory.Failure<EmployeeDto>("VALIDATION_FAILED", "至少选择一个所属门店");
-        if (await db.Set<Employee>().AnyAsync(x => x.TenantId == tenantId && x.EmployeeNo == employeeNo, cancellationToken))
-            return ResultFactory.Failure<EmployeeDto>("EMPLOYEE_NO_EXISTS", "员工工号已存在");
         var stores = await db.Stores.Where(x => x.TenantId == tenantId && storeIds.Contains(x.Id) && x.Status == StoreStatus.Enabled)
             .OrderBy(x => x.Name).ToListAsync(cancellationToken);
         if (stores.Count != storeIds.Count)
@@ -113,6 +112,7 @@ internal sealed partial class EmployeeService(ErpDbContext db, UserManager<Appli
         ApplicationUser? user = null;
         try
         {
+            var employeeNo = await codeGenerator.NextEmployeeCodeAsync(tenantId, cancellationToken);
             if (command.CreateLoginAccount)
             {
                 user = new ApplicationUser { Id = Guid.CreateVersion7(), TenantId = tenantId, UserName = account,
@@ -141,7 +141,8 @@ internal sealed partial class EmployeeService(ErpDbContext db, UserManager<Appli
         catch (DbUpdateException)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return ResultFactory.Failure<EmployeeDto>("EMPLOYEE_CREATE_CONFLICT", "员工或账号信息已存在，请刷新后重试");
+            return ResultFactory.Failure<EmployeeDto>("EMPLOYEE_CREATE_CONFLICT",
+                "员工编号生成冲突或账号信息已存在，请刷新后重试");
         }
     }
 
@@ -474,9 +475,6 @@ internal sealed partial class EmployeeService(ErpDbContext db, UserManager<Appli
         TraceId = httpContextAccessor.HttpContext?.TraceIdentifier ?? Guid.NewGuid().ToString("N"),
         Metadata = metadata ?? "{}", OccurredAtUtc = DateTimeOffset.UtcNow,
     });
-
-    [GeneratedRegex("^[A-Z0-9_-]{2,32}$", RegexOptions.CultureInvariant)]
-    private static partial Regex EmployeeNoPattern();
 
     [GeneratedRegex("^[A-Za-z0-9._@-]{4,100}$", RegexOptions.CultureInvariant)]
     private static partial Regex AccountPattern();

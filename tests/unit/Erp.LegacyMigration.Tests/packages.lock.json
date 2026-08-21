@@ -359,6 +359,7 @@
       "erp.legacymigration": {
         "type": "Project",
         "dependencies": {
+          "Erp.Application": "[1.0.0, )",
           "Erp.Infrastructure": "[1.0.0, )"
         }
       }

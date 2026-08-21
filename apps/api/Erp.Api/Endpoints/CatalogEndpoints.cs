@@ -35,7 +35,7 @@ public static class CatalogEndpoints
                 return InvalidCommissionMode();
 
             return EndpointResults.From(await catalog.CreateServiceItemAsync(current.TenantId,
-                new CreateServiceItemCommand(request.Code ?? string.Empty, request.Name ?? string.Empty,
+                new CreateServiceItemCommand(request.Name ?? string.Empty,
                     request.StandardDurationMinutes, commissionMode,
                     request.CommissionRateBasisPoints, request.CommissionFixedMinor, current.Id,
                     DefaultStoreId(current)), cancellationToken),
@@ -84,7 +84,7 @@ public static class CatalogEndpoints
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             return EndpointResults.From(await catalog.CreateProductItemAsync(current.TenantId,
-                new CreateProductItemCommand(request.Code ?? string.Empty, request.Name ?? string.Empty,
+                new CreateProductItemCommand(request.Name ?? string.Empty,
                     request.UnitName ?? string.Empty, request.TrackInventory, current.Id, DefaultStoreId(current)), cancellationToken),
                 value => Results.Created($"/api/v1/catalog/products/{value.Id}", value));
         }).RequireAuthorization(SystemPermissions.CatalogWrite);
@@ -251,11 +251,11 @@ public static class CatalogEndpoints
         new { error = new { code = "VALIDATION_FAILED", message = "提成方式只能是不计提、按比例或固定金额" } },
         statusCode: StatusCodes.Status422UnprocessableEntity);
 
-    private sealed record CreateServiceItemRequest(string? Code, string? Name, int StandardDurationMinutes,
+    private sealed record CreateServiceItemRequest(string? Name, int StandardDurationMinutes,
         string? CommissionMode, int? CommissionRateBasisPoints, long? CommissionFixedMinor);
     private sealed record UpdateServiceItemRequest(string? Name, int StandardDurationMinutes, string? Status,
         string? CommissionMode, int? CommissionRateBasisPoints, long? CommissionFixedMinor, uint ExpectedVersion);
-    private sealed record CreateProductItemRequest(string? Code, string? Name, string? UnitName, bool TrackInventory);
+    private sealed record CreateProductItemRequest(string? Name, string? UnitName, bool TrackInventory);
     private sealed record UpdateProductItemRequest(string? Name, string? UnitName, bool TrackInventory, string? Status,
         uint ExpectedVersion);
 

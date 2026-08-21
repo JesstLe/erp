@@ -85,7 +85,7 @@ public static class FacilityEndpoints
             if (current is null) return Results.Unauthorized();
             if (!CanConfigureStore(current, request.StoreId)) return Results.Forbid();
             return EndpointResults.From(await facilities.CreateFacilityAsync(current.TenantId,
-                new CreateFacilityCommand(request.StoreId, request.GroupId, request.FacilityTypeId, request.Code ?? string.Empty,
+                new CreateFacilityCommand(request.StoreId, request.GroupId, request.FacilityTypeId,
                     request.DisplayName ?? string.Empty, request.ServiceName, request.EquipmentName,
                     request.ReferencePriceMinor, request.SortOrder, request.DefaultCleaningMinutes,
                     request.AllowReservation, current.Id), cancellationToken));
@@ -101,7 +101,7 @@ public static class FacilityEndpoints
                 return Results.UnprocessableEntity(new { error = new { code = "VALIDATION_FAILED", message = "设施状态无效" } });
             return EndpointResults.From(await facilities.UpdateFacilityAsync(current.TenantId,
                 new UpdateFacilityCommand(request.StoreId, facilityId, request.GroupId, request.FacilityTypeId,
-                    request.Code, request.DisplayName ?? string.Empty, request.ServiceName, request.EquipmentName,
+                    request.DisplayName ?? string.Empty, request.ServiceName, request.EquipmentName,
                     request.ReferencePriceMinor, request.SortOrder, request.DefaultCleaningMinutes,
                     request.AllowReservation, lifecycleStatus, request.ExpectedVersion, current.Id), cancellationToken));
         }).RequireAuthorization(SystemPermissions.FacilityConfigure);
@@ -173,10 +173,10 @@ public static class FacilityEndpoints
     private sealed record CreateGroupRequest(Guid StoreId, string? DisplayName, int SortOrder);
     private sealed record UpdateGroupRequest(Guid StoreId, string? DisplayName, int SortOrder, uint ExpectedVersion);
     private sealed record CreateTypeRequest(string? DisplayName);
-    private sealed record CreateFacilityRequest(Guid StoreId, Guid GroupId, Guid? FacilityTypeId, string? Code,
+    private sealed record CreateFacilityRequest(Guid StoreId, Guid GroupId, Guid? FacilityTypeId,
         string? DisplayName, string? ServiceName, string? EquipmentName, long? ReferencePriceMinor,
         int SortOrder, int DefaultCleaningMinutes, bool AllowReservation);
-    private sealed record UpdateFacilityRequest(Guid StoreId, Guid GroupId, Guid? FacilityTypeId, string? Code,
+    private sealed record UpdateFacilityRequest(Guid StoreId, Guid GroupId, Guid? FacilityTypeId,
         string? DisplayName, string? ServiceName, string? EquipmentName, long? ReferencePriceMinor,
         int SortOrder, int DefaultCleaningMinutes, bool AllowReservation, string? LifecycleStatus,
         uint ExpectedVersion);

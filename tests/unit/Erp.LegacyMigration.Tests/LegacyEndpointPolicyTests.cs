@@ -21,9 +21,48 @@ public sealed class LegacyEndpointPolicyTests
             new Uri("https://app5.siweicloud.com/swshop/vip/nurse.php?act=grid&page=1&rows=100"));
     }
 
+    [Fact]
+    public void AllowsReviewedCarePagePreflightGet()
+    {
+        _policy.EnsureAllowed(HttpMethod.Get,
+            new Uri("https://app5.siweicloud.com/swshop/vip/nurse.php"));
+    }
+
+    [Fact]
+    public void AllowsOnlyReviewedCareGridInitializationPost()
+    {
+        _policy.EnsureAllowed(HttpMethod.Post,
+            new Uri("https://app5.siweicloud.com/swshop/vip/nurse.php?act=custom"));
+
+        Assert.Throws<LegacyMigrationException>(() => _policy.EnsureAllowed(
+            HttpMethod.Post,
+            new Uri("https://app5.siweicloud.com/swshop/vip/nurse.php?act=custom&extra=1")));
+    }
+
+    [Fact]
+    public void CareGridUriIncludesReviewedFullHistoryFilters()
+    {
+        var uri = LegacyEntityDefinition.CareRecords.BuildPageUri(2, 100);
+
+        Assert.Equal("https", uri.Scheme);
+        Assert.Equal("app5.siweicloud.com", uri.Host);
+        Assert.Equal("/swshop/vip/nurse.php", uri.AbsolutePath);
+        Assert.Contains("act=grid", uri.Query, StringComparison.Ordinal);
+        Assert.Contains("page=2", uri.Query, StringComparison.Ordinal);
+        Assert.Contains("rows=100", uri.Query, StringComparison.Ordinal);
+        Assert.Contains("search_bdate=2019-01-01", uri.Query, StringComparison.Ordinal);
+        Assert.Contains("search_edate=", uri.Query, StringComparison.Ordinal);
+        Assert.Contains("search_find=Y", uri.Query, StringComparison.Ordinal);
+        Assert.Contains("search_shop=0", uri.Query, StringComparison.Ordinal);
+        Assert.Contains("search_nusort=0", uri.Query, StringComparison.Ordinal);
+        _policy.EnsureAllowed(HttpMethod.Get, uri);
+    }
+
     [Theory]
     [InlineData("https://app5.siweicloud.com/swshop/base/member.php?act=adds&wintop=N&winpid=2&id=2259")]
     [InlineData("https://app5.siweicloud.com/swshop/picture/21091626/member/example_1.jpg")]
+    [InlineData("https://app5.siweicloud.com/swshop/vip/nurse.php?act=adds&wintop=N&winpid=1&id=1672")]
+    [InlineData("https://app5.siweicloud.com/swshop/picture/21091626/nurse/example_1.jpg")]
     public void AllowsOnlyReviewedCustomerPhotoGets(string value)
     {
         _policy.EnsureAllowed(HttpMethod.Get, new Uri(value));
@@ -34,6 +73,7 @@ public sealed class LegacyEndpointPolicyTests
     [InlineData("https://app5.siweicloud.com/swshop/base/member.php?act=adds&wintop=N&winpid=2&id=abc")]
     [InlineData("https://app5.siweicloud.com/swshop/picture/21091626/member/../secret.jpg")]
     [InlineData("https://app5.siweicloud.com/swshop/picture/21091626/member/example.exe")]
+    [InlineData("https://app5.siweicloud.com/swshop/vip/nurse.php?act=adds&wintop=N&winpid=2&id=1672")]
     public void RejectsUnreviewedCustomerPhotoGets(string value)
     {
         Assert.Throws<LegacyMigrationException>(() => _policy.EnsureAllowed(HttpMethod.Get, new Uri(value)));

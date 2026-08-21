@@ -36,7 +36,6 @@ import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { PASSWORD_POLICY_HINT, passwordRules } from "../security/passwordPolicy";
 
 interface EmployeeValues {
-  employeeNo: string;
   displayName: string;
   positionCode: string;
   storeIds: string[];
@@ -133,7 +132,7 @@ export function EmployeesPage() {
     onSuccess: async (employee) => {
       setCreateOpen(false);
       createForm.resetFields();
-      await refreshEmployee(employee, "员工已创建；初始密码不会回显");
+      await refreshEmployee(employee, `员工已创建，系统工号 ${employee.employeeNo}；初始密码不会回显`);
     },
     onError,
   });
@@ -424,20 +423,13 @@ export function EmployeesPage() {
           onFinish={(values) => create.mutate(values)}
           requiredMark="optional"
         >
+          <Alert
+            type="info"
+            showIcon
+            title="员工保存后由系统自动生成品牌内唯一工号，例如 EMP000001。"
+            className="modal-alert"
+          />
           <div className="employee-form-grid">
-            <Form.Item
-              name="employeeNo"
-              label="员工工号"
-              rules={[
-                { required: true, message: "请输入员工工号" },
-                {
-                  pattern: /^[A-Za-z0-9_-]{2,32}$/,
-                  message: "仅限2-32位字母、数字、下划线或短横线",
-                },
-              ]}
-            >
-              <Input maxLength={32} placeholder="例如 E0002" />
-            </Form.Item>
             <Form.Item
               name="displayName"
               label="员工姓名"

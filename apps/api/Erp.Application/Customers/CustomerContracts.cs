@@ -36,7 +36,7 @@ public sealed record PreviewCustomerMergeCommand(Guid StoreId, Guid SourceCustom
 public sealed record MergeCustomerCommand(Guid StoreId, Guid SourceCustomerId, Guid TargetCustomerId,
     uint ExpectedSourceVersion, uint ExpectedTargetVersion, string Reason, Guid CommandId, Guid OperatorId);
 
-public sealed record CreateMemberCardTypeCommand(string Code, string Name, int? ValidityDays,
+public sealed record CreateMemberCardTypeCommand(string Name, int? ValidityDays,
     Guid CommandId, Guid OperatorId);
 
 public sealed record OpenMembershipCommand(Guid StoreId, Guid CustomerId, Guid CardTypeId,

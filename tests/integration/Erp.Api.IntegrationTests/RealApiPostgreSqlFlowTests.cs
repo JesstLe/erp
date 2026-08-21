@@ -45,22 +45,27 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             Row("stores", "901", ("shop_code", "901"), ("shop_name", "旧系统演练店"), ("shop_stop", "0")),
             Row("employee-trades", "1", ("ework_code", "TECH"), ("ework_name", "技师")),
             Row("employees", "902", ("emplee_name", "旧系统员工"), ("emplee_ework", "1"),
-                ("emplee_shop", "901")),
+                ("emplee_shop", "旧系统演练店")),
             Row("services", "903", ("goods_name", "<b>旧系统服务</b>"), ("goods_status", "0")),
             Row("units", "1", ("unit_name", "盒")),
             Row("products", "904", ("goods_name", "旧系统产品"), ("goods_unit1", "1"),
                 ("goods_status", "0")),
             Row("member-levels", "905", ("iclevel_name", "旧系统卡类")),
             Row("customers", "906", ("member_name", "旧系统顾客"), ("member_hand", "13900001111"),
-                ("member_shop", "901"), ("member_sex", "女"), ("member_memo", "旧系统服务备注"),
+                ("member_shop", "旧系统演练店"), ("member_sex", "女"), ("member_memo", "旧系统服务备注"),
                 ("member_time2", "2026-08-20 12:00:00"), ("member_money", "123.45"),
                 ("member_bonus", "10"), ("member_score", "5")),
+            Row("care-records", "907", ("bill_member", "906"), ("bill_shop", "旧系统演练店"),
+                ("bill_time1", "2026-08-20 13:00:00"), ("bill_date", "2026-08-20"),
+                ("bill_intro", "旧系统症状"), ("bill_plan", "旧系统处理方案"),
+                ("bill_next", "2026-08-27"), ("bill_emplee", "旧系统员工"), ("bill_memo", "复诊建议")),
         };
         var png = Convert.FromBase64String(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
         var dataset = new LegacyImportDataset("B01", "integration-legacy", new string('b', 64),
             "integration-v1", rows,
-            [new LegacySourcePhoto("906", 1, "image/png", new string('c', 64), png)]);
+            [new LegacySourcePhoto("906", 1, "image/png", new string('c', 64), png)],
+            [new LegacySourceCarePhoto("907", 1, "image/png", new string('d', 64), png)]);
 
         var result = await fixture.RunLegacyImportAsync(new LegacyImportCommand(dataset, DryRun: true));
 
@@ -68,10 +73,33 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.False(result.AlreadyCompleted);
         Assert.Equal(1, result.Created["stores"]);
         Assert.Equal(1, result.Created["customers"]);
-        Assert.Equal(1, result.Created["service-records"]);
+        Assert.Equal(2, result.Created["service-records"]);
         Assert.Equal(1, result.Created["photos"]);
+        Assert.Equal(1, result.Created["care-records"]);
+        Assert.Equal(1, result.Created["care-photos"]);
         Assert.Equal(0, await fixture.CountLegacyRunsAsync("integration-legacy"));
         Assert.Equal(0, fixture.CountStoredFileBlobs());
+    }
+
+    [Fact]
+    public async Task LegacyImportRejectsNonEmptyUnmappedStoreInsteadOfUsingDefault()
+    {
+        static LegacySourceRow Row(string entity, string id, params (string Key, string? Value)[] fields) =>
+            new(entity, id, new string('d', 64),
+                fields.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal));
+        var dataset = new LegacyImportDataset("B01", "integration-legacy-unmapped-store", new string('e', 64),
+            "integration-v1",
+            [
+                Row("stores", "901", ("shop_code", "901"), ("shop_name", "旧系统演练店")),
+                Row("customers", "906", ("member_name", "旧系统顾客"), ("member_hand", "13900001112"),
+                    ("member_shop", "不存在的门店")),
+            ], []);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            fixture.RunLegacyImportAsync(new LegacyImportCommand(dataset, DryRun: true)));
+
+        Assert.Contains("拒绝回退到默认门店", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(0, await fixture.CountLegacyRunsAsync("integration-legacy-unmapped-store"));
     }
 
     [Fact]
@@ -164,6 +192,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             storeIds = new List<Guid> { storeId }, createLoginAccount = true, account = "technician02",
             initialPassword = "Technician_Test!123", roles = new List<string> { "TECHNICIAN" },
         });
+        Assert.Matches("^EMP[0-9]{6}$", employee.EmployeeNo);
         Assert.True(employee.AccountEnabled);
         Assert.True(employee.MustChangePassword);
         employee = await PutAsync<EmployeeDto>(client, $"/api/v1/employees/{employee.Id}", new
@@ -260,6 +289,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             {
                 code = "MERGE_TEST", name = "合并回归卡", validityDays = (int?)null, commandId = Guid.NewGuid(),
             });
+        Assert.Matches("^CT[0-9]{6}$", mergeCardType.Code);
         duplicate = await PostAsync<CustomerDetailDto>(client,
             $"/api/v1/customers/{duplicate.Id}/membership", new
             {
@@ -326,6 +356,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         {
             code = "SVC01", name = "测试服务", standardDurationMinutes = 30, commissionMode = "NONE",
         }, HttpStatusCode.Created);
+        Assert.Matches("^SV[0-9]{6}$", service.Code);
         var memberCard = Assert.Single(customer.Cards);
         var issuedPass = await PostAsync<ServicePassDto>(client,
             "/api/v1/membership-benefits/service-passes", new
@@ -341,6 +372,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         {
             code = "PRD01", name = "测试产品", unitName = "件", trackInventory = true,
         }, HttpStatusCode.Created);
+        Assert.Matches("^PD[0-9]{6}$", product.Code);
 
         var opening = await PostAsync<InventoryDocumentDto>(client, "/api/v1/inventory/documents", new
         {
@@ -393,6 +425,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             serviceName = "测试服务", equipmentName = "测试设备", referencePriceMinor = (long?)null,
             sortOrder = 10, defaultCleaningMinutes = 0, allowReservation = true,
         });
+        Assert.Matches("^F[0-9]{4}$", facility.Code);
 
         var schedulingEmployees = await client.GetFromJsonAsync<IReadOnlyList<SchedulingResourceDto>>(
             $"/api/v1/scheduling/employees?storeId={storeId}");
@@ -809,6 +842,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             code = "SUP-01", name = "集成测试供应商", contactName = "供应商联系人",
             mobile = "13800001111", settlementTerms = "月结",
         }, HttpStatusCode.Created);
+        Assert.Matches("^SUP[0-9]{6}$", supplier.Code);
         Assert.Equal("Active", supplier.Status);
         var purchase = await PostAsync<PurchaseReceiptDto>(client,
             "/api/v1/supply-chain/purchase-receipts", new

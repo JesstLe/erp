@@ -45,7 +45,7 @@ public static class EmployeeEndpoints
             var storeIds = (request.StoreIds ?? []).Distinct().ToList();
             if (storeIds.Any(id => current.Stores.All(store => store.Id != id))) return Results.Forbid();
             return EndpointResults.From(await employees.CreateAsync(current.TenantId, new CreateEmployeeCommand(
-                request.EmployeeNo ?? string.Empty, request.DisplayName ?? string.Empty, request.PositionCode ?? string.Empty,
+                request.DisplayName ?? string.Empty, request.PositionCode ?? string.Empty,
                 storeIds, request.CreateLoginAccount, request.Account, request.InitialPassword, request.Roles ?? [], current.Id),
                 cancellationToken));
         });
@@ -96,7 +96,7 @@ public static class EmployeeEndpoints
         return endpoints;
     }
 
-    private sealed record CreateEmployeeRequest(string? EmployeeNo, string? DisplayName, string? PositionCode,
+    private sealed record CreateEmployeeRequest(string? DisplayName, string? PositionCode,
         IReadOnlyList<Guid>? StoreIds, bool CreateLoginAccount, string? Account, string? InitialPassword,
         IReadOnlyList<string>? Roles);
     private sealed record SetAccountStatusRequest(bool IsEnabled);
