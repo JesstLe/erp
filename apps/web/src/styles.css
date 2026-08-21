@@ -142,6 +142,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
 .clickable-row { cursor: pointer; }
 .clickable-row:hover td { background: #f8fbff !important; }
 .table-card .ant-table-content { overflow-x: auto; }
+/* Ant Design 6 can leave the right drawer at translateX(100%) even after the
+   open class is applied. Keep detail drawers reachable; removing the open
+   class still restores Ant Design's normal closing transform. */
+.ant-drawer-open.ant-drawer-right > .ant-drawer-content-wrapper { transform: translateX(0) !important; }
 .member-card { margin-top: 12px; border-color: #dbeafe; }
 .member-card-title { display: flex; justify-content: space-between; align-items: flex-start; }
 .member-card-title .ant-typography { margin: 2px 0 0 !important; }
