@@ -545,13 +545,16 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             });
         Assert.Equal("PendingPayment", confirmed.Status);
 
-        _ = await PostAsync<CashierShiftDto>(client, "/api/v1/payments/shifts/open", new
+        var primaryShift = await PostAsync<CashierShiftDto>(client, "/api/v1/payments/shifts/open", new
         {
             storeId, openingCashMinor = 5_000L, commandId = Guid.NewGuid(),
         });
-        var methods = await client.GetFromJsonAsync<IReadOnlyList<PaymentMethodDto>>(
-            $"/api/v1/payments/methods?storeId={storeId}");
-        var cash = Assert.Single(methods!, x => x.Code == "CASH");
+        var methods = (await client.GetFromJsonAsync<IReadOnlyList<PaymentMethodDto>>(
+            $"/api/v1/payments/methods?storeId={storeId}"))!;
+        var cash = Assert.Single(methods, x => x.Code == "CASH");
+        var wechatManual = Assert.Single(methods, x => x.Code == "WECHAT_MANUAL");
+        Assert.Equal("ManualExternal", wechatManual.Category);
+        Assert.DoesNotContain(methods, x => x.Category == "ChannelExternal");
 
         var topup = await PostAsync<MemberTopupDto>(client, "/api/v1/member-topups", new
         {
@@ -662,14 +665,23 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var payment = await PostAsync<PaymentDto>(client, $"/api/v1/payments/orders/{order.Id}/settle", new
         {
             storeId, expectedVersion = confirmed.Version,
-            allocations = new[] { new { methodId = cash.Id, amountMinor = 15_000L,
-                externalReference = (string?)null, memberAccountId = (Guid?)null } },
-            cashTenderedMinor = 20_000L, verifiedMobile = (string?)null,
+            allocations = new[]
+            {
+                new { methodId = cash.Id, amountMinor = 4_000L,
+                    externalReference = (string?)null, memberAccountId = (Guid?)null },
+                new { methodId = wechatManual.Id, amountMinor = 11_000L,
+                    externalReference = (string?)"WX-MANUAL-REGRESSION", memberAccountId = (Guid?)null },
+            },
+            cashTenderedMinor = 5_000L, verifiedMobile = (string?)null,
             verificationChallengeId = (Guid?)null, commandId = Guid.NewGuid(),
         });
         Assert.Equal("Paid", payment.Status);
-        Assert.Equal(20_000L, payment.CashTenderedMinor);
-        Assert.Equal(5_000L, payment.CashChangeMinor);
+        Assert.Equal(5_000L, payment.CashTenderedMinor);
+        Assert.Equal(1_000L, payment.CashChangeMinor);
+        var manualAllocation = Assert.Single(payment.Allocations,
+            allocation => allocation.MethodCode == "WECHAT_MANUAL");
+        Assert.Equal("ManualPendingReconciliation", manualAllocation.ConfirmationStatus);
+        Assert.Equal("Pending", manualAllocation.ReconciliationStatus);
         var firstReceipt = await PostAsync<PaymentReceiptDto>(client,
             $"/api/v1/payments/{payment.Id}/receipt", new { storeId, commandId = Guid.NewGuid() });
         var reprintedReceipt = await PostAsync<PaymentReceiptDto>(client,
@@ -678,7 +690,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal("顾客联", firstReceipt.PrintLabel);
         Assert.Equal(2, reprintedReceipt.PrintSequence);
         Assert.StartsWith("补打联", reprintedReceipt.PrintLabel);
-        Assert.Equal(5_000L, reprintedReceipt.CashChangeMinor);
+        Assert.Equal(1_000L, reprintedReceipt.CashChangeMinor);
 
         var afterSale = await client.GetFromJsonAsync<IReadOnlyList<InventoryBalanceDto>>(
             $"/api/v1/inventory/balances?storeId={storeId}");
@@ -688,7 +700,8 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         {
             storeId, paymentId = payment.Id, expectedPaymentVersion = payment.Version,
             reason = "自动回归部分退款",
-            lines = new[] { new { originalAllocationId = payment.Allocations.Single().Id, amountMinor = 1_000L } },
+            lines = new[] { new { originalAllocationId = payment.Allocations.Single(x =>
+                x.MethodCode == "CASH").Id, amountMinor = 1_000L } },
             commandId = Guid.NewGuid(),
         });
         var completedRefund = await PostAsync<RefundDto>(client, $"/api/v1/refunds/{refund.Id}/approve", new
@@ -702,6 +715,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             $"/api/v1/reports/operations?storeId={storeId}&fromDate={reportDate:yyyy-MM-dd}" +
             $"&toDate={reportDate:yyyy-MM-dd}");
         Assert.Equal(14_000L, storeReport!.Summary.NetRevenueMinor);
+        Assert.Equal(11_000L, storeReport.Summary.PendingReconciliationMinor);
         Assert.Equal(30_000L, storeReport.Summary.StoredValuePrincipalMinor);
         Assert.Equal(6_000L, storeReport.Summary.StoredValueBonusMinor);
         Assert.Equal(36_000L, storeReport.Summary.StoredValueNetMinor);
@@ -718,6 +732,17 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var secondStoreOverview = Assert.Single(storeOverview.Stores, x => x.StoreId == secondStore.Id);
         Assert.Equal(10_000L, secondStoreOverview.PeriodNetRevenueMinor);
         Assert.Equal(10_000L, secondStoreOverview.StoredValueNetMinor);
+
+        var submittedPrimaryShift = await PostAsync<CashierShiftDto>(client,
+            $"/api/v1/payments/shifts/{primaryShift.Id}/submit", new
+            {
+                storeId, expectedVersion = primaryShift.Version, submittedCashMinor = 38_000L,
+                note = "人工收款交班回归", commandId = Guid.NewGuid(),
+            });
+        Assert.Equal("ReviewPending", submittedPrimaryShift.Status);
+        Assert.Equal(38_000L, submittedPrimaryShift.ExpectedCashMinor);
+        Assert.Equal(0L, submittedPrimaryShift.CashDifferenceMinor);
+        Assert.Equal(11_000L, submittedPrimaryShift.PendingReconciliationMinor);
 
         var redeemedPass = await PostAsync<ServicePassDto>(client,
             $"/api/v1/membership-benefits/service-passes/{issuedPass.Id}/redeem", new
