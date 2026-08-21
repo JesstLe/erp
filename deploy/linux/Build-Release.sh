@@ -63,12 +63,14 @@ dotnet publish "$repository_root/tools/Erp.LegacyMigration/Erp.LegacyMigration.c
   -p:InformationalVersion="$version+$git_commit" -o "$legacy_tool_directory"
 
 log '审计、测试并构建 React 前端'
-npm --prefix "$repository_root/apps/web" ci
-npm --prefix "$repository_root/apps/web" run lint
-npm --prefix "$repository_root/apps/web" test
-npm --prefix "$repository_root/apps/web" audit --audit-level=high
-VITE_APP_VERSION="$version" VITE_APP_ENVIRONMENT=Production \
-  npm --prefix "$repository_root/apps/web" run build
+(
+  cd "$repository_root/apps/web"
+  npm ci
+  npm run lint
+  npm test
+  npm audit --audit-level=high
+  VITE_APP_VERSION="$version" VITE_APP_ENVIRONMENT=Production npm run build
+)
 mkdir -p "$app_directory/wwwroot"
 cp -R "$repository_root/apps/web/dist/." "$app_directory/wwwroot/"
 cp -R "$repository_root/db" "$staging_directory/db"
