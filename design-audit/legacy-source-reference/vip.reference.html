@@ -1,0 +1,59 @@
+<!doctype html>
+<!-- Browser-visible client reference only. Business rows, credentials, cookies and form values are intentionally excluded. -->
+<section class="row home-head" data-module="vip">
+  <main class="col-sm-10">
+    <div class="row home-main">
+      <div id="container-vip1" class="" style="min-width:400px;height:305px;"></div>
+      <div id="container-vip2" class="" style="min-width:400px;height:305px;"></div>
+    </div>
+    <section class="row home-table">
+      <header class="title">最新登记顾客列表 <span class="search" onclick="javascript:top.layerMax('../base/frame.php?act=member');">查询</span></header>
+      <table class="table table-bordered"><thead><tr><th>会员卡号</th><th>会员姓名</th><th>性别</th><th>手机号码</th><th>办卡门店</th><th>会员卡类</th><th>来店渠道</th><th>登记时间</th></tr></thead><tbody><tr data-redacted="business-data"><td colspan="99">[业务数据已脱敏]</td></tr></tbody></table>
+    </section>
+  </main>
+  <aside class="col-sm-2">
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(1);">顾客管理</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../base/frame.php?act=member');"><i class="iconfont icon-member"></i> 顾客信息</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerForm('vip_begin','',0,1000,610);"><i class="iconfont icon-vip"></i> 顾客开卡</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerForm('vip_full','S',0,1000,610);"><i class="iconfont icon-fullS"></i> 顾客储值</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../vip/frame.php?act=order');"><i class="iconfont icon-order"></i> 顾客预约</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../vip/frame.php?act=nurse');"><i class="iconfont icon-nurse"></i> 顾客护理</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('vip_sell','T','0');"><i class="iconfont icon-sellT"></i> 消费退货</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerForm('vip_full','T',0,1000,610);"><i class="iconfont icon-fullT"></i> 储值退款</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('vip_fnum','T','0');"><i class="iconfont icon-fnumT"></i> 次卡退卡</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerForm('vip_score','',0,900,432);"><i class="iconfont icon-score"></i> 积分增减</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerForm('vip_bonus','',0,900,432);"><i class="iconfont icon-bonus"></i> 兑换储值</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerForm('vip_gift','',0,900,475);"><i class="iconfont icon-gift"></i> 兑换礼品</a></td></tr>
+      </tbody></table>
+      <footer class="mores">查看更多功能</footer>
+    </section>
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(2);">报表查询</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_sell_list');"><i class="iconfont icon-search"></i> 顾客消费单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_full_list');"><i class="iconfont icon-search"></i> 顾客储值单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_fnum_list');"><i class="iconfont icon-search"></i> 次卡销售单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_arrear_list');"><i class="iconfont icon-search"></i> 顾客欠款单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_repay_list');"><i class="iconfont icon-search"></i> 顾客还款单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_score_list');"><i class="iconfont icon-search"></i> 积分增减单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_bonus_list');"><i class="iconfont icon-search"></i> 积分兑换储值查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_gift_list');"><i class="iconfont icon-search"></i> 积分兑换礼品查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_member_count');"><i class="iconfont icon-report"></i> 顾客剩余卡次查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_member_give');"><i class="iconfont icon-report"></i> 顾客消费赠送查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_member_score');"><i class="iconfont icon-report"></i> 顾客积分变动查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_member_bonus');"><i class="iconfont icon-report"></i> 顾客分销佣金汇总表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_member_bchild');"><i class="iconfont icon-report"></i> 顾客分销佣金明细表</a></td></tr>
+      </tbody></table>
+      <footer class="mores">查看更多报表</footer>
+    </section>
+  </aside>
+</section>
+<script>
+/* Inline initialization retained from the rendered page: */
+$(document).ready(function(){
+    chartVip1();
+    chartVip2();
+});
+</script>

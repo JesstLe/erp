@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- Browser-visible client reference only. Business rows, credentials, cookies and form values are intentionally excluded. -->
+<section class="row home-head" data-module="sell">
+  <main class="col-sm-10">
+    <div class="row home-main">
+      <div id="container-sell1" class="" style="min-width:400px;height:305px;"></div>
+      <div id="container-sell2" class="" style="min-width:400px;height:305px;"></div>
+    </div>
+    <section class="row home-table">
+      <header class="title">最新销售出库单列表 <span class="search" onclick="javascript:top.layerMax('../print/frame.php?act=sell_come_list&type=S');">查询</span></header>
+      <table class="table table-bordered"><thead><tr><th>单号</th><th>日期</th><th>销售客户</th><th>经办人</th><th>货品总额</th><th>优惠金额</th><th>应收金额</th><th>已收金额</th><th>制单人</th><th>审核人</th></tr></thead><tbody><tr data-redacted="business-data"><td colspan="99">[业务数据已脱敏]</td></tr></tbody></table>
+    </section>
+  </main>
+  <aside class="col-sm-2">
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(1);">销售管理</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('sell_front','','0');"><i class="iconfont icon-buyfront"></i> 销售订单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('sell_come','S','0');"><i class="iconfont icon-buycomeS"></i> 销售出库单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('sell_come','T','0');"><i class="iconfont icon-buycomeT"></i> 销售退货单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('sell_cpay','','0');"><i class="iconfont icon-buycpay"></i> 销售收款单</a></td></tr>
+      </tbody></table>
+      <footer class="mores"></footer>
+    </section>
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(2);">报表查询</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_front_list');"><i class="iconfont icon-search"></i> 销售订单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_come_list&type=S');"><i class="iconfont icon-search"></i> 销售出库单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_come_list&type=T');"><i class="iconfont icon-search"></i> 销售退货单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_cpay_list');"><i class="iconfont icon-search"></i> 销售收款单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_front_goods');"><i class="iconfont icon-report"></i> 商品订货统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_front_shop');"><i class="iconfont icon-report"></i> 门店订货统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_front_client');"><i class="iconfont icon-report"></i> 客户订货统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_front_child');"><i class="iconfont icon-report"></i> 销售订单明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_come_goods');"><i class="iconfont icon-report"></i> 商品销售统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_come_shop');"><i class="iconfont icon-report"></i> 门店销售统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_come_client');"><i class="iconfont icon-report"></i> 客户销售统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_come_emplee');"><i class="iconfont icon-report"></i> 职员销售统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=sell_come_child');"><i class="iconfont icon-report"></i> 销售明细表</a></td></tr>
+      </tbody></table>
+      <footer class="mores">查看更多报表</footer>
+    </section>
+  </aside>
+</section>
+<script>
+/* Inline initialization retained from the rendered page: */
+$(document).ready(function(){
+    chartSell1();
+    chartSell2();
+});
+</script>

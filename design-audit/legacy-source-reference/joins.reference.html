@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- Browser-visible client reference only. Business rows, credentials, cookies and form values are intentionally excluded. -->
+<section class="row home-head" data-module="joins">
+  <main class="col-sm-10">
+    <div class="row home-main">
+      <div id="container-joins1" class="" style="min-width:400px;height:305px;"></div>
+      <div id="container-joins2" class="" style="min-width:400px;height:305px;"></div>
+    </div>
+    <section class="row home-table">
+      <header class="title">最新门店配送单列表 <span class="search" onclick="javascript:top.layerMax('../print/frame.php?act=depot_move_list');">查询</span></header>
+      <table class="table table-bordered"><thead><tr><th>单号</th><th>日期</th><th>调入门店</th><th>货品总额</th><th>优惠金额</th><th>应收金额</th><th>已收金额</th><th>制单人</th><th>审核人</th><th>验收人</th></tr></thead><tbody><tr data-redacted="business-data"><td colspan="99">[业务数据已脱敏]</td></tr></tbody></table>
+    </section>
+  </main>
+  <aside class="col-sm-2">
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(1);">配货管理</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('depot_front','S','0');"><i class="iconfont icon-depot-frontS"></i> 配货申请单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('depot_front','T','0');"><i class="iconfont icon-depot-frontT"></i> 退货申请单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('depot_move','S','0');"><i class="iconfont icon-depot-moveS"></i> 门店配送单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('depot_move','T','0');"><i class="iconfont icon-depot-moveT"></i> 门店退货单</a></td></tr>
+      </tbody></table>
+      <footer class="mores"></footer>
+    </section>
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(2);">报表查询</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_front_list&type=S');"><i class="iconfont icon-search"></i> 配货申请单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_front_list&type=T');"><i class="iconfont icon-search"></i> 退货申请单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_move_list');"><i class="iconfont icon-search"></i> 门店配送单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_move_goods&type=O');"><i class="iconfont icon-report"></i> 配送出库汇总表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_move_child&type=O');"><i class="iconfont icon-report"></i> 配送出库明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_move_goods&type=I');"><i class="iconfont icon-report"></i> 配送入库汇总表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_move_child&type=I');"><i class="iconfont icon-report"></i> 配送入库明细表</a></td></tr>
+      </tbody></table>
+      <footer class="mores">查看更多报表</footer>
+    </section>
+  </aside>
+</section>
+<script>
+/* Inline initialization retained from the rendered page: */
+$(document).ready(function(){
+    chartJoins1();
+    chartJoins2();
+});
+</script>

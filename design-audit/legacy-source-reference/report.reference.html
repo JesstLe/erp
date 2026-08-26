@@ -1,0 +1,63 @@
+<!doctype html>
+<!-- Browser-visible client reference only. Business rows, credentials, cookies and form values are intentionally excluded. -->
+<section class="row home-head" data-module="report">
+  <main class="col-sm-10">
+    <div class="row home-main">
+      <div id="container-report1" class="" style="min-width:400px;height:245px;"></div>
+      <div id="container-report2" class="" style="min-width:400px;height:245px;"></div>
+      <div id="container-report3" class="" style="min-width:400px;height:245px;"></div>
+    </div>
+    <section class="row home-table">
+      <header class="title">顾客消费走势 <span class="search" onclick="">查询</span></header>
+      <table class="table table-bordered"><thead><tr></tr></thead><tbody><tr data-redacted="business-data"><td colspan="99">[业务数据已脱敏]</td></tr></tbody></table>
+    </section>
+  </main>
+  <aside class="col-sm-2">
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(1);">项目分析</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_shop_sell');"><i class="iconfont icon-report"></i> 门店消费统计表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_full_parent');"><i class="iconfont icon-report"></i> 顾客储值统计表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_full_child');"><i class="iconfont icon-report"></i> 顾客储值明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_sell_classe&type=service');"><i class="iconfont icon-report"></i> 项目分类统计表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_sell_goods&type=service');"><i class="iconfont icon-report"></i> 项目消费统计表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_sell_child&type=service');"><i class="iconfont icon-report"></i> 项目消费明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_sell_classe&type=product');"><i class="iconfont icon-report"></i> 产品分类统计表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_sell_goods&type=product');"><i class="iconfont icon-report"></i> 产品消费统计表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_sell_child&type=product');"><i class="iconfont icon-report"></i> 产品消费明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_sell_goods&type=numcard');"><i class="iconfont icon-report"></i> 次卡消耗统计表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_sell_child&type=numcard');"><i class="iconfont icon-report"></i> 次卡消耗明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_fnum_parent');"><i class="iconfont icon-report"></i> 次卡销售统计表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_fnum_child');"><i class="iconfont icon-report"></i> 次卡销售明细表</a></td></tr>
+      </tbody></table>
+      <footer class="mores">查看更多报表</footer>
+    </section>
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(2);">经营分析</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_shop_handover');"><i class="iconfont icon-report"></i> 门店经营分析</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_shop_costs');"><i class="iconfont icon-report"></i> 门店毛利分析</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_member_iclevel');"><i class="iconfont icon-report"></i> 顾客卡类分析</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_member_parent');"><i class="iconfont icon-report"></i> 顾客消费分析</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_debts_parent');"><i class="iconfont icon-report"></i> 顾客负债分析</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_fnum_sell');"><i class="iconfont icon-report"></i> 次卡消费分析</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_count_parent');"><i class="iconfont icon-report"></i> 次卡余次分析</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_shop_age');"><i class="iconfont icon-report"></i> 顾客年龄分析</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_sell_source');"><i class="iconfont icon-report"></i> 来店渠道分析</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_member_jump&type=time');"><i class="iconfont icon-report"></i> 顾客活跃度分析</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_money_shop');"><i class="iconfont icon-report"></i> 门店收款统计表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_money_month');"><i class="iconfont icon-report"></i> 门店收款明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=vip_member_payment');"><i class="iconfont icon-report"></i> 支付方式统计表</a></td></tr>
+      </tbody></table>
+      <footer class="mores">查看更多报表</footer>
+    </section>
+  </aside>
+</section>
+<script>
+/* Inline initialization retained from the rendered page: */
+$(document).ready(function(){
+    chartReport1();
+    chartReport2();
+    chartReport3();
+});
+</script>

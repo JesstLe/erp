@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- Browser-visible client reference only. Business rows, credentials, cookies and form values are intentionally excluded. -->
+<section class="row home-head" data-module="fund">
+  <main class="col-sm-10">
+    <div class="row home-main">
+      <div id="container-fund1" class="" style="min-width:400px;height:305px;"></div>
+      <div id="container-fund2" class="" style="min-width:400px;height:305px;"></div>
+    </div>
+    <section class="row home-table">
+      <header class="title">最新费用开支单列表 <span class="search" onclick="javascript:top.layerMax('../print/frame.php?act=fund_send_list');">查询</span></header>
+      <table class="table table-bordered"><thead><tr><th>单号</th><th>日期</th><th>所属门店</th><th>经办人</th><th>付款账户</th><th>付款金额</th><th>制单人</th><th>审核人</th></tr></thead><tbody><tr data-redacted="business-data"><td colspan="99">[业务数据已脱敏]</td></tr></tbody></table>
+    </section>
+  </main>
+  <aside class="col-sm-2">
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(1);">财务管理</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('fund_send','','0');"><i class="iconfont icon-fund-send"></i> 费用开支单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('fund_come','','0');"><i class="iconfont icon-fund-come"></i> 其他收入单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('fund_move','','0');"><i class="iconfont icon-fund-move"></i> 银行存取款</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../fund/frame.php?act=pdata');"><i class="iconfont icon-fund-pdata"></i> 跨店核算</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('fund_cpay','','0');"><i class="iconfont icon-fund-cpay"></i> 跨店结算</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=fund_subject_1');"><i class="iconfont icon-report"></i> 经营情况表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=fund_subject_2');"><i class="iconfont icon-report"></i> 资产负债表</a></td></tr>
+      </tbody></table>
+      <footer class="mores">查看更多功能</footer>
+    </section>
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(2);">报表查询</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=fund_send_list');"><i class="iconfont icon-search"></i> 费用开支单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=fund_come_list');"><i class="iconfont icon-search"></i> 其他收入单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=fund_move_list');"><i class="iconfont icon-search"></i> 银行存取款查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=fund_cpay_list');"><i class="iconfont icon-search"></i> 门店结算单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=fund_pdata');"><i class="iconfont icon-report"></i> 跨店储值对账表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=fund_due_parent');"><i class="iconfont icon-report"></i> 供应商应付款查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=fund_due_child');"><i class="iconfont icon-report"></i> 供应商应付款明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=shop_due_parent');"><i class="iconfont icon-report"></i> 门店应收款查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=shop_due_child');"><i class="iconfont icon-report"></i> 门店应收款明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=fund_send_parent');"><i class="iconfont icon-report"></i> 费用开支科目统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=fund_come_parent');"><i class="iconfont icon-report"></i> 其他收入科目统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=fund_bank_parent');"><i class="iconfont icon-report"></i> 现金银行科目统计</a></td></tr>
+      </tbody></table>
+      <footer class="mores">查看更多报表</footer>
+    </section>
+  </aside>
+</section>
+<script>
+/* Inline initialization retained from the rendered page: */
+$(document).ready(function(){
+    chartFund1();
+    chartFund2();
+});
+</script>

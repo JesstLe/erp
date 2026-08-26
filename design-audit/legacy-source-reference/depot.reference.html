@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- Browser-visible client reference only. Business rows, credentials, cookies and form values are intentionally excluded. -->
+<section class="row home-head" data-module="depot">
+  <main class="col-sm-10">
+    <div class="row home-main">
+      <div id="container-depot1" class="" style="min-width:400px;height:305px;"></div>
+      <div id="container-depot2" class="" style="min-width:400px;height:305px;"></div>
+    </div>
+    <section class="row home-table">
+      <header class="title">库存最多商品排行 <span class="search" onclick="javascript:top.layerMax('../print/frame.php?act=depot_number');">查询</span></header>
+      <table class="table table-bordered"><thead><tr><th>所属门店</th><th>产品分类</th><th>产品品牌</th><th>产品编号</th><th>产品名称</th><th>规格</th><th>单位</th><th>库存数量</th></tr></thead><tbody><tr data-redacted="business-data"><td colspan="99">[业务数据已脱敏]</td></tr></tbody></table>
+    </section>
+  </main>
+  <aside class="col-sm-2">
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(1);">库存管理</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('depot_come','S','0');"><i class="iconfont icon-depot-comeS"></i> 商品入库单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('depot_come','T','0');"><i class="iconfont icon-depot-comeT"></i> 商品出库单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('depot_check','','0');"><i class="iconfont icon-depot-check"></i> 库存盘点单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('depot_price','','0');"><i class="iconfont icon-depot-price"></i> 存货调价单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_number');"><i class="iconfont icon-report"></i> 库存状况表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_jxc');"><i class="iconfont icon-report"></i> 库存变动表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_child');"><i class="iconfont icon-report"></i> 库存明细表</a></td></tr>
+      </tbody></table>
+      <footer class="mores">查看更多功能</footer>
+    </section>
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(2);">报表查询</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_come_list&type=S');"><i class="iconfont icon-search"></i> 商品入库单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_come_list&type=T');"><i class="iconfont icon-search"></i> 商品出库单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_check_list');"><i class="iconfont icon-search"></i> 库存盘点单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_price_list');"><i class="iconfont icon-search"></i> 存货调价单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_come_goods&type=S');"><i class="iconfont icon-report"></i> 商品入库汇总表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_come_child&type=S');"><i class="iconfont icon-report"></i> 商品入库明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_come_goods&type=T');"><i class="iconfont icon-report"></i> 商品出库汇总表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_come_child&type=T');"><i class="iconfont icon-report"></i> 商品出库明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_check_goods');"><i class="iconfont icon-report"></i> 库存盘点汇总表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_check_child');"><i class="iconfont icon-report"></i> 库存盘点明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_price_goods');"><i class="iconfont icon-report"></i> 存货调价汇总表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=depot_price_child');"><i class="iconfont icon-report"></i> 存货调价明细表</a></td></tr>
+      </tbody></table>
+      <footer class="mores">查看更多报表</footer>
+    </section>
+  </aside>
+</section>
+<script>
+/* Inline initialization retained from the rendered page: */
+$(document).ready(function(){
+    chartDepot1();
+    chartDepot2();
+});
+</script>

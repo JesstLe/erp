@@ -44,6 +44,50 @@ final result: passed
 
 ---
 
+# Classic UI module-specific dashboard rebuild — Design QA
+
+- Source visual truth: `/Users/lv/Workspace/erp/design-audit/02-purchase-dashboard.png` and `/Users/lv/Workspace/erp/design-audit/08-reports-dashboard.png`
+- Browser-rendered implementations: `/Users/lv/Workspace/erp/docs/design-qa/classic-reference-rebuild/implementation-purchase-final-1274x660.png` and `/Users/lv/Workspace/erp/docs/design-qa/classic-reference-rebuild/implementation-reports-final-1274x660.png`
+- Full-view comparison evidence: `/Users/lv/Workspace/erp/docs/design-qa/classic-reference-rebuild/comparison-purchase-final.png` and `/Users/lv/Workspace/erp/docs/design-qa/classic-reference-rebuild/comparison-reports-final.png`
+- Viewport/state: 1274 × 660 CSS px at DPR 1, authenticated OWNER, collapsed “查看更多” state.
+- Density normalization: source captures are 1280 × 660 px and implementations are 1274 × 660 px. The six-pixel width difference comes from the in-app browser viewport boundary; height and DPR match, and no vertical resampling was used.
+
+## Findings
+
+The captured purchase and reports layouts have no remaining actionable P0/P1/P2 visual mismatch. The full 12-module handoff remains blocked only because five chart-title pairs are defined in the authenticated outer-frame script and have not yet been read directly.
+
+- Fonts and typography: compact Arial / Microsoft YaHei typography, regular panel headings, 12 px navigation/table density and muted gray labels match the source.
+- Spacing and layout rhythm: purchase uses two top charts, one lower list and two equal-height right groups; reports uses two top analyses and one full-width lower trend without a fabricated latest-record table. The accepted classic shell retains its store/account bar above the source content.
+- Colors and visual tokens: blue rail, gray canvas, white square panels, gray group headings, blue series and green expand controls follow the reference palette.
+- Image quality and assets: the screens rely on the repository lightning mark, Ant Design icons and Recharts output. No placeholder illustration, emoji or hand-built SVG is used.
+- Copy and content: captured list titles, table headings, group titles, button order and expand labels are preserved. Business rows and customer data are deliberately absent from the reference package.
+- Accessibility and interaction: semantic buttons remain keyboard reachable. “查看更多报表” expands to the full captured list and changes to “收起”; the representative interaction passed and the browser console reported zero errors.
+
+Focused crops were not required: at the original 660 px height the combined full-view evidence keeps chart titles, table fields, group labels and expand controls legible.
+
+## Comparison history
+
+1. Initial implementation used the same category-share, amount chart and latest-list template for every module. This was a P1 information-architecture and fidelity mismatch.
+2. First fix introduced four real structures: cashier workbench, standard two-chart dashboard, employee single-chart dashboard and report/decision three-chart analysis.
+3. First comparison found P2 drift in empty donut shape, analysis period controls, report fallback time axis and right-group overflow.
+4. Final fixes changed the empty donut to the captured 270-degree form, restored legends and period selectors, used a 31-day report axis, split right actions by the captured group boundary, and made “查看更多” expand in place.
+5. Post-fix comparisons show matching major-region proportions, panel types, table density, action hierarchy and empty-state chart geometry for the captured representative layouts.
+
+## Remaining capture blocker
+
+The browser-visible inner pages and sanitized source structures have been captured for all included modules. Exact chart titles for 顾客、促销、配货、员工、短信 still require one authenticated login to the reference system so the outer-frame chart script can be inspected. Credentials, CAPTCHA, cookies and customer data will not be saved.
+
+## Primary interactions and checks
+
+- Opened the purchase and reports classic routes in the authenticated local app.
+- Expanded and collapsed the purchase report group.
+- Checked browser console errors: none.
+- Frontend lint completed without errors after the final fix; all 30 tests passed; the final TypeScript and Vite production build passed.
+
+final result: blocked
+
+---
+
 # Classic UI complete page set — Design QA
 
 - Source visual truth: `/Users/lv/Workspace/erp/design-audit/02-purchase-dashboard.png`

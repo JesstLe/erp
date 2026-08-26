@@ -1,0 +1,1649 @@
+{
+  "capturedAt": "reference-only",
+  "privacy": "business rows, customer names, phone numbers, credentials, cookies, identifiers, and form values are excluded",
+  "modules": [
+    {
+      "chartContainers": [
+        {
+          "className": "",
+          "id": "container-vip1",
+          "style": "min-width:400px;height:305px;"
+        },
+        {
+          "className": "",
+          "id": "container-vip2",
+          "style": "min-width:400px;height:305px;"
+        }
+      ],
+      "groups": [
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-member",
+              "onclick": "javascript:top.layerMax('../base/frame.php?act=member');",
+              "text": "顾客信息"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-vip",
+              "onclick": "javascript:top.layerForm('vip_begin','',0,1000,610);",
+              "text": "顾客开卡"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-fullS",
+              "onclick": "javascript:top.layerForm('vip_full','S',0,1000,610);",
+              "text": "顾客储值"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-order",
+              "onclick": "javascript:top.layerMax('../vip/frame.php?act=order');",
+              "text": "顾客预约"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-nurse",
+              "onclick": "javascript:top.layerMax('../vip/frame.php?act=nurse');",
+              "text": "顾客护理"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-sellT",
+              "onclick": "javascript:top.layerBill('vip_sell','T','0');",
+              "text": "消费退货"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-fullT",
+              "onclick": "javascript:top.layerForm('vip_full','T',0,1000,610);",
+              "text": "储值退款"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-fnumT",
+              "onclick": "javascript:top.layerBill('vip_fnum','T','0');",
+              "text": "次卡退卡"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-score",
+              "onclick": "javascript:top.layerForm('vip_score','',0,900,432);",
+              "text": "积分增减"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-bonus",
+              "onclick": "javascript:top.layerForm('vip_bonus','',0,900,432);",
+              "text": "兑换储值"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-gift",
+              "onclick": "javascript:top.layerForm('vip_gift','',0,900,475);",
+              "text": "兑换礼品"
+            }
+          ],
+          "moreText": "查看更多功能",
+          "title": "顾客管理",
+          "toggle": "rightToggle(1);"
+        },
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sell_list');",
+              "text": "顾客消费单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_full_list');",
+              "text": "顾客储值单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_fnum_list');",
+              "text": "次卡销售单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_arrear_list');",
+              "text": "顾客欠款单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_repay_list');",
+              "text": "顾客还款单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_score_list');",
+              "text": "积分增减单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_bonus_list');",
+              "text": "积分兑换储值查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_gift_list');",
+              "text": "积分兑换礼品查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_member_count');",
+              "text": "顾客剩余卡次查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_member_give');",
+              "text": "顾客消费赠送查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_member_score');",
+              "text": "顾客积分变动查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_member_bonus');",
+              "text": "顾客分销佣金汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_member_bchild');",
+              "text": "顾客分销佣金明细表"
+            }
+          ],
+          "moreText": "查看更多报表",
+          "title": "报表查询",
+          "toggle": "rightToggle(2);"
+        }
+      ],
+      "inlineScripts": [
+        "$(document).ready(function(){\n    chartVip1();\n    chartVip2();      \n});"
+      ],
+      "key": "vip",
+      "latestHeaders": [
+        "会员卡号",
+        "会员姓名",
+        "性别",
+        "手机号码",
+        "办卡门店",
+        "会员卡类",
+        "来店渠道",
+        "登记时间"
+      ],
+      "latestQueryOnclick": "javascript:top.layerMax('../base/frame.php?act=member');",
+      "latestTitle": "最新登记顾客列表",
+      "url": "https://app5.siweicloud.com/swshop/home/index.php?act=list&navbar=vip"
+    },
+    {
+      "chartContainers": [
+        {
+          "className": "",
+          "id": "container-sales1",
+          "style": "min-width:400px;height:305px;"
+        },
+        {
+          "className": "",
+          "id": "container-sales2",
+          "style": "min-width:400px;height:305px;"
+        }
+      ],
+      "groups": [
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-buyfront",
+              "onclick": "javascript:top.layerBill('vip_sales','','0');",
+              "text": "促销开单"
+            }
+          ],
+          "moreText": "",
+          "title": "促销管理",
+          "toggle": "rightToggle(1);"
+        },
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sales_list');",
+              "text": "门店促销单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sales_goods&type=service');",
+              "text": "当前促销项目查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sales_goods&type=product');",
+              "text": "当前促销产品查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sales_parent&type=service');",
+              "text": "促销项目消费汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sales_child&type=service');",
+              "text": "促销项目消费明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sales_parent&type=product');",
+              "text": "促销产品消费汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sales_child&type=product');",
+              "text": "促销产品消费明细表"
+            }
+          ],
+          "moreText": "查看更多报表",
+          "title": "报表查询",
+          "toggle": "rightToggle(2);"
+        }
+      ],
+      "inlineScripts": [
+        "$(document).ready(function(){\n    chartSales1();\n    chartSales2();      \n});"
+      ],
+      "key": "sales",
+      "latestHeaders": [
+        "单号",
+        "日期",
+        "所属门店",
+        "促销方案",
+        "开始日期",
+        "截止日期",
+        "开始时段",
+        "截止时段",
+        "制单人",
+        "审核人"
+      ],
+      "latestQueryOnclick": "javascript:top.layerMax('../print/frame.php?act=vip_sales_list');",
+      "latestTitle": "最新门店促销单列表",
+      "url": "https://app5.siweicloud.com/swshop/home/index.php?act=list&navbar=sales"
+    },
+    {
+      "chartContainers": [
+        {
+          "className": "",
+          "id": "container-buy1",
+          "style": "min-width:400px;height:305px;"
+        },
+        {
+          "className": "",
+          "id": "container-buy2",
+          "style": "min-width:400px;height:305px;"
+        }
+      ],
+      "groups": [
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-buyfront",
+              "onclick": "javascript:top.layerBill('buy_front','','0');",
+              "text": "进货订单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-buycomeS",
+              "onclick": "javascript:top.layerBill('buy_come','S','0');",
+              "text": "进货入库单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-buycomeT",
+              "onclick": "javascript:top.layerBill('buy_come','T','0');",
+              "text": "进货退货单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-buycpay",
+              "onclick": "javascript:top.layerBill('buy_cpay','','0');",
+              "text": "进货付款单"
+            }
+          ],
+          "moreText": "",
+          "title": "进货管理",
+          "toggle": "rightToggle(1);"
+        },
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_front_list');",
+              "text": "进货订单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_come_list&type=S');",
+              "text": "进货入库单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_come_list&type=T');",
+              "text": "进货退货单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_cpay_list');",
+              "text": "进货付款单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_front_goods');",
+              "text": "商品订货统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_front_shop');",
+              "text": "门店订货统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_front_client');",
+              "text": "供应商订货统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_front_child');",
+              "text": "进货订单明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_come_goods');",
+              "text": "商品进货统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_come_shop');",
+              "text": "门店进货统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_come_client');",
+              "text": "供应商进货统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_come_emplee');",
+              "text": "职员进货统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=buy_come_child');",
+              "text": "进货明细表"
+            }
+          ],
+          "moreText": "查看更多报表",
+          "title": "报表查询",
+          "toggle": "rightToggle(2);"
+        }
+      ],
+      "inlineScripts": [
+        "$(document).ready(function(){\n    chartBuy1();\n    chartBuy2();      \n});"
+      ],
+      "key": "buy",
+      "latestHeaders": [
+        "单号",
+        "日期",
+        "供应商",
+        "经办人",
+        "货品总额",
+        "优惠金额",
+        "应付金额",
+        "已付金额",
+        "制单人",
+        "审核人"
+      ],
+      "latestQueryOnclick": "javascript:top.layerMax('../print/frame.php?act=buy_come_list&type=S');",
+      "latestTitle": "最新进货入库单列表",
+      "url": "https://app5.siweicloud.com/swshop/home/index.php?act=list&navbar=buy"
+    },
+    {
+      "chartContainers": [
+        {
+          "className": "",
+          "id": "container-sell1",
+          "style": "min-width:400px;height:305px;"
+        },
+        {
+          "className": "",
+          "id": "container-sell2",
+          "style": "min-width:400px;height:305px;"
+        }
+      ],
+      "groups": [
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-buyfront",
+              "onclick": "javascript:top.layerBill('sell_front','','0');",
+              "text": "销售订单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-buycomeS",
+              "onclick": "javascript:top.layerBill('sell_come','S','0');",
+              "text": "销售出库单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-buycomeT",
+              "onclick": "javascript:top.layerBill('sell_come','T','0');",
+              "text": "销售退货单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-buycpay",
+              "onclick": "javascript:top.layerBill('sell_cpay','','0');",
+              "text": "销售收款单"
+            }
+          ],
+          "moreText": "",
+          "title": "销售管理",
+          "toggle": "rightToggle(1);"
+        },
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_front_list');",
+              "text": "销售订单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_come_list&type=S');",
+              "text": "销售出库单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_come_list&type=T');",
+              "text": "销售退货单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_cpay_list');",
+              "text": "销售收款单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_front_goods');",
+              "text": "商品订货统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_front_shop');",
+              "text": "门店订货统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_front_client');",
+              "text": "客户订货统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_front_child');",
+              "text": "销售订单明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_come_goods');",
+              "text": "商品销售统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_come_shop');",
+              "text": "门店销售统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_come_client');",
+              "text": "客户销售统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_come_emplee');",
+              "text": "职员销售统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=sell_come_child');",
+              "text": "销售明细表"
+            }
+          ],
+          "moreText": "查看更多报表",
+          "title": "报表查询",
+          "toggle": "rightToggle(2);"
+        }
+      ],
+      "inlineScripts": [
+        "$(document).ready(function(){\n    chartSell1();\n    chartSell2();      \n});"
+      ],
+      "key": "sell",
+      "latestHeaders": [
+        "单号",
+        "日期",
+        "销售客户",
+        "经办人",
+        "货品总额",
+        "优惠金额",
+        "应收金额",
+        "已收金额",
+        "制单人",
+        "审核人"
+      ],
+      "latestQueryOnclick": "javascript:top.layerMax('../print/frame.php?act=sell_come_list&type=S');",
+      "latestTitle": "最新销售出库单列表",
+      "url": "https://app5.siweicloud.com/swshop/home/index.php?act=list&navbar=sell"
+    },
+    {
+      "chartContainers": [
+        {
+          "className": "",
+          "id": "container-depot1",
+          "style": "min-width:400px;height:305px;"
+        },
+        {
+          "className": "",
+          "id": "container-depot2",
+          "style": "min-width:400px;height:305px;"
+        }
+      ],
+      "groups": [
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-depot-comeS",
+              "onclick": "javascript:top.layerBill('depot_come','S','0');",
+              "text": "商品入库单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-depot-comeT",
+              "onclick": "javascript:top.layerBill('depot_come','T','0');",
+              "text": "商品出库单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-depot-check",
+              "onclick": "javascript:top.layerBill('depot_check','','0');",
+              "text": "库存盘点单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-depot-price",
+              "onclick": "javascript:top.layerBill('depot_price','','0');",
+              "text": "存货调价单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_number');",
+              "text": "库存状况表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_jxc');",
+              "text": "库存变动表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_child');",
+              "text": "库存明细表"
+            }
+          ],
+          "moreText": "查看更多功能",
+          "title": "库存管理",
+          "toggle": "rightToggle(1);"
+        },
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_come_list&type=S');",
+              "text": "商品入库单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_come_list&type=T');",
+              "text": "商品出库单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_check_list');",
+              "text": "库存盘点单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_price_list');",
+              "text": "存货调价单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_come_goods&type=S');",
+              "text": "商品入库汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_come_child&type=S');",
+              "text": "商品入库明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_come_goods&type=T');",
+              "text": "商品出库汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_come_child&type=T');",
+              "text": "商品出库明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_check_goods');",
+              "text": "库存盘点汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_check_child');",
+              "text": "库存盘点明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_price_goods');",
+              "text": "存货调价汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_price_child');",
+              "text": "存货调价明细表"
+            }
+          ],
+          "moreText": "查看更多报表",
+          "title": "报表查询",
+          "toggle": "rightToggle(2);"
+        }
+      ],
+      "inlineScripts": [
+        "$(document).ready(function(){\n    chartDepot1();\n    chartDepot2();      \n});"
+      ],
+      "key": "depot",
+      "latestHeaders": [
+        "所属门店",
+        "产品分类",
+        "产品品牌",
+        "产品编号",
+        "产品名称",
+        "规格",
+        "单位",
+        "库存数量"
+      ],
+      "latestQueryOnclick": "javascript:top.layerMax('../print/frame.php?act=depot_number');",
+      "latestTitle": "库存最多商品排行",
+      "url": "https://app5.siweicloud.com/swshop/home/index.php?act=list&navbar=depot"
+    },
+    {
+      "chartContainers": [
+        {
+          "className": "",
+          "id": "container-joins1",
+          "style": "min-width:400px;height:305px;"
+        },
+        {
+          "className": "",
+          "id": "container-joins2",
+          "style": "min-width:400px;height:305px;"
+        }
+      ],
+      "groups": [
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-depot-frontS",
+              "onclick": "javascript:top.layerBill('depot_front','S','0');",
+              "text": "配货申请单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-depot-frontT",
+              "onclick": "javascript:top.layerBill('depot_front','T','0');",
+              "text": "退货申请单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-depot-moveS",
+              "onclick": "javascript:top.layerBill('depot_move','S','0');",
+              "text": "门店配送单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-depot-moveT",
+              "onclick": "javascript:top.layerBill('depot_move','T','0');",
+              "text": "门店退货单"
+            }
+          ],
+          "moreText": "",
+          "title": "配货管理",
+          "toggle": "rightToggle(1);"
+        },
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_front_list&type=S');",
+              "text": "配货申请单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_front_list&type=T');",
+              "text": "退货申请单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_move_list');",
+              "text": "门店配送单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_move_goods&type=O');",
+              "text": "配送出库汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_move_child&type=O');",
+              "text": "配送出库明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_move_goods&type=I');",
+              "text": "配送入库汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=depot_move_child&type=I');",
+              "text": "配送入库明细表"
+            }
+          ],
+          "moreText": "查看更多报表",
+          "title": "报表查询",
+          "toggle": "rightToggle(2);"
+        }
+      ],
+      "inlineScripts": [
+        "$(document).ready(function(){\n    chartJoins1();\n    chartJoins2();      \n});"
+      ],
+      "key": "joins",
+      "latestHeaders": [
+        "单号",
+        "日期",
+        "调入门店",
+        "货品总额",
+        "优惠金额",
+        "应收金额",
+        "已收金额",
+        "制单人",
+        "审核人",
+        "验收人"
+      ],
+      "latestQueryOnclick": "javascript:top.layerMax('../print/frame.php?act=depot_move_list');",
+      "latestTitle": "最新门店配送单列表",
+      "url": "https://app5.siweicloud.com/swshop/home/index.php?act=list&navbar=joins"
+    },
+    {
+      "chartContainers": [
+        {
+          "className": "",
+          "id": "container-pay",
+          "style": "height:245px;"
+        }
+      ],
+      "groups": [
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-base-emplee",
+              "onclick": "javascript:top.layerMax('../base/frame.php?act=emplee');",
+              "text": "员工信息"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-pay-assess",
+              "onclick": "javascript:top.layerMax('../pay/frame.php?act=assess');",
+              "text": "绩效考核"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-pay-reward",
+              "onclick": "javascript:top.layerMax('../pay/frame.php?act=reward');",
+              "text": "员工奖罚"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-pay-data",
+              "onclick": "javascript:top.layerMax('../pay/frame.php?act=pdata');",
+              "text": "工资核算"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-pay-pmoney",
+              "onclick": "javascript:top.layerMax('../pay/frame.php?act=pmoney');",
+              "text": "支付工资"
+            }
+          ],
+          "moreText": "",
+          "title": "员工管理",
+          "toggle": "rightToggle(1);"
+        },
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=pay_bonus_parent');",
+              "text": "员工综合业绩汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=pay_assess_parent');",
+              "text": "员工绩效考核统计表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=pay_full_parent');",
+              "text": "员工储值业绩汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=pay_fnum_parent');",
+              "text": "员工售卡业绩汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=pay_sell_parent&type=manual');",
+              "text": "员工服务手工业绩表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=pay_sell_parent&type=service');",
+              "text": "员工销售项目业绩表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=pay_sell_parent&type=product');",
+              "text": "员工销售产品业绩表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=pay_emplee_parent');",
+              "text": "员工分销佣金汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=pay_emplee_child');",
+              "text": "员工分销佣金明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=pay_pdata_parent');",
+              "text": "员工工资汇总表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=pay_pdata_child');",
+              "text": "员工工资明细表"
+            }
+          ],
+          "moreText": "查看更多报表",
+          "title": "报表查询",
+          "toggle": "rightToggle(2);"
+        }
+      ],
+      "inlineScripts": [
+        "$(document).ready(function(){\n    chartPay();\n});"
+      ],
+      "key": "pay",
+      "latestHeaders": [
+        "所属门店",
+        "员工编号",
+        "员工姓名",
+        "性别",
+        "手机号码",
+        "员工工种",
+        "技师等级",
+        "进店日期"
+      ],
+      "latestQueryOnclick": "javascript:top.layerMax('../base/frame.php?act=emplee');",
+      "latestTitle": "最新登记员工列表",
+      "url": "https://app5.siweicloud.com/swshop/home/index.php?act=list&navbar=pay"
+    },
+    {
+      "chartContainers": [
+        {
+          "className": "",
+          "id": "container-fund1",
+          "style": "min-width:400px;height:305px;"
+        },
+        {
+          "className": "",
+          "id": "container-fund2",
+          "style": "min-width:400px;height:305px;"
+        }
+      ],
+      "groups": [
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-fund-send",
+              "onclick": "javascript:top.layerBill('fund_send','','0');",
+              "text": "费用开支单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-fund-come",
+              "onclick": "javascript:top.layerBill('fund_come','','0');",
+              "text": "其他收入单"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-fund-move",
+              "onclick": "javascript:top.layerBill('fund_move','','0');",
+              "text": "银行存取款"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-fund-pdata",
+              "onclick": "javascript:top.layerMax('../fund/frame.php?act=pdata');",
+              "text": "跨店核算"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-fund-cpay",
+              "onclick": "javascript:top.layerBill('fund_cpay','','0');",
+              "text": "跨店结算"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=fund_subject_1');",
+              "text": "经营情况表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=fund_subject_2');",
+              "text": "资产负债表"
+            }
+          ],
+          "moreText": "查看更多功能",
+          "title": "财务管理",
+          "toggle": "rightToggle(1);"
+        },
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=fund_send_list');",
+              "text": "费用开支单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=fund_come_list');",
+              "text": "其他收入单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=fund_move_list');",
+              "text": "银行存取款查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-search",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=fund_cpay_list');",
+              "text": "门店结算单查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=fund_pdata');",
+              "text": "跨店储值对账表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=fund_due_parent');",
+              "text": "供应商应付款查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=fund_due_child');",
+              "text": "供应商应付款明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=shop_due_parent');",
+              "text": "门店应收款查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=shop_due_child');",
+              "text": "门店应收款明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=fund_send_parent');",
+              "text": "费用开支科目统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=fund_come_parent');",
+              "text": "其他收入科目统计"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=fund_bank_parent');",
+              "text": "现金银行科目统计"
+            }
+          ],
+          "moreText": "查看更多报表",
+          "title": "报表查询",
+          "toggle": "rightToggle(2);"
+        }
+      ],
+      "inlineScripts": [
+        "$(document).ready(function(){\n    chartFund1();\n    chartFund2();      \n});"
+      ],
+      "key": "fund",
+      "latestHeaders": [
+        "单号",
+        "日期",
+        "所属门店",
+        "经办人",
+        "付款账户",
+        "付款金额",
+        "制单人",
+        "审核人"
+      ],
+      "latestQueryOnclick": "javascript:top.layerMax('../print/frame.php?act=fund_send_list');",
+      "latestTitle": "最新费用开支单列表",
+      "url": "https://app5.siweicloud.com/swshop/home/index.php?act=list&navbar=fund"
+    },
+    {
+      "chartContainers": [
+        {
+          "className": "",
+          "id": "container-report1",
+          "style": "min-width:400px;height:245px;"
+        },
+        {
+          "className": "",
+          "id": "container-report2",
+          "style": "min-width:400px;height:245px;"
+        },
+        {
+          "className": "",
+          "id": "container-report3",
+          "style": "min-width:400px;height:245px;"
+        }
+      ],
+      "groups": [
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_sell');",
+              "text": "门店消费统计表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_full_parent');",
+              "text": "顾客储值统计表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_full_child');",
+              "text": "顾客储值明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sell_classe&type=service');",
+              "text": "项目分类统计表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sell_goods&type=service');",
+              "text": "项目消费统计表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sell_child&type=service');",
+              "text": "项目消费明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sell_classe&type=product');",
+              "text": "产品分类统计表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sell_goods&type=product');",
+              "text": "产品消费统计表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sell_child&type=product');",
+              "text": "产品消费明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sell_goods&type=numcard');",
+              "text": "次卡消耗统计表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sell_child&type=numcard');",
+              "text": "次卡消耗明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_fnum_parent');",
+              "text": "次卡销售统计表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_fnum_child');",
+              "text": "次卡销售明细表"
+            }
+          ],
+          "moreText": "查看更多报表",
+          "title": "项目分析",
+          "toggle": "rightToggle(1);"
+        },
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_handover');",
+              "text": "门店经营分析"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_costs');",
+              "text": "门店毛利分析"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_member_iclevel');",
+              "text": "顾客卡类分析"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_member_parent');",
+              "text": "顾客消费分析"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_debts_parent');",
+              "text": "顾客负债分析"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_fnum_sell');",
+              "text": "次卡消费分析"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_count_parent');",
+              "text": "次卡余次分析"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_age');",
+              "text": "顾客年龄分析"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_sell_source');",
+              "text": "来店渠道分析"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_member_jump&type=time');",
+              "text": "顾客活跃度分析"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_money_shop');",
+              "text": "门店收款统计表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_money_month');",
+              "text": "门店收款明细表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_member_payment');",
+              "text": "支付方式统计表"
+            }
+          ],
+          "moreText": "查看更多报表",
+          "title": "经营分析",
+          "toggle": "rightToggle(2);"
+        }
+      ],
+      "inlineScripts": [
+        "$(document).ready(function(){\n    chartReport1();\n    chartReport2();      \n    chartReport3();      \n});"
+      ],
+      "key": "report",
+      "latestHeaders": [],
+      "latestQueryOnclick": "",
+      "latestTitle": "顾客消费走势",
+      "url": "https://app5.siweicloud.com/swshop/home/index.php?act=list&navbar=report"
+    },
+    {
+      "chartContainers": [
+        {
+          "className": "",
+          "id": "container-report1",
+          "style": "min-width:400px;height:245px;"
+        },
+        {
+          "className": "",
+          "id": "container-report2",
+          "style": "min-width:400px;height:245px;"
+        },
+        {
+          "className": "",
+          "id": "container-report3",
+          "style": "min-width:400px;height:245px;"
+        }
+      ],
+      "groups": [
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_01');",
+              "text": "门店按月对账表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_08');",
+              "text": "门店储值余额表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_02');",
+              "text": "门店按月销售表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_03');",
+              "text": "门店按月卡扣表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_04');",
+              "text": "门店人均消费排名"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_05');",
+              "text": "产品销售额排名"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_13');",
+              "text": "项目销售额排名"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_06');",
+              "text": "消费人数增长表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_07');",
+              "text": "会员总数增长表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_21');",
+              "text": "会员当日存量查询"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_23');",
+              "text": "门店每日应交款"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_30&type=service');",
+              "text": "项目消费排行榜"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_30&type=product');",
+              "text": "产品消费排行榜"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_30&type=numcard');",
+              "text": "次卡消耗排行榜"
+            }
+          ],
+          "moreText": "查看更多报表",
+          "title": "决策支持",
+          "toggle": "rightToggle(1);"
+        },
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_09');",
+              "text": "门店总收入排名"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_10');",
+              "text": "门店总收入对比表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_11');",
+              "text": "工资占总收入比率表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_12');",
+              "text": "费用占总收入比率表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_14');",
+              "text": "卡扣余额占比表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_15');",
+              "text": "项目分类收入占比表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_16');",
+              "text": "产品分类收入占比表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_20');",
+              "text": "经营数据统计表"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-report",
+              "onclick": "javascript:top.layerMax('../print/frame.php?act=vip_shop_22');",
+              "text": "门店营业日报表"
+            }
+          ],
+          "moreText": "查看更多报表",
+          "title": "经营分析",
+          "toggle": "rightToggle(2);"
+        }
+      ],
+      "inlineScripts": [
+        "$(document).ready(function(){\n    chartReport1();\n    chartReport2();      \n    chartReport3();      \n});"
+      ],
+      "key": "boss",
+      "latestHeaders": [],
+      "latestQueryOnclick": "",
+      "latestTitle": "顾客消费走势",
+      "url": "https://app5.siweicloud.com/swshop/home/index.php?act=list&navbar=boss"
+    },
+    {
+      "chartContainers": [
+        {
+          "className": "",
+          "id": "container-sms1",
+          "style": "min-width:400px;height:305px;"
+        },
+        {
+          "className": "",
+          "id": "container-sms2",
+          "style": "min-width:400px;height:305px;"
+        }
+      ],
+      "groups": [
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-smsmember",
+              "onclick": "javascript:top.layerMax('../sms/frame.php?act=member');",
+              "text": "顾客短信"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-smsemplee",
+              "onclick": "javascript:top.layerMax('../sms/frame.php?act=emplee');",
+              "text": "员工短信"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-smsqun",
+              "onclick": "javascript:top.layerWin('短信群发','../sms/qun.php',700,483);",
+              "text": "短信群发"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-smssend",
+              "onclick": "javascript:top.layerMax('../sms/frame.php?act=send');",
+              "text": "已发短信"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-smsqun",
+              "onclick": "javascript:top.layerMax('../sms/frame.php?act=feelist');",
+              "text": "余额查询"
+            }
+          ],
+          "moreText": "",
+          "title": "短信管理",
+          "toggle": "rightToggle(1);"
+        },
+        {
+          "actions": [
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-favorites",
+              "onclick": "javascript:top.layerMax('../sms/frame.php?act=often');",
+              "text": "常用短语"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-template",
+              "onclick": "javascript:top.layerMax('../sms/frame.php?act=template');",
+              "text": "短信模版"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-system",
+              "onclick": "javascript:top.layerWin('短信账户设置','../sms/account.php',500,315);",
+              "text": "短信账户"
+            },
+            {
+              "href": "javascript:void(0);",
+              "icon": "iconfont icon-password",
+              "onclick": "javascript:top.layerWin('修改短信密码','../sms/password.php',500,270);",
+              "text": "修改密码"
+            }
+          ],
+          "moreText": "",
+          "title": "短信设置",
+          "toggle": "rightToggle(2);"
+        }
+      ],
+      "inlineScripts": [
+        "$(document).ready(function(){\n    chartSms1();\n    chartSms2();      \n});"
+      ],
+      "key": "sms",
+      "latestHeaders": [
+        "所属门店",
+        "手机号码",
+        "短信内容",
+        "发送时间",
+        "状态"
+      ],
+      "latestQueryOnclick": "javascript:top.layerMax('../sms/frame.php?act=send');",
+      "latestTitle": "最新发送短信列表",
+      "url": "https://app5.siweicloud.com/swshop/home/index.php?act=list&navbar=sms"
+    }
+  ]
+}
