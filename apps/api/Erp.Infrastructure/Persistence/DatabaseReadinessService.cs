@@ -6,7 +6,7 @@ namespace Erp.Infrastructure.Persistence;
 
 internal sealed class DatabaseReadinessService(ErpDbContext db) : IDatabaseReadinessService
 {
-    public const string RequiredSchemaVersion = "202608260033";
+    public const string RequiredSchemaVersion = "202608270035";
 
     public async Task<DatabaseReadinessDto> CheckAsync(CancellationToken cancellationToken)
     {
@@ -21,6 +21,8 @@ internal sealed class DatabaseReadinessService(ErpDbContext db) : IDatabaseReadi
                    AND to_regclass('public.price_override_approvals') IS NOT NULL
                    AND to_regclass('public.customer_service_records') IS NOT NULL
                    AND to_regclass('public.customer_service_record_corrections') IS NOT NULL
+                   AND to_regclass('public.customer_service_record_categories') IS NOT NULL
+                   AND to_regclass('public.organization_employee_positions') IS NOT NULL
                    AND to_regclass('public.inventory_movements') IS NOT NULL
                    AND to_regclass('public.appointments') IS NOT NULL
                    AND to_regclass('public.employee_shifts') IS NOT NULL
@@ -60,6 +62,9 @@ internal sealed class DatabaseReadinessService(ErpDbContext db) : IDatabaseReadi
                    AND EXISTS (SELECT 1 FROM information_schema.columns
                                WHERE table_schema = 'public' AND table_name = 'service_orders'
                                  AND column_name = 'price_book_id' AND is_nullable = 'YES')
+                   AND EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_schema = 'public' AND table_name = 'customer_service_records'
+                                 AND column_name = 'category_id' AND is_nullable = 'YES')
                    AND EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')
                 """;
             command.CommandType = CommandType.Text;

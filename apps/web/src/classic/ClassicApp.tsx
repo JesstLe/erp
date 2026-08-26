@@ -60,11 +60,12 @@ import './classic.css'
 const ClassicCashierFacilitiesPage = lazy(() => import('./ClassicCashierFacilitiesPage').then((module) => ({ default: module.ClassicCashierFacilitiesPage })))
 const ClassicCustomerDashboard = lazy(() => import('./ClassicCustomerPage').then((module) => ({ default: module.ClassicCustomerDashboard })))
 const ClassicCustomerListPage = lazy(() => import('./ClassicCustomerPage').then((module) => ({ default: module.ClassicCustomerListPage })))
+const ClassicCustomerCarePage = lazy(() => import('./ClassicCustomerCarePage').then((module) => ({ default: module.ClassicCustomerCarePage })))
+const ClassicEmployeePage = lazy(() => import('./ClassicEmployeePage').then((module) => ({ default: module.ClassicEmployeePage })))
 const SchedulingPage = lazy(() => import('../pages/SchedulingPage').then((module) => ({ default: module.SchedulingPage })))
 const CashierPage = lazy(() => import('../pages/CashierPage').then((module) => ({ default: module.CashierPage })))
 const InventoryPage = lazy(() => import('../pages/InventoryPage').then((module) => ({ default: module.InventoryPage })))
 const SupplyChainPage = lazy(() => import('../pages/SupplyChainPage').then((module) => ({ default: module.SupplyChainPage })))
-const EmployeesPage = lazy(() => import('../pages/EmployeesPage').then((module) => ({ default: module.EmployeesPage })))
 const ReportsPage = lazy(() => import('../pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 const AuditPage = lazy(() => import('../pages/AuditPage').then((module) => ({ default: module.AuditPage })))
 const ServiceItemsPage = lazy(() => import('../pages/ServiceItemsPage').then((module) => ({ default: module.ServiceItemsPage })))
@@ -434,7 +435,10 @@ function ClassicLegacyRoute() {
   const page = getClassicManifestPage(moduleKey, pageId)
   if (!moduleDefinition || !manifestModule || !page) return <Navigate to="/ui/new/index" replace />
   if (moduleKey === 'employee' && pageId === 'employee-001') {
-    return <ClassicAuthorized permission={Permission.EmployeeManage}><ClassicFeatureFrame title="员工信息"><EmployeesPage /></ClassicFeatureFrame></ClassicAuthorized>
+    return <ClassicAuthorized permission={Permission.EmployeeManage}><ClassicEmployeePage /></ClassicAuthorized>
+  }
+  if (moduleKey === 'customer' && pageId === 'customer-005') {
+    return <ClassicAuthorized permission={Permission.ServiceRecordManage}><ClassicCustomerCarePage /></ClassicAuthorized>
   }
   return <ClassicAuthorized permission={moduleDefinition.permission}><ClassicLegacyPage module={manifestModule} page={page} /></ClassicAuthorized>
 }
@@ -459,7 +463,7 @@ export function ClassicApp() {
             <Route path="sales/orders" element={<ClassicPageRoute permission={Permission.CashierCheckout} component={CashierPage} />} />
             <Route path="inventory/manage" element={<ClassicPageRoute permission={Permission.InventoryRead} component={InventoryPage} />} />
             <Route path="distribution/manage" element={<ClassicPageRoute permission={Permission.SupplyChainRead} component={SupplyChainPage} />} />
-            <Route path="employee/manage" element={<ClassicPageRoute permission={Permission.EmployeeManage} component={EmployeesPage} />} />
+            <Route path="employee/manage" element={<ClassicAuthorized permission={Permission.EmployeeManage}><ClassicEmployeePage /></ClassicAuthorized>} />
             <Route path="employee/scheduling" element={<ClassicPageRoute permission={Permission.SchedulingOperate} component={SchedulingPage} />} />
             <Route path="finance/checkout" element={<ClassicPageRoute permission={Permission.CashierCheckout} component={CashierPage} />} />
             <Route path="finance/reports" element={<ClassicPageRoute permission={Permission.ReportRead} component={ReportsPage} />} />

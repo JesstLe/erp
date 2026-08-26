@@ -99,6 +99,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<InventoryTransferLot> InventoryTransferLots => Set<InventoryTransferLot>();
     public DbSet<StoredFileRecord> StoredFiles => Set<StoredFileRecord>();
     public DbSet<ServiceRecord> ServiceRecords => Set<ServiceRecord>();
+    public DbSet<ServiceRecordCategory> ServiceRecordCategories => Set<ServiceRecordCategory>();
     public DbSet<ServiceRecordCorrection> ServiceRecordCorrections => Set<ServiceRecordCorrection>();
     public DbSet<ServiceRecordAttachment> ServiceRecordAttachments => Set<ServiceRecordAttachment>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
@@ -1514,6 +1515,18 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
 
     private static void ConfigureFilesAndServiceRecords(ModelBuilder builder)
     {
+        builder.Entity<ServiceRecordCategory>(entity =>
+        {
+            entity.ToTable("customer_service_record_categories");
+            ConfigureBase(entity);
+            entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(40);
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(60);
+            entity.Property(x => x.SortOrder).HasColumnName("sort_order");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.Name }).IsUnique();
+            entity.HasIndex(x => new { x.TenantId, x.SortOrder, x.Code });
+        });
         builder.Entity<StoredFileRecord>(entity =>
         {
             entity.ToTable("stored_files");
@@ -1541,6 +1554,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.StoreId).HasColumnName("store_id");
             entity.Property(x => x.CustomerId).HasColumnName("customer_id");
             entity.Property(x => x.ServiceOrderId).HasColumnName("service_order_id");
+            entity.Property(x => x.CategoryId).HasColumnName("category_id");
             entity.Property(x => x.ServiceOccurredAtUtc).HasColumnName("service_occurred_at_utc");
             entity.Property(x => x.ConditionNotes).HasColumnName("condition_notes").HasMaxLength(2000);
             entity.Property(x => x.ServiceContent).HasColumnName("service_content").HasMaxLength(4000);
@@ -1552,6 +1566,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasOne<Customer>().WithMany().HasForeignKey(x => x.CustomerId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ServiceOrder>().WithMany().HasForeignKey(x => x.ServiceOrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ServiceRecordCategory>().WithMany().HasForeignKey(x => x.CategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CreatedBy)
                 .OnDelete(DeleteBehavior.Restrict);

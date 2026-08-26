@@ -12,7 +12,8 @@ public sealed class ServiceRecord : Entity
 
     public ServiceRecord(Guid tenantId, Guid storeId, Guid customerId, Guid? serviceOrderId,
         DateTimeOffset serviceOccurredAtUtc, string? conditionNotes, string? serviceContent,
-        string? followUpNotes, Guid commandId, Guid createdBy, DateTimeOffset now) : base(tenantId)
+        string? followUpNotes, Guid commandId, Guid createdBy, DateTimeOffset now,
+        Guid? categoryId = null) : base(tenantId)
     {
         if (storeId == Guid.Empty || customerId == Guid.Empty || commandId == Guid.Empty || createdBy == Guid.Empty)
             throw new DomainRuleException("VALIDATION_FAILED", "服务记录的门店、顾客、请求号和建档人不能为空");
@@ -22,6 +23,7 @@ public sealed class ServiceRecord : Entity
         StoreId = storeId;
         CustomerId = customerId;
         ServiceOrderId = serviceOrderId;
+        CategoryId = categoryId;
         ServiceOccurredAtUtc = serviceOccurredAtUtc;
         ConditionNotes = NormalizeOptional(conditionNotes, 2_000, "本次情况/需求");
         ServiceContent = NormalizeOptional(serviceContent, 4_000, "服务过程与内容");
@@ -33,6 +35,7 @@ public sealed class ServiceRecord : Entity
     public Guid StoreId { get; private set; }
     public Guid CustomerId { get; private set; }
     public Guid? ServiceOrderId { get; private set; }
+    public Guid? CategoryId { get; private set; }
     public DateTimeOffset ServiceOccurredAtUtc { get; private set; }
     public string? ConditionNotes { get; private set; }
     public string? ServiceContent { get; private set; }

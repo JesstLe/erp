@@ -158,6 +158,57 @@ public static class CustomerEndpoints
                     request.Note, request.CommandId, current.Id), cancellationToken));
         }).RequireAuthorization(SystemPermissions.MembershipOpen);
 
+        group.MapGet("/service-record-categories", async (IIdentityService identity, IServiceRecordService records,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() :
+                Results.Ok(await records.ListCategoriesAsync(current.TenantId, cancellationToken));
+        }).RequireAuthorization(SystemPermissions.ServiceRecordManage);
+
+        group.MapPost("/service-record-categories", async (CreateServiceRecordCategoryRequest request,
+            IIdentityService identity, IServiceRecordService records, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await records.CreateCategoryAsync(current.TenantId, request.Name ?? string.Empty,
+                    request.SortOrder, current.Id, cancellationToken),
+                value => Results.Created($"/api/v1/customers/service-record-categories/{value.Id}", value));
+        }).RequireAuthorization(SystemPermissions.ServiceRecordManage);
+
+        group.MapPut("/service-record-categories/{categoryId:guid}", async (Guid categoryId,
+            UpdateServiceRecordCategoryRequest request, IIdentityService identity, IServiceRecordService records,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await records.UpdateCategoryAsync(current.TenantId, categoryId, request.Name ?? string.Empty,
+                    request.SortOrder, request.IsEnabled, request.ExpectedVersion, current.Id, cancellationToken));
+        }).RequireAuthorization(SystemPermissions.ServiceRecordManage);
+
+        group.MapDelete("/service-record-categories/{categoryId:guid}", async (Guid categoryId,
+            uint expectedVersion, IIdentityService identity, IServiceRecordService records,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await records.DeleteCategoryAsync(current.TenantId, categoryId, expectedVersion, current.Id,
+                    cancellationToken), _ => Results.NoContent());
+        }).RequireAuthorization(SystemPermissions.ServiceRecordManage);
+
+        group.MapGet("/service-record-overview", async (Guid storeId, Guid? categoryId, string? query,
+            int? page, int? pageSize, IIdentityService identity, IServiceRecordService records,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, storeId)) return Results.Forbid();
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedPageSize))
+                return InvalidPagination();
+            return Results.Ok(await records.ListOverviewAsync(current.TenantId, storeId, categoryId, query,
+                normalizedPage, normalizedPageSize, cancellationToken));
+        }).RequireAuthorization(SystemPermissions.ServiceRecordManage);
+
         group.MapGet("/{customerId:guid}/service-records", async (Guid customerId, Guid storeId,
             int? page, int? pageSize,
             IIdentityService identity, IServiceRecordService records, CancellationToken cancellationToken) =>
@@ -198,6 +249,7 @@ public static class CustomerEndpoints
                 return Results.Json(new { error = new { code = "VALIDATION_FAILED", message = "服务时间或请求号无效" } },
                     statusCode: StatusCodes.Status422UnprocessableEntity);
             Guid? serviceOrderId = Guid.TryParse(form["serviceOrderId"], out var parsedOrderId) ? parsedOrderId : null;
+            Guid? categoryId = Guid.TryParse(form["categoryId"], out var parsedCategoryId) ? parsedCategoryId : null;
             if (form.Files.Count > 6)
                 return Results.Json(new { error = new { code = "VALIDATION_FAILED", message = "每条服务记录最多上传6张图片" } },
                     statusCode: StatusCodes.Status422UnprocessableEntity);
@@ -211,7 +263,7 @@ public static class CustomerEndpoints
                     return new FileUploadInput(file.FileName, file.ContentType, file.Length, stream);
                 }).ToList();
                 return EndpointResults.From(await records.CreateAsync(current.TenantId,
-                    new CreateServiceRecordCommand(storeId, customerId, serviceOrderId, occurredAtUtc,
+                    new CreateServiceRecordCommand(storeId, customerId, serviceOrderId, categoryId, occurredAtUtc,
                         form["conditionNotes"], form["serviceContent"], form["followUpNotes"], commandId,
                         current.Id, images), cancellationToken),
                     value => Results.Created($"/api/v1/customers/{customerId}/service-records/{value.Id}", value));
@@ -264,6 +316,9 @@ public static class CustomerEndpoints
     private sealed record CustomerSearchRequest(Guid StoreId, string? Query, int? Page, int? PageSize);
     private sealed record CorrectServiceRecordRequest(Guid StoreId, string? Reason, string? ConditionNotes,
         string? ServiceContent, string? FollowUpNotes, Guid CommandId);
+    private sealed record CreateServiceRecordCategoryRequest(string? Name, int SortOrder);
+    private sealed record UpdateServiceRecordCategoryRequest(string? Name, int SortOrder, bool IsEnabled,
+        uint ExpectedVersion);
     private sealed record CreateCustomerRequest(Guid StoreId, string? Name, string? Mobile, string? Gender,
         DateOnly? BirthDate, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent, Guid CommandId);
     private sealed record UpdateCustomerRequest(Guid StoreId, string? Name, string? Mobile, string? Gender,
