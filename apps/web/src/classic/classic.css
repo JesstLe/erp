@@ -371,6 +371,10 @@
 .classic-customer-card-tree button:hover,
 .classic-customer-card-tree button.active { background: #dceeff; color: #2786d2; }
 .classic-customer-card-tree button.active::before { background: #2786d2; }
+.classic-customer-card-tree button small { display: block; margin: 2px 0 0 12px; color: #9aa3aa; font-size: 9px; }
+.classic-customer-card-tree button:disabled { cursor: default; opacity: .55; }
+.classic-customer-card-tree .classic-tree-setting { position: sticky; bottom: 0; margin-top: 7px; border-top: 1px solid #d5d5d5; background: #f8f8f8; color: #2786d2; }
+.classic-customer-card-tree .classic-tree-setting::before { display: none; }
 .classic-customer-grid { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .classic-customer-table-scroll { flex: 1; min-height: 0; overflow: auto; }
 .classic-customer-grid table { width: max-content; min-width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
@@ -388,6 +392,21 @@
 .classic-customer-grid > footer > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .classic-customer-grid > footer .ant-pagination { margin-left: auto; }
 .classic-customer-form { max-height: 58vh; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; overflow-y: auto; padding-right: 4px; }
+.classic-care-query,
+.classic-employee-query { grid-template-columns: minmax(320px, 1.8fr) minmax(260px, 1fr) auto; }
+.classic-care-query > span,
+.classic-employee-query > span { align-self: center; color: #7f8c96; font-size: 11px; }
+.classic-care-page .classic-customer-grid th:nth-child(5),
+.classic-care-page .classic-customer-grid th:nth-child(6),
+.classic-care-page .classic-customer-grid th:nth-child(7) { min-width: 190px; }
+.classic-care-page .classic-customer-grid th:first-child,
+.classic-care-page .classic-customer-grid th:last-child { min-width: 150px; }
+.classic-care-record-form { max-height: 64vh; overflow-y: auto; padding-right: 5px; }
+.classic-upload-note { display: inline-block; margin-left: 10px; color: #8a969f; font-size: 11px; }
+.classic-employee-page .classic-customer-grid th:nth-child(2),
+.classic-employee-page .classic-customer-grid th:nth-child(5),
+.classic-employee-page .classic-customer-grid th:nth-child(8) { min-width: 150px; }
+.classic-employee-form { max-height: 62vh; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 14px; overflow-y: auto; padding-right: 5px; }
 
 @media (max-width: 980px) {
   .classic-customer-query { grid-template-columns: 1fr 1fr; }

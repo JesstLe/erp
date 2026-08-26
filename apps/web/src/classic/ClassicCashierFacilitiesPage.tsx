@@ -203,7 +203,7 @@ export function ClassicCashierFacilitiesPage() {
       </button>
     })}</div>}
     <footer className="classic-room-shortcuts">
-      {[['顾客\n开卡', '/ui/new/customer/list'], ['顾客\n储值', '/ui/new/customer/list'], ['顾客\n预约', '/ui/new/cashier/scheduling'], ['顾客\n护理', '/ui/new/customer/list'], ['签单\n清账', '/ui/new/cashier/checkout'], ['消费\n退货', '/ui/new/cashier/checkout'], ['积分\n增减', '/ui/new/customer/list'], ['兑换\n礼品', '/ui/new/customer/list'], ['兑换\n储值', '/ui/new/customer/list'], ['收银\n交班', '/ui/new/finance/checkout']].map(([label, path]) => <button type="button" key={label} onClick={() => navigate(path)}>{label.split('\n').map((part) => <span key={part}>{part}</span>)}</button>)}
+      {[['顾客\n开卡', '/ui/new/customer/list'], ['顾客\n储值', '/ui/new/customer/list'], ['顾客\n预约', '/ui/new/cashier/scheduling'], ['顾客\n护理', '/ui/new/legacy/customer/customer-005'], ['签单\n清账', '/ui/new/cashier/checkout'], ['消费\n退货', '/ui/new/cashier/checkout'], ['积分\n增减', '/ui/new/customer/list'], ['兑换\n礼品', '/ui/new/customer/list'], ['兑换\n储值', '/ui/new/customer/list'], ['收银\n交班', '/ui/new/finance/checkout']].map(([label, path]) => <button type="button" key={label} onClick={() => navigate(path)}>{label.split('\n').map((part) => <span key={part}>{part}</span>)}</button>)}
       <button type="button" className="is-exit" onClick={() => navigate('/ui/new/cashier')}>退出<span>前台</span></button>
     </footer>
   </div>

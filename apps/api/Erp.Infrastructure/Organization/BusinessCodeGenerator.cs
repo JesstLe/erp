@@ -49,6 +49,11 @@ public sealed class BusinessCodeGenerator(ErpDbContext db, TimeProvider timeProv
         NextTenantCodeAsync("EMPLOYEE_POSITION", tenantId, "POS", 6,
             db.EmployeePositions.Where(x => x.TenantId == tenantId).Select(x => x.Code), "员工岗位", cancellationToken);
 
+    public Task<string> NextServiceRecordCategoryCodeAsync(Guid tenantId, CancellationToken cancellationToken) =>
+        NextTenantCodeAsync("SERVICE_RECORD_CATEGORY", tenantId, "CARE", 6,
+            db.ServiceRecordCategories.Where(x => x.TenantId == tenantId).Select(x => x.Code),
+            "服务记录分类", cancellationToken);
+
     public Task<string> NextSupplierCodeAsync(Guid tenantId, CancellationToken cancellationToken) =>
         NextTenantCodeAsync("SUPPLIER", tenantId, "SUP", 6,
             db.Suppliers.Where(x => x.TenantId == tenantId).Select(x => x.Code), "供应商", cancellationToken);
