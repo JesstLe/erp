@@ -30,6 +30,7 @@ const PlatformLoginPage = lazy(() => import('./pages/PlatformLoginPage').then((m
 const PlatformChangePasswordPage = lazy(() => import('./pages/PlatformChangePasswordPage').then((module) => ({ default: module.PlatformChangePasswordPage })))
 const PlatformAdminPage = lazy(() => import('./pages/PlatformAdminPage').then((module) => ({ default: module.PlatformAdminPage })))
 const ForbiddenPage = lazy(() => import('./pages/ForbiddenPage').then((module) => ({ default: module.ForbiddenPage })))
+const ClassicApp = lazy(() => import('./classic/ClassicApp').then((module) => ({ default: module.ClassicApp })))
 
 function ProtectedRoute() {
   const auth = useAuth(); const location = useLocation()
@@ -47,6 +48,7 @@ function AuthorizedRoute({ permission }: { permission: PermissionCode }) {
 export default function App() {
   return <Suspense fallback={<div className="screen-loader"><Spin size="large" /></div>}>
     <Routes>
+      <Route path="/ui/new/*" element={<ClassicApp />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<MerchantRegisterPage />} />
       <Route path="/platform/login" element={<PlatformLoginPage />} />

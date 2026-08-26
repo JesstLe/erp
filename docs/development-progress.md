@@ -4,6 +4,7 @@
 
 | 模块 | 状态 | 代码 | 窄测试 | 使用说明 | 截图 |
 |---|---|---|---|---|---|
+| 经典操作界面 | 199 个参考子页面前端位置完成；后端按缺口矩阵分批接入 | 独立 `/ui/new/*` 路由、12 模块首页、199 页面清单驱动路由、原工具栏/查询/字段/表格、打印和 CSV 导出 | 清单唯一性测试；生产构建；进货模块与查询弹窗浏览器冒烟 | [经典 UI 复刻清单](legacy-classic-ui-parity.md)、[后端缺口矩阵](legacy-backend-gap-matrix.md) | 进货模块同视口对照与查询弹窗 |
 | 工程与本地运行基线 | 基线完成 | .NET/React/PostgreSQL、迁移、配置与安全中间件 | 编译、依赖审计、迁移烟测通过 | [本地启动与登录](user-manual/01-local-login-and-permissions.md) | 不适用 |
 | Linux发布、备份与恢复 | 生产主机蓝绿发布闭环完成 | Ubuntu初始化、SSH/UFW、不可变包、Flyway、Nginx/systemd Blue/Green、就绪门禁、定时监测、age联合备份、隔离恢复 | 仓库集成规则；linux-x64产物、清单和摘要验证；生产就绪检查 | [V2发布、备份与恢复](v2-release-and-recovery.md) | 不适用 |
 | 旧系统数据迁移 | B01结构化数据演练完成；护理图片全量导出暂停 | 验证码登录、固定源站和读取白名单、AES-256-GCM、断点清单、照片密文校验、幂等来源映射、异常表与非消费资金快照 | 基础结构化数据、1743条护理结构化记录和已取得附件均保留校验；护理图片剩余遍历待补，不计作全量完成 | [迁移PRD](legacy-system-data-migration-prd.md)、[字段画像与映射](legacy-system-field-profile-and-mapping.md) | 敏感数据不归档截图 |
