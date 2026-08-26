@@ -146,12 +146,12 @@ public sealed class PriceOverrideApproval : Entity
         Touch();
     }
 
-    public void Cancel(DateTimeOffset now)
+    public void Cancel(DateTimeOffset now, string? note = null)
     {
         if (Status != PriceOverrideApprovalStatus.Pending) return;
         Status = PriceOverrideApprovalStatus.Cancelled;
         DecidedAtUtc = now;
-        DecisionNote = "消费单已作废";
+        DecisionNote = string.IsNullOrWhiteSpace(note) ? "消费单已作废" : Optional(note, 500);
         Touch();
     }
 

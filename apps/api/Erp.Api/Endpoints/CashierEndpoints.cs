@@ -67,6 +67,27 @@ public static class CashierEndpoints
             return EndpointResults.From(await cashier.GetOrderAsync(current.TenantId, storeId, orderId, cancellationToken));
         });
 
+        group.MapGet("/orders/by-visit/{visitId:guid}", async (Guid visitId, Guid storeId,
+            IIdentityService identity, ICashierService cashier, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, storeId)) return Results.Forbid();
+            return Results.Ok(await cashier.GetOrderByVisitAsync(current.TenantId, storeId, visitId,
+                cancellationToken));
+        });
+
+        group.MapPost("/visits/{visitId:guid}/draft", async (Guid visitId, VisitDraftRequest request,
+            IIdentityService identity, ICashierService cashier, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await cashier.GetOrCreateVisitDraftAsync(current.TenantId,
+                new GetOrCreateVisitDraftCommand(request.StoreId, visitId, request.CommandId, current.Id,
+                    current.Roles), cancellationToken));
+        });
+
         group.MapPost("/orders", async (CreateOrderRequest request, IIdentityService identity, ICashierService cashier,
             CancellationToken cancellationToken) =>
         {
@@ -75,10 +96,50 @@ public static class CashierEndpoints
             if (!HasStore(current, request.StoreId)) return Results.Forbid();
             return EndpointResults.From(await cashier.CreateOrderAsync(current.TenantId,
                 new CreateServiceOrderCommand(request.StoreId, request.VisitId, request.CustomerId, request.Note,
+                    request.ConsultantEmployeeId, request.SourceChannel, request.ManualTicketNo,
+                    request.MaleGuestCount, request.MaleAgeBand, request.FemaleGuestCount, request.FemaleAgeBand,
                     (request.Lines ?? []).Select(x => new CreateServiceOrderLineCommand(x.LineType, x.ServiceItemId,
                         x.ProductItemId, x.ServiceEmployeeId, x.Quantity, x.ActualSeconds, x.EnteredPriceMinor,
                         x.PriceOverrideReason)).ToList(), request.CommandId,
                     current.Id, current.Roles), cancellationToken));
+        });
+
+        group.MapPut("/orders/{orderId:guid}/draft", async (Guid orderId, UpdateDraftRequest request,
+            IIdentityService identity, ICashierService cashier, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await cashier.UpdateDraftAsync(current.TenantId,
+                new UpdateServiceOrderDraftCommand(request.StoreId, orderId, request.CustomerId,
+                    request.ConsultantEmployeeId, request.Note, request.SourceChannel, request.ManualTicketNo,
+                    request.MaleGuestCount, request.MaleAgeBand, request.FemaleGuestCount, request.FemaleAgeBand,
+                    (request.Lines ?? []).Select(x => new CreateServiceOrderLineCommand(x.LineType,
+                        x.ServiceItemId, x.ProductItemId, x.ServiceEmployeeId, x.Quantity, x.ActualSeconds,
+                        x.EnteredPriceMinor, x.PriceOverrideReason)).ToList(), request.ExpectedVersion,
+                    request.CommandId, current.Id, current.Roles), cancellationToken));
+        });
+
+        group.MapPost("/orders/{orderId:guid}/merge", async (Guid orderId, MergeDraftRequest request,
+            IIdentityService identity, ICashierService cashier, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await cashier.MergeDraftAsync(current.TenantId,
+                new MergeServiceOrderDraftCommand(request.StoreId, orderId, request.SourceOrderId,
+                    request.ExpectedTargetVersion, request.ExpectedSourceVersion, request.CommandId, current.Id,
+                    current.Roles), cancellationToken));
+        });
+
+        group.MapPost("/orders/{orderId:guid}/prebill", async (Guid orderId, PrebillRequest request,
+            IIdentityService identity, ICashierService cashier, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            return EndpointResults.From(await cashier.CreatePrebillAsync(current.TenantId, request.StoreId,
+                orderId, request.ExpectedVersion, request.CommandId, current.Id, cancellationToken));
         });
 
         group.MapPost("/orders/{orderId:guid}/void", async (Guid orderId, VoidOrderRequest request,
@@ -172,7 +233,17 @@ public static class CashierEndpoints
         Guid? ServiceEmployeeId, int Quantity, int? ActualSeconds, long EnteredPriceMinor,
         string? PriceOverrideReason);
     private sealed record CreateOrderRequest(Guid StoreId, Guid? VisitId, Guid? CustomerId, string? Note,
+        Guid? ConsultantEmployeeId, string? SourceChannel, string? ManualTicketNo, int MaleGuestCount,
+        string? MaleAgeBand, int FemaleGuestCount, string? FemaleAgeBand,
         IReadOnlyList<CreateOrderLineRequest>? Lines, Guid CommandId);
+    private sealed record VisitDraftRequest(Guid StoreId, Guid CommandId);
+    private sealed record UpdateDraftRequest(Guid StoreId, Guid? CustomerId, Guid? ConsultantEmployeeId,
+        string? Note, string? SourceChannel, string? ManualTicketNo, int MaleGuestCount, string? MaleAgeBand,
+        int FemaleGuestCount, string? FemaleAgeBand, IReadOnlyList<CreateOrderLineRequest>? Lines,
+        uint ExpectedVersion, Guid CommandId);
+    private sealed record MergeDraftRequest(Guid StoreId, Guid SourceOrderId, uint ExpectedTargetVersion,
+        uint ExpectedSourceVersion, Guid CommandId);
+    private sealed record PrebillRequest(Guid StoreId, uint ExpectedVersion, Guid CommandId);
     private sealed record ConfirmOrderRequest(Guid StoreId, uint ExpectedVersion, Guid CommandId);
     private sealed record VoidOrderRequest(Guid StoreId, uint ExpectedVersion, string Reason, Guid CommandId);
     private sealed record UpdatePricePolicyRequest(Guid StoreId, int ManagerLineDiscountBasisPoints,

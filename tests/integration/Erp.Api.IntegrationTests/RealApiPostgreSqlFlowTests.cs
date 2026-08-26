@@ -108,7 +108,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202608270035", ready?.SchemaVersion);
+        Assert.Equal("202608270037", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {
@@ -188,7 +188,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
 
         var employee = await PostAsync<EmployeeDto>(client, "/api/v1/employees", new
         {
-            employeeNo = "E0002", displayName = "自动回归服务员工", positionCode = "TECHNICIAN",
+            employeeNo = "E0002", displayName = "自动回归服务员工", positionCode = "STAFF",
             storeIds = new List<Guid> { storeId }, createLoginAccount = true, account = "technician02",
             initialPassword = "Technician_Test!123", roles = new List<string> { "TECHNICIAN" },
         });
@@ -197,12 +197,12 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.True(employee.MustChangePassword);
         employee = await PutAsync<EmployeeDto>(client, $"/api/v1/employees/{employee.Id}", new
         {
-            displayName = "自动回归前台员工", positionCode = "FRONT_DESK",
+            displayName = "自动回归前台员工", positionCode = "OTHER",
             storeIds = new List<Guid> { storeId }, roles = new List<string> { "FRONT_DESK" },
             expectedVersion = employee.Version,
         });
         Assert.Equal("自动回归前台员工", employee.DisplayName);
-        Assert.Equal("FRONT_DESK", employee.PositionCode);
+        Assert.Equal("OTHER", employee.PositionCode);
         Assert.Equal("FRONT_DESK", Assert.Single(employee.Roles));
         employee = await PostAsync<EmployeeDto>(client, $"/api/v1/employees/{employee.Id}/reset-password", new
         {
@@ -575,26 +575,66 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             });
         Assert.False(blockedMerge.CanMerge);
         Assert.Contains(blockedMerge.Blockers, blocker => blocker.Contains("接待", StringComparison.Ordinal));
-        _ = await PostAsync<FacilityBoardItemDto>(client,
-            $"/api/v1/facilities/sessions/{started.SessionId}/end", new
+        var order = await PostAsync<ServiceOrderDto>(client,
+            $"/api/v1/cashier/visits/{started.VisitId}/draft", new
             {
                 storeId, commandId = Guid.NewGuid(),
             });
-
-        var order = await PostAsync<ServiceOrderDto>(client, "/api/v1/cashier/orders", new
+        Assert.Empty(order.Lines);
+        Assert.Equal("Draft", order.Status);
+        var restoredDraft = await PostAsync<ServiceOrderDto>(client,
+            $"/api/v1/cashier/visits/{started.VisitId}/draft", new
+            {
+                storeId, commandId = Guid.NewGuid(),
+            });
+        Assert.Equal(order.Id, restoredDraft.Id);
+        var sourceOrder = await PostAsync<ServiceOrderDto>(client, "/api/v1/cashier/orders", new
         {
-            storeId, visitId = started.VisitId, customerId = customer.Id, note = "自动回归消费单",
+            storeId, visitId = (Guid?)null, customerId = customer.Id, note = "自动回归待合并产品单",
             lines = new object[]
             {
-                new { lineType = "SERVICE", serviceItemId = service.Id, productItemId = (Guid?)null,
-                    serviceEmployeeId = (Guid?)null, quantity = 1, actualSeconds = 90,
-                    enteredPriceMinor = 10_000L, priceOverrideReason = (string?)null },
                 new { lineType = "PRODUCT", serviceItemId = (Guid?)null, productItemId = product.Id,
                     serviceEmployeeId = (Guid?)null, quantity = 1, actualSeconds = (int?)null,
                     enteredPriceMinor = 5_000L, priceOverrideReason = (string?)null },
             },
             commandId = Guid.NewGuid(),
         });
+        order = await PutAsync<ServiceOrderDto>(client, $"/api/v1/cashier/orders/{order.Id}/draft", new
+        {
+            storeId, customerId = customer.Id, consultantEmployeeId = employee.Id, note = "自动回归设施消费草稿",
+            sourceChannel = "朋友介绍", manualTicketNo = "LOCAL-001", maleGuestCount = 1,
+            maleAgeBand = "30-45", femaleGuestCount = 0, femaleAgeBand = (string?)null,
+            lines = new object[]
+            {
+                new { lineType = "SERVICE", serviceItemId = service.Id, productItemId = (Guid?)null,
+                    serviceEmployeeId = employee.Id, quantity = 1, actualSeconds = 90,
+                    enteredPriceMinor = 10_000L, priceOverrideReason = (string?)null },
+            },
+            expectedVersion = order.Version, commandId = Guid.NewGuid(),
+        });
+        Assert.Equal(employee.Id, order.ConsultantEmployeeId);
+        Assert.Equal(employee.DisplayName, order.ConsultantEmployeeName);
+        Assert.Equal("朋友介绍", order.SourceChannel);
+        Assert.Equal(1, order.MaleGuestCount);
+        order = await PostAsync<ServiceOrderDto>(client, $"/api/v1/cashier/orders/{order.Id}/merge", new
+        {
+            storeId, sourceOrderId = sourceOrder.Id, expectedTargetVersion = order.Version,
+            expectedSourceVersion = sourceOrder.Version, commandId = Guid.NewGuid(),
+        });
+        Assert.Equal(2, order.Lines.Count);
+        Assert.Equal(15_000, order.ReceivableMinor);
+        var prebill = await PostAsync<ServiceOrderPrebillDto>(client,
+            $"/api/v1/cashier/orders/{order.Id}/prebill", new
+            {
+                storeId, expectedVersion = order.Version, commandId = Guid.NewGuid(),
+            });
+        Assert.Equal(order.OrderNo, prebill.OrderNo);
+        Assert.Equal(2, prebill.Lines.Count);
+        _ = await PostAsync<FacilityBoardItemDto>(client,
+            $"/api/v1/facilities/sessions/{started.SessionId}/end", new
+            {
+                storeId, commandId = Guid.NewGuid(),
+            });
         var confirmed = await PostAsync<ServiceOrderDto>(client,
             $"/api/v1/cashier/orders/{order.Id}/confirm", new
             {
@@ -859,7 +899,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
 
         var orderPage = await client.GetFromJsonAsync<PageResponse<ServiceOrderDto>>(
             $"/api/v1/cashier/orders?storeId={storeId}&page=1&pageSize=1");
-        Assert.Equal(1, orderPage!.Total);
+        Assert.Equal(2, orderPage!.Total);
         Assert.Single(orderPage.Items);
         var filteredOrders = await client.GetFromJsonAsync<PageResponse<ServiceOrderDto>>(
             $"/api/v1/cashier/orders?storeId={storeId}&query=%E6%B5%8B%E8%AF%95%E6%9C%8D%E5%8A%A1" +

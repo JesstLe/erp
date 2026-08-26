@@ -12,7 +12,9 @@ public sealed class ServiceOrder : Entity
     private ServiceOrder() { }
 
     public ServiceOrder(Guid tenantId, Guid storeId, Guid visitId, Guid? customerId, string orderNo,
-        Guid priceBookId, string? note, IEnumerable<ServiceOrderLineDraft> lines)
+        Guid priceBookId, string? note, IEnumerable<ServiceOrderLineDraft> lines,
+        Guid? consultantEmployeeId = null, string? consultantEmployeeNo = null,
+        string? consultantEmployeeName = null, ServiceOrderReceptionDraft? reception = null)
         : base(tenantId)
     {
         StoreId = storeId;
@@ -22,12 +24,9 @@ public sealed class ServiceOrder : Entity
         PriceBookId = priceBookId;
         Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
         if (Note?.Length > 1000) throw new DomainRuleException("VALIDATION_FAILED", "消费单备注不能超过1000字");
-        foreach (var line in lines)
-            _lines.Add(new ServiceOrderLine(tenantId, Id, line));
-        if (_lines.Count == 0) throw new DomainRuleException("VALIDATION_FAILED", "消费单至少需要一个项目或产品");
-        if (_lines.Count > 100) throw new DomainRuleException("VALIDATION_FAILED", "一张消费单最多100行");
-        ReferenceAmountMinor = _lines.Sum(x => x.ReferenceAmountMinor);
-        ReceivableMinor = _lines.Sum(x => x.LineAmountMinor);
+        ReplaceLines(lines);
+        SetConsultant(consultantEmployeeId, consultantEmployeeNo, consultantEmployeeName);
+        SetReception(reception);
         Status = ServiceOrderStatus.Draft;
         PriceAuthorizationStatus = PriceAuthorizationState.NotRequired;
     }
@@ -35,6 +34,15 @@ public sealed class ServiceOrder : Entity
     public Guid StoreId { get; private set; }
     public Guid VisitId { get; private set; }
     public Guid? CustomerId { get; private set; }
+    public Guid? ConsultantEmployeeId { get; private set; }
+    public string? ConsultantEmployeeNoSnapshot { get; private set; }
+    public string? ConsultantEmployeeNameSnapshot { get; private set; }
+    public string? SourceChannel { get; private set; }
+    public string? ManualTicketNo { get; private set; }
+    public int MaleGuestCount { get; private set; }
+    public string? MaleAgeBand { get; private set; }
+    public int FemaleGuestCount { get; private set; }
+    public string? FemaleAgeBand { get; private set; }
     public string OrderNo { get; private set; } = string.Empty;
     public Guid? PriceBookId { get; private set; }
     public string? Note { get; private set; }
@@ -106,6 +114,7 @@ public sealed class ServiceOrder : Entity
     public void Confirm(DateTimeOffset now)
     {
         if (Status != ServiceOrderStatus.Draft) throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "只有草稿消费单可以确认");
+        if (_lines.Count == 0) throw new DomainRuleException("VALIDATION_FAILED", "消费单至少需要一个项目或产品");
         if (HasPriceOverride && PriceAuthorizationStatus is not (PriceAuthorizationState.DirectAuthorized or
             PriceAuthorizationState.Approved))
             throw new DomainRuleException("PRICE_APPROVAL_REQUIRED", "成交价尚未获得有效授权，不能确认收款金额");
@@ -129,6 +138,63 @@ public sealed class ServiceOrder : Entity
         if (Status != ServiceOrderStatus.Draft || !HasPriceOverride ||
             PriceAuthorizationStatus != PriceAuthorizationState.NotRequired)
             throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前消费单不能设置改价授权");
+    }
+
+    public void ReplaceDraft(Guid? customerId, string? note, IEnumerable<ServiceOrderLineDraft> lines,
+        Guid? consultantEmployeeId = null, string? consultantEmployeeNo = null,
+        string? consultantEmployeeName = null, ServiceOrderReceptionDraft? reception = null)
+    {
+        if (Status != ServiceOrderStatus.Draft)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "只有草稿消费单可以编辑");
+        CustomerId = customerId;
+        Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        if (Note?.Length > 1000)
+            throw new DomainRuleException("VALIDATION_FAILED", "消费单备注不能超过1000字");
+        _lines.Clear();
+        ReplaceLines(lines);
+        SetConsultant(consultantEmployeeId, consultantEmployeeNo, consultantEmployeeName);
+        SetReception(reception);
+        PriceAuthorizationStatus = PriceAuthorizationState.NotRequired;
+        PricePolicyId = null;
+        PricePolicyVersion = null;
+        PriceAuthorizedBy = null;
+        PriceAuthorizedAtUtc = null;
+        Touch();
+    }
+
+    private void ReplaceLines(IEnumerable<ServiceOrderLineDraft> lines)
+    {
+        foreach (var line in lines)
+            _lines.Add(new ServiceOrderLine(TenantId, Id, line));
+        if (_lines.Count > 100)
+            throw new DomainRuleException("VALIDATION_FAILED", "一张消费单最多100行");
+        ReferenceAmountMinor = _lines.Sum(x => x.ReferenceAmountMinor);
+        ReceivableMinor = _lines.Sum(x => x.LineAmountMinor);
+    }
+
+    private void SetConsultant(Guid? consultantEmployeeId, string? employeeNo, string? employeeName)
+    {
+        var normalizedNo = string.IsNullOrWhiteSpace(employeeNo) ? null : employeeNo.Trim();
+        var normalizedName = string.IsNullOrWhiteSpace(employeeName) ? null : employeeName.Trim();
+        if (consultantEmployeeId.HasValue != (normalizedNo is not null && normalizedName is not null) ||
+            normalizedNo?.Length > 32 || normalizedName?.Length > 100)
+            throw new DomainRuleException("VALIDATION_FAILED", "整单顾问快照无效");
+        ConsultantEmployeeId = consultantEmployeeId;
+        ConsultantEmployeeNoSnapshot = normalizedNo;
+        ConsultantEmployeeNameSnapshot = normalizedName;
+    }
+
+    private void SetReception(ServiceOrderReceptionDraft? reception)
+    {
+        reception ??= new ServiceOrderReceptionDraft(null, null, 0, null, 0, null);
+        if (reception.MaleGuestCount is < 0 or > 99 || reception.FemaleGuestCount is < 0 or > 99)
+            throw new DomainRuleException("VALIDATION_FAILED", "顾客人数必须在0到99之间");
+        SourceChannel = Optional(reception.SourceChannel, 80, "来店渠道");
+        ManualTicketNo = Optional(reception.ManualTicketNo, 80, "手工票号");
+        MaleGuestCount = reception.MaleGuestCount;
+        FemaleGuestCount = reception.FemaleGuestCount;
+        MaleAgeBand = reception.MaleGuestCount == 0 ? null : Optional(reception.MaleAgeBand, 32, "男客年龄段");
+        FemaleAgeBand = reception.FemaleGuestCount == 0 ? null : Optional(reception.FemaleAgeBand, 32, "女客年龄段");
     }
 
     public void BeginCheckout()
@@ -171,7 +237,18 @@ public sealed class ServiceOrder : Entity
         if (normalized.Length is 0 || normalized.Length > max) throw new DomainRuleException("VALIDATION_FAILED", $"{field}长度不正确");
         return normalized;
     }
+
+    private static string? Optional(string? value, int max, string field)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrEmpty(normalized)) return null;
+        if (normalized.Length > max) throw new DomainRuleException("VALIDATION_FAILED", $"{field}不能超过{max}字");
+        return normalized;
+    }
 }
+
+public sealed record ServiceOrderReceptionDraft(string? SourceChannel, string? ManualTicketNo,
+    int MaleGuestCount, string? MaleAgeBand, int FemaleGuestCount, string? FemaleAgeBand);
 
 public sealed record ServiceOrderLineDraft
 {

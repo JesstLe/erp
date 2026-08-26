@@ -107,9 +107,29 @@ public sealed class ServiceOrderTests
     }
 
     [Fact]
-    public void EmptyOrderIsRejected()
+    public void EmptyFacilityDraftCanBeSavedButCannotBeConfirmed()
     {
-        Assert.Throws<DomainRuleException>(() => CreateOrder([]));
+        var order = CreateOrder([]);
+
+        Assert.Empty(order.Lines);
+        Assert.Equal(ServiceOrderStatus.Draft, order.Status);
+        Assert.Throws<DomainRuleException>(() => order.Confirm(DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void FacilityDraftCanReplaceLinesAndConsultantSnapshot()
+    {
+        var employeeId = Guid.CreateVersion7();
+        var order = CreateOrder([]);
+
+        order.ReplaceDraft(null, "现场补录",
+            [new(Guid.CreateVersion7(), "S01", "标准服务", 1, 600, 10_000, 10_000, null)],
+            employeeId, "E001", "张顾问");
+
+        Assert.Single(order.Lines);
+        Assert.Equal(10_000, order.ReceivableMinor);
+        Assert.Equal(employeeId, order.ConsultantEmployeeId);
+        Assert.Equal("张顾问", order.ConsultantEmployeeNameSnapshot);
     }
 
     [Fact]
