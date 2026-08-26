@@ -72,6 +72,12 @@
 
 报表区分业务结算额、已完成退款、结算净额、已记录资金和外部待核对，不把人工登记的微信或支付宝误报为渠道已经到账。
 
+### 经典操作界面
+
+![经典版进货模块与参考系统同视口对照](docs/design-qa/classic-complete-purchase-comparison-final.png)
+
+系统同时保留独立经典入口 `/ui/new/index`，现有界面不会被替换。经典版按照参考系统的操作顺序提供收银、顾客、促销、进货、销售、库存、配货、员工、财务、报表、决策和短信 12 个模块，共 199 个已核实子页面。页面保留原工具栏、查询条件、字段、表格和报表入口；已具备的业务连接真实功能，尚缺后端的能力会明确显示待接入，不会用静态按钮冒充保存成功。
+
 <details>
 <summary><strong>查看更多代表性界面</strong></summary>
 
@@ -671,6 +677,8 @@ README、模块手册和截图已按 2026-08-22 当前代码基线复核。当�
 - [产品架构](docs/product-architecture.md)
 - [核心业务逻辑](docs/core-business-logic.md)
 - [页面与字段矩阵](docs/v1-page-and-field-matrix.md)
+- [老系统经典 UI 复刻清单](docs/legacy-classic-ui-parity.md)
+- [经典 UI 后端缺口矩阵](docs/legacy-backend-gap-matrix.md)
 - [状态机与验收用例](docs/v1-state-machines-and-acceptance-cases.md)
 - [CRUD 与生命周期规则](docs/crud-and-lifecycle-rules.md)
 - [数据库设计与变更治理](docs/database-design-and-change-governance.md)

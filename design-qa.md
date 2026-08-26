@@ -44,6 +44,52 @@ final result: passed
 
 ---
 
+# Classic UI complete page set — Design QA
+
+- Source visual truth: `/Users/lv/Workspace/erp/design-audit/02-purchase-dashboard.png`
+- Browser-rendered implementation: `/Users/lv/Workspace/erp/docs/design-qa/classic-complete-purchase-dashboard-final-1280.jpg`
+- Full-view comparison evidence: `/Users/lv/Workspace/erp/docs/design-qa/classic-complete-purchase-comparison-final.png`
+- Focused interaction evidence: `/Users/lv/Workspace/erp/docs/design-qa/classic-complete-purchase-query-final-1280x660.jpg`
+- Viewport/state: desktop 1280 × 660 CSS px at DPR 1, authenticated OWNER, 进货 module dashboard and 进货入库单查询 modal.
+- Density normalization: source and dashboard implementation are both 1280 × 660 px. The combined comparison is 2560 × 660 px with source on the left and implementation on the right; no resampling was used.
+
+## Findings
+
+No actionable P0/P1/P2 mismatch remains in the classic UI page-set scope.
+
+- Fonts and typography: the implementation uses the same compact Arial / Microsoft YaHei stack, 12 px table and navigation density, regular-weight panel headings and narrow old-style labels. Text remains legible without introducing the larger modern dashboard typography.
+- Spacing and layout rhythm: the source composition is preserved: narrow blue module rail, two upper charts, lower latest-record grid, and stacked management/report links on the right. The implementation adds the existing product's 42 px store/account bar so the same authenticated tenant and store context remains visible; content proportions below it remain aligned with the source.
+- Colors and visual tokens: the blue rail, light gray canvas, white square panels, gray section headers, blue chart series and green “查看更多报表” action match the reference palette. Modern rounded-card styling and heavy shadows are absent.
+- Image quality and asset fidelity: the product's existing lightning brand asset and Ant Design icon family are used. The reference contains charts and icons rather than raster product imagery, so no generated or placeholder image assets are required.
+- Copy and content: the right-side 进货管理 and 报表查询 order now follows the captured source. The latest-inbound table uses the exact ten captured headings: 单号、日期、供应商、经办人、货品总额、优惠金额、应付金额、已付金额、制单人、审核人.
+- States and interactions: the inspected legacy manifest produces 12 module dashboards and 199 unique subpage routes. The representative query page preserves 调阅单据、删除单据、查询、刷新、表格、打印、导出、退出; 查询 opens the labeled date/keyword modal, print uses the browser print surface, export produces CSV, and unavailable dangerous operations are disabled or explained instead of pretending to save.
+- Accessibility: navigation and toolbars use semantic buttons, the page toolbar has an accessible region label, form fields have visible labels, and disabled backend operations expose explanatory tooltips.
+- Responsiveness: the classic interface remains desktop-first like the reference. Existing compact CSS moves the module rail to a bottom scrollable bar under 640 px and stacks query fields; the approved fidelity comparison is the reference desktop viewport.
+
+## Comparison history
+
+1. Initial full-set implementation: the module dashboard still used a six-column generic latest-record table, while the source used ten purchase-specific columns. This was a P1 content and density mismatch.
+2. Fix: introduced module-specific classic table headers and changed the dashboard query entry to use the inspected manifest order. The 进货 page now uses all ten reference headings and preserves the exact report-link ordering.
+3. Post-fix evidence: `classic-complete-purchase-comparison-final.png` shows the source and implementation at the same 1280 × 660 viewport with matching major-region proportions, navigation order, chart placement, table density and right-side entry hierarchy.
+
+## Primary interactions tested
+
+- Opened the 进货 module from the independent classic route.
+- Opened 进货入库单查询 from the captured report order.
+- Verified the page URL, original toolbar controls, exact purchase table headings and backend status notice.
+- Opened the 查询 modal and verified start date, end date, keyword, 确定, 取消 and 清空 controls.
+- Production build, static analysis and all 30 frontend tests passed after the complete page set was generated.
+- Browser-rendered page showed no Vite error overlay or broken route state.
+
+## Follow-up polish
+
+- P3: the source has no tenant/store/account header; the implementation intentionally retains the 42 px product header so users can safely see and switch the active store.
+- P3: the classic bundle contains the full 199-page manifest and produces a size advisory after minification; it remains lazy-loaded away from the modern UI and does not block the build.
+
+final result: passed
+
+---
+
 # White sidebar and owner reports — Design QA
 
 - Source visual truth: `/Users/lv/.codex/generated_images/01a010a9-8dad-7aa3-8252-0efe73bee46a/exec-6d1db35b-4a07-41d4-be57-e135cf9967ad.png`
