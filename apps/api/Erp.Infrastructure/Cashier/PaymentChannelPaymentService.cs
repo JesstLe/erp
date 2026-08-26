@@ -431,10 +431,17 @@ internal sealed class PaymentChannelPaymentService(ErpDbContext db, PaymentChann
         }
         else if (order.Status != ServiceOrderStatus.Settled)
             throw new DomainRuleException("CHANNEL_RESULT_CONFLICT", "消费单状态与已支付结果不一致");
-        var visit = await db.Visits.SingleAsync(x => x.Id == order.VisitId, cancellationToken);
-        if (visit.Status == VisitStatus.ServiceEnded) visit.Complete();
-        else if (visit.Status != VisitStatus.Completed)
-            throw new DomainRuleException("CHANNEL_RESULT_CONFLICT", "接待状态与已支付结果不一致");
+        var linkedVisitIds = await db.ServiceOrderVisitLinks.Where(x => x.OrderId == order.Id &&
+                x.TenantId == order.TenantId).Select(x => x.VisitId).ToListAsync(cancellationToken);
+        if (linkedVisitIds.Count == 0) linkedVisitIds.Add(order.VisitId);
+        var linkedVisits = await db.Visits.Where(x => linkedVisitIds.Contains(x.Id) &&
+                x.TenantId == order.TenantId).ToListAsync(cancellationToken);
+        foreach (var visit in linkedVisits)
+        {
+            if (visit.Status == VisitStatus.ServiceEnded) visit.Complete();
+            else if (visit.Status != VisitStatus.Completed)
+                throw new DomainRuleException("CHANNEL_RESULT_CONFLICT", "接待状态与已支付结果不一致");
+        }
         channelEvent.Complete(PaymentChannelEventStatus.Processed, clock.GetUtcNow());
         AddAudit(payment.TenantId, payment.StoreId, operatorId, "payment_channel.payment.confirmed",
             "Payment", payment.Id, PaymentStatus.Processing.ToString(), payment.Status.ToString(), null,

@@ -65,6 +65,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<MemberVerificationChallenge> MemberVerificationChallenges => Set<MemberVerificationChallenge>();
     public DbSet<ServiceOrder> ServiceOrders => Set<ServiceOrder>();
     public DbSet<ServiceOrderLine> ServiceOrderLines => Set<ServiceOrderLine>();
+    public DbSet<ServiceOrderVisitLink> ServiceOrderVisitLinks => Set<ServiceOrderVisitLink>();
+    public DbSet<ServiceOrderPrebillSnapshot> ServiceOrderPrebillSnapshots => Set<ServiceOrderPrebillSnapshot>();
     public DbSet<PriceOverridePolicy> PriceOverridePolicies => Set<PriceOverridePolicy>();
     public DbSet<PriceOverrideApproval> PriceOverrideApprovals => Set<PriceOverrideApproval>();
     public DbSet<PaymentMethod> PaymentMethods => Set<PaymentMethod>();
@@ -664,6 +666,17 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.StoreId).HasColumnName("store_id");
             entity.Property(x => x.VisitId).HasColumnName("visit_id");
             entity.Property(x => x.CustomerId).HasColumnName("customer_id");
+            entity.Property(x => x.ConsultantEmployeeId).HasColumnName("consultant_employee_id");
+            entity.Property(x => x.ConsultantEmployeeNoSnapshot).HasColumnName("consultant_employee_no_snapshot")
+                .HasMaxLength(32);
+            entity.Property(x => x.ConsultantEmployeeNameSnapshot).HasColumnName("consultant_employee_name_snapshot")
+                .HasMaxLength(100);
+            entity.Property(x => x.SourceChannel).HasColumnName("source_channel").HasMaxLength(80);
+            entity.Property(x => x.ManualTicketNo).HasColumnName("manual_ticket_no").HasMaxLength(80);
+            entity.Property(x => x.MaleGuestCount).HasColumnName("male_guest_count");
+            entity.Property(x => x.MaleAgeBand).HasColumnName("male_age_band").HasMaxLength(32);
+            entity.Property(x => x.FemaleGuestCount).HasColumnName("female_guest_count");
+            entity.Property(x => x.FemaleAgeBand).HasColumnName("female_age_band").HasMaxLength(32);
             entity.Property(x => x.OrderNo).HasColumnName("order_no").HasMaxLength(40);
             entity.Property(x => x.PriceBookId).HasColumnName("price_book_id");
             entity.Property(x => x.Note).HasColumnName("note").HasMaxLength(1000);
@@ -683,6 +696,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Navigation(x => x.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
             entity.HasIndex(x => new { x.TenantId, x.OrderNo }).IsUnique();
             entity.HasIndex(x => new { x.StoreId, x.Status, x.CreatedAtUtc });
+            entity.HasOne<Employee>().WithMany().HasForeignKey(x => x.ConsultantEmployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<ServiceOrderLine>(entity =>
         {
@@ -712,15 +727,45 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.CommissionFixedMinor).HasColumnName("commission_fixed_minor");
             entity.Property(x => x.CommissionBasisMinor).HasColumnName("commission_basis_minor");
             entity.Property(x => x.CommissionAmountMinor).HasColumnName("commission_amount_minor");
-            entity.HasIndex(x => new { x.OrderId, x.ServiceItemId }).IsUnique()
+            entity.HasIndex(x => new { x.OrderId, x.ServiceItemId })
                 .HasFilter("line_type = 'Service'");
-            entity.HasIndex(x => new { x.OrderId, x.ProductItemId }).IsUnique()
+            entity.HasIndex(x => new { x.OrderId, x.ProductItemId })
                 .HasFilter("line_type = 'Product'");
             entity.HasOne<ServiceItem>().WithMany().HasForeignKey(x => x.ServiceItemId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ProductItem>().WithMany().HasForeignKey(x => x.ProductItemId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<Employee>().WithMany().HasForeignKey(x => x.ServiceEmployeeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<ServiceOrderVisitLink>(entity =>
+        {
+            entity.ToTable("service_order_visit_links");
+            ConfigureBase(entity);
+            entity.Property(x => x.OrderId).HasColumnName("order_id");
+            entity.Property(x => x.VisitId).HasColumnName("visit_id");
+            entity.HasIndex(x => new { x.OrderId, x.VisitId }).IsUnique();
+            entity.HasIndex(x => x.VisitId);
+            entity.HasOne<ServiceOrder>().WithMany().HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Visit>().WithMany().HasForeignKey(x => x.VisitId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<ServiceOrderPrebillSnapshot>(entity =>
+        {
+            entity.ToTable("service_order_prebill_snapshots");
+            ConfigureBase(entity);
+            entity.Property(x => x.StoreId).HasColumnName("store_id");
+            entity.Property(x => x.OrderId).HasColumnName("order_id");
+            entity.Property(x => x.PrebillNo).HasColumnName("prebill_no").HasMaxLength(40);
+            entity.Property(x => x.PayloadJson).HasColumnName("payload_json").HasColumnType("jsonb");
+            entity.Property(x => x.GeneratedBy).HasColumnName("generated_by");
+            entity.Property(x => x.GeneratedAtUtc).HasColumnName("generated_at_utc");
+            entity.HasIndex(x => new { x.TenantId, x.PrebillNo }).IsUnique();
+            entity.HasIndex(x => new { x.OrderId, x.GeneratedAtUtc });
+            entity.HasOne<ServiceOrder>().WithMany().HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.GeneratedBy)
                 .OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<PriceOverridePolicy>(entity =>

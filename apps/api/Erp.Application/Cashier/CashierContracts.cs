@@ -13,7 +13,10 @@ public sealed record ServiceOrderLineDto(Guid Id, string LineType, Guid? Service
     int? ActualSeconds, long ReferencePriceMinor, long EnteredPriceMinor,
     long LineAmountMinor, string? PriceOverrideReason, Guid? ServiceEmployeeId, string? EmployeeNo,
     string? EmployeeName);
-public sealed record ServiceOrderDto(Guid Id, string OrderNo, Guid VisitId, Guid? CustomerId, string Status,
+public sealed record ServiceOrderDto(Guid Id, string OrderNo, Guid VisitId, Guid? CustomerId,
+    Guid? ConsultantEmployeeId, string? ConsultantEmployeeNo, string? ConsultantEmployeeName, string Status,
+    string? SourceChannel, string? ManualTicketNo, int MaleGuestCount, string? MaleAgeBand,
+    int FemaleGuestCount, string? FemaleAgeBand,
     Guid? PriceBookId, long ReferenceAmountMinor, long ReceivableMinor, long RefundedMinor, string? Note, uint Version,
     DateTimeOffset CreatedAtUtc, string PriceAuthorizationStatus, Guid? PricePolicyId, int? PricePolicyVersion,
     Guid? PriceAuthorizedBy, DateTimeOffset? PriceAuthorizedAtUtc, IReadOnlyList<ServiceOrderLineDto> Lines);
@@ -29,8 +32,25 @@ public sealed record CreateServiceOrderLineCommand(string? LineType, Guid? Servi
     Guid? ServiceEmployeeId, int Quantity, int? ActualSeconds, long EnteredPriceMinor,
     string? PriceOverrideReason);
 public sealed record CreateServiceOrderCommand(Guid StoreId, Guid? VisitId, Guid? CustomerId, string? Note,
+    Guid? ConsultantEmployeeId, string? SourceChannel, string? ManualTicketNo, int MaleGuestCount,
+    string? MaleAgeBand, int FemaleGuestCount, string? FemaleAgeBand,
     IReadOnlyList<CreateServiceOrderLineCommand> Lines, Guid CommandId, Guid OperatorId,
     IReadOnlyList<string> OperatorRoles);
+public sealed record GetOrCreateVisitDraftCommand(Guid StoreId, Guid VisitId, Guid CommandId, Guid OperatorId,
+    IReadOnlyList<string> OperatorRoles);
+public sealed record UpdateServiceOrderDraftCommand(Guid StoreId, Guid OrderId, Guid? CustomerId,
+    Guid? ConsultantEmployeeId, string? Note, string? SourceChannel, string? ManualTicketNo,
+    int MaleGuestCount, string? MaleAgeBand, int FemaleGuestCount, string? FemaleAgeBand,
+    IReadOnlyList<CreateServiceOrderLineCommand> Lines,
+    uint ExpectedVersion, Guid CommandId, Guid OperatorId, IReadOnlyList<string> OperatorRoles);
+public sealed record MergeServiceOrderDraftCommand(Guid StoreId, Guid TargetOrderId, Guid SourceOrderId,
+    uint ExpectedTargetVersion, uint ExpectedSourceVersion, Guid CommandId, Guid OperatorId,
+    IReadOnlyList<string> OperatorRoles);
+public sealed record ServiceOrderPrebillLineDto(string LineType, string ItemCode, string ItemName,
+    string? UnitName, int Quantity, long UnitPriceMinor, long LineAmountMinor, string? EmployeeName);
+public sealed record ServiceOrderPrebillDto(Guid Id, string PrebillNo, Guid OrderId, string OrderNo,
+    string StoreName, string CustomerDisplayName, string? ConsultantEmployeeName, long ReceivableMinor,
+    DateTimeOffset GeneratedAtUtc, IReadOnlyList<ServiceOrderPrebillLineDto> Lines);
 public sealed record ConfirmServiceOrderCommand(Guid StoreId, Guid OrderId, uint ExpectedVersion,
     Guid CommandId, Guid OperatorId);
 public sealed record VoidServiceOrderCommand(Guid StoreId, Guid OrderId, uint ExpectedVersion,
@@ -52,7 +72,17 @@ public interface ICashierService
     Task<PageResult<ServiceOrderDto>> ListOrdersAsync(Guid tenantId, Guid storeId,
         ServiceOrderSearchCriteria criteria, int page, int pageSize, CancellationToken cancellationToken);
     Task<Result<ServiceOrderDto>> GetOrderAsync(Guid tenantId, Guid storeId, Guid orderId, CancellationToken cancellationToken);
+    Task<ServiceOrderDto?> GetOrderByVisitAsync(Guid tenantId, Guid storeId, Guid visitId,
+        CancellationToken cancellationToken);
+    Task<Result<ServiceOrderDto>> GetOrCreateVisitDraftAsync(Guid tenantId,
+        GetOrCreateVisitDraftCommand command, CancellationToken cancellationToken);
     Task<Result<ServiceOrderDto>> CreateOrderAsync(Guid tenantId, CreateServiceOrderCommand command, CancellationToken cancellationToken);
+    Task<Result<ServiceOrderDto>> UpdateDraftAsync(Guid tenantId, UpdateServiceOrderDraftCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<ServiceOrderDto>> MergeDraftAsync(Guid tenantId, MergeServiceOrderDraftCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<ServiceOrderPrebillDto>> CreatePrebillAsync(Guid tenantId, Guid storeId, Guid orderId,
+        uint expectedVersion, Guid commandId, Guid operatorId, CancellationToken cancellationToken);
     Task<Result<ServiceOrderDto>> ConfirmOrderAsync(Guid tenantId, ConfirmServiceOrderCommand command, CancellationToken cancellationToken);
     Task<Result<ServiceOrderDto>> VoidOrderAsync(Guid tenantId, VoidServiceOrderCommand command,
         CancellationToken cancellationToken);

@@ -137,6 +137,80 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
 .facility-card .ant-statistic { margin-bottom: 18px; }
 .facility-card .ant-statistic-content { color: #156f69; font-variant-numeric: tabular-nums; }
 .facility-session-copy { min-height: 48px; display: flex; flex-direction: column; gap: 3px; margin-bottom: 16px; color: #78869a; font-size: 12px; }
+.facility-card.is-actionable { cursor: pointer; }
+.facility-card.is-actionable:hover { border-color: #65b9ad; box-shadow: 0 13px 34px rgba(22,111,105,.12); transform: translateY(-2px); }
+.facility-enter-hint { color: #178e84 !important; font-weight: 600; }
+
+.modern-facility-cashier { height: calc(100vh - 128px); height: calc(100dvh - 128px); min-height: 520px; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #dce6e9; border-radius: 22px; background: #fff; box-shadow: 0 20px 55px rgba(28,55,76,.08); }
+.modern-cashier-loading { min-height: 520px; display: grid; place-items: center; }
+.modern-cashier-tabs { min-height: 70px; display: flex; align-items: stretch; gap: 7px; padding: 8px; border-bottom: 1px solid #e6ecef; background: #f8fafb; }
+.modern-cashier-room { min-width: 210px; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 14px; border: 1px solid #dde8ea; border-radius: 13px; background: #fff; }
+.modern-cashier-room b { color: #1b2b3a; font-size: 17px; }
+.modern-cashier-room span { color: #7b8a98; font-size: 11px; font-variant-numeric: tabular-nums; }
+.modern-cashier-room .ant-tag { width: fit-content; margin: 1px 0 0; }
+.modern-cashier-tabs > button { width: 76px; display: grid; grid-template-columns: 22px 1fr; grid-template-rows: 1fr 1fr; align-items: center; padding: 8px; border: 0; border-radius: 12px; background: #eef2f4; color: #526271; cursor: pointer; transition: .18s ease; }
+.modern-cashier-tabs > button > .anticon { grid-row: 1 / 3; font-size: 17px; }
+.modern-cashier-tabs > button span:not(.anticon), .modern-cashier-tabs > button small { text-align: left; }
+.modern-cashier-tabs > button:hover, .modern-cashier-tabs > button.active { background: #1d9c91; color: #fff; box-shadow: 0 7px 17px rgba(29,156,145,.2); }
+.modern-cashier-tabs > button.is-settle { width: 92px; margin-left: auto; display: block; background: #e75d64; color: #fff; font-size: 16px; font-weight: 700; }
+.modern-cashier-tabs > button.is-settle:hover { background: #d84750; box-shadow: 0 7px 17px rgba(216,71,80,.2); }
+.modern-cashier-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(360px, 42%) minmax(440px, 58%); overflow: hidden; }
+.modern-bill-pane { min-width: 0; display: flex; flex-direction: column; border-right: 1px solid #e3eaed; background: #f7f9fa; }
+.modern-bill-summary { height: 50px; display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid #e3eaed; background: #fff; color: #71808e; font-size: 12px; }
+.modern-bill-summary b { margin-left: auto; color: #df4c55; font-size: 18px; }
+.modern-bill-pane > .ant-empty { flex: 1; display: grid; place-content: center; }
+.modern-bill-lines { flex: 1; padding: 10px; overflow: auto; }
+.modern-bill-lines article { margin-bottom: 8px; padding: 10px 12px; border: 1px solid #dce5e8; border-radius: 13px; background: #fff; box-shadow: 0 3px 10px rgba(34,64,84,.035); }
+.modern-bill-lines article header { display: flex; align-items: center; gap: 7px; }
+.modern-bill-lines article header b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modern-bill-lines article header button { margin-left: auto; }
+.modern-line-meta { display: flex; gap: 16px; margin-top: 6px; color: #758491; font-size: 11px; }
+.modern-line-meta strong { margin-left: auto; color: #263746; }
+.modern-line-edit { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.modern-line-edit label { display: flex; align-items: center; gap: 5px; color: #657481; font-size: 11px; }
+.modern-line-edit label em { color: #7c8994; font-style: normal; }
+.modern-line-edit .ant-input-number { width: 92px; }
+.modern-line-edit .ant-select { width: 126px; }
+.modern-catalog-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
+.modern-catalog-search { min-height: 52px; display: grid; grid-template-columns: 150px minmax(220px, 1fr); gap: 8px; padding: 8px; border-bottom: 1px solid #e5ecef; }
+.modern-member-search .modern-catalog-search { grid-template-columns: 1fr; }
+.modern-catalog-grid { flex: 1; align-content: start; display: grid; grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 8px; padding: 10px; overflow: auto; }
+.modern-catalog-grid button { min-height: 92px; display: flex; flex-direction: column; align-items: stretch; gap: 5px; padding: 11px; border: 1px solid #d6ebe8; border-radius: 14px; background: linear-gradient(145deg,#2ba99f,#168d84); color: #fff; text-align: left; cursor: pointer; box-shadow: 0 6px 15px rgba(22,141,132,.14); transition: .16s ease; }
+.modern-catalog-grid button:hover:not(:disabled) { transform: translateY(-2px); background: linear-gradient(145deg,#24a097,#117a73); box-shadow: 0 9px 20px rgba(22,141,132,.22); }
+.modern-catalog-grid button:disabled { cursor: not-allowed; opacity: .48; }
+.modern-catalog-grid button small { color: rgba(255,255,255,.82); font-size: 10px; }
+.modern-catalog-grid button b { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.modern-catalog-grid button span { font-size: 11px; }
+.modern-main-order { flex: 1; min-height: 0; width: 100%; max-width: 720px; padding: 24px; display: grid; align-content: start; gap: 17px; overflow: auto; }
+.modern-main-order h2 { margin: 0; color: #168d84; font-size: 20px; }
+.modern-main-order > label { display: grid; gap: 7px; color: #536473; font-size: 12px; }
+.modern-order-facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+.modern-order-facts span { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid #e0e9ec; border-radius: 12px; color: #81909c; font-size: 11px; }
+.modern-order-facts strong { overflow: hidden; color: #253746; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.modern-reception-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.modern-reception-grid label { min-width: 0; display: grid; gap: 6px; color: #536473; font-size: 12px; }
+.modern-reception-grid .ant-input-number, .modern-reception-grid .ant-select { width: 100%; }
+.modern-member-search { flex: 1; display: flex; flex-direction: column; }
+.modern-member-results { align-content: start; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; padding: 10px; overflow: auto; }
+.modern-member-results button { min-height: 82px; display: grid; grid-template-columns: 26px 1fr; gap: 3px 8px; padding: 10px; border: 1px solid #dbe5e8; border-radius: 13px; background: #fff; color: #667581; text-align: left; cursor: pointer; }
+.modern-member-results button > .anticon { grid-row: 1 / 4; color: #1b9b90; font-size: 20px; }
+.modern-member-results button b { color: #243644; }
+.modern-member-results button small { color: #929da7; }
+.modern-member-results button:hover:not(:disabled), .modern-member-results button.active { border-color: #4db8ae; background: #f0fbf9; }
+.modern-cashier-actions { min-height: 72px; display: flex; align-items: stretch; gap: 6px; padding: 6px; border-top: 1px solid #e1e9ec; background: #f6f8f9; overflow-x: auto; }
+.modern-cashier-actions button { flex: 0 0 74px; display: grid; grid-template-columns: 22px 1fr; grid-template-rows: 1fr 1fr; align-items: center; padding: 8px; border: 0; border-radius: 11px; background: #e9eef0; color: #435462; cursor: pointer; }
+.modern-cashier-actions button > .anticon { grid-row: 1 / 3; font-size: 16px; }
+.modern-cashier-actions button span:not(.anticon), .modern-cashier-actions button small { text-align: left; }
+.modern-cashier-actions button:hover:not(:disabled) { background: #1f9d92; color: #fff; }
+.modern-cashier-actions button:disabled { cursor: not-allowed; opacity: .42; }
+.modern-cashier-actions button.is-return { margin-left: auto; background: #70808d; color: #fff; }
+.modern-employee-picker { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+.modern-employee-picker button { min-height: 64px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 10px 13px; border: 1px solid #dbe5e8; border-radius: 12px; background: #fff; cursor: pointer; }
+.modern-employee-picker button:hover { border-color: #4bb6ac; background: #f0fbf9; }
+.modern-employee-picker span { color: #87939d; font-size: 11px; }
+.modern-prebill h2 { text-align: center; }
+.modern-prebill > div { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px dashed #cfd9dc; }
+.modern-prebill footer { display: flex; justify-content: flex-end; gap: 18px; padding-top: 18px; font-size: 17px; }
 .customer-search { width: min(680px, 100%); }
 .customer-avatar { width: 32px; height: 32px; border-radius: 10px; display: inline-grid; place-items: center; color: #2563eb; background: #eff6ff; }
 .clickable-row { cursor: pointer; }

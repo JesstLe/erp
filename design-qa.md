@@ -44,6 +44,51 @@ final result: passed
 
 ---
 
+# Modern facility cashier using classic workflow — Design QA
+
+- Source visual truth: `/Users/lv/Workspace/erp/design-audit/flow-compare-2026-08-27/05-classic-service-counter-1280.png`
+- Browser-rendered implementation: `/Users/lv/Workspace/erp/design-audit/flow-compare-2026-08-27/10-modern-service-counter-qa.png`
+- Full-view comparison evidence: `/Users/lv/Workspace/erp/design-audit/flow-compare-2026-08-27/09-classic-modern-comparison-final.png`
+- Viewport/state: 1280 × 720 CSS px at DPR 1, authenticated OWNER, active facility with a persisted empty draft after the interaction test was cleaned up.
+- Density normalization: source and implementation were captured at the same 1280 × 720 viewport. The modern product shell intentionally keeps its existing white sidebar and header; the compared operation area preserves the classic information architecture inside that shell.
+
+## Findings
+
+No actionable P0/P1/P2 mismatch remains in the approved scope of classic workflow and field-order parity inside the modern visual system.
+
+- Information architecture: the top sequence is 主单信息、顾客预约、会员刷卡、项目列表、产品列表、结算. The center keeps the bill/totals on the left and the active form or catalog on the right. The bottom sequence keeps whole-order employee, consultant, discount, facility switch, merge, prebill, void/clear, pause/resume, end service and return actions.
+- Layout and scrolling: the workbench is fixed to the usable viewport beneath the modern header. The action footer remains visible at 1280 × 720; the dense 主单信息 panel scrolls independently (`clientHeight=371`, `scrollHeight=708`, `overflow=auto`) so no reception field is inaccessible.
+- Typography, spacing and tokens: the classic compact operation density and ordering are retained, while borders, control radii, colors and surfaces use the existing modern UI tokens as explicitly requested.
+- Content and field fidelity: customer, notes, source, manual ticket number, male/female guest counts and age bands are present. Catalog cards retain code, name, price and duration/stock; the bill retains quantity, employee, original price, actual price and line amount.
+- Backend truthfulness: refresh restores a server-side versioned draft. Employee, consultant, discount, facility change, merge, prebill, end-service and settlement controls call real APIs rather than simulating success. Official payment and complex allocation continue through the existing authoritative cashier flow.
+- Accessibility and states: tabs, catalog items and footer controls are semantic interactive controls; loading, empty, conflict and permission states are visible. The browser console had zero errors or warnings after the final pass.
+
+The full 1280 × 720 comparison keeps the top field order, center two-column structure and bottom action order legible. The dense 主单信息 fields were additionally opened and inspected in-browser, and their scroll measurements were recorded above; a resampled crop was not needed.
+
+## Comparison history
+
+1. Initial modern pass reproduced the classic zones but the persistent footer was clipped at 720 px and the 主单信息 fields extended below an unscrollable panel. These were P2 and P1 usability mismatches.
+2. Fixes constrained the workbench to the available viewport, made its body min-height safe, pinned the footer inside the workbench and gave the active detail panel independent vertical scrolling.
+3. The final capture shows all persistent actions without clipping, and browser measurement confirms every reception field remains reachable without moving the application shell.
+
+## Primary interactions and checks
+
+- Entered an active facility from the modern facilities page and restored the same persisted draft after reload.
+- Opened 主单信息 and verified all reception fields and independent scrolling.
+- Added a real service project, selected a whole-order employee and generated a server-side prebill snapshot.
+- Reloaded and verified the ¥100 draft restored; then cleared the test draft and confirmed the local workbench returned to ¥0.
+- Real PostgreSQL integration flow passed facility start, draft restore, standalone product order, service/employee/consultant/reception update, bill merge, prebill, facility end, confirmation, shift and payment.
+- Domain cashier tests passed 17/17. The targeted real-API PostgreSQL flow passed 1/1. Frontend production build and API compile passed with zero warnings/errors; production dependency audit found zero vulnerabilities.
+- Browser console errors and warnings checked: none.
+
+## Intentional differences
+
+- P3: the surrounding modern white sidebar/header, rounded controls and modern color tokens remain by design. The user requested classic operation logic and layout inside the modern UI, not a second visual copy of the classic shell.
+
+final result: passed
+
+---
+
 # Classic UI module-specific dashboard rebuild — Design QA
 
 - Source visual truth: `/Users/lv/Workspace/erp/design-audit/02-purchase-dashboard.png` and `/Users/lv/Workspace/erp/design-audit/08-reports-dashboard.png`

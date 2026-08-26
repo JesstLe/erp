@@ -8,6 +8,7 @@ using Erp.Application.Common;
 using Erp.Domain.Cashier;
 using Erp.Domain.Common;
 using Erp.Domain.Customers;
+using Erp.Domain.Facilities;
 using Erp.Infrastructure.Customers;
 using Erp.Infrastructure.Persistence;
 using Erp.Infrastructure.Inventory;
@@ -431,8 +432,18 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
             await inventory.ConsumeOrderAsync(order, command.CommandId, command.OperatorId, now,
                 cancellationToken);
             order.Settle(now);
-            var visit = await db.Visits.SingleAsync(x => x.Id == order.VisitId && x.TenantId == tenantId, cancellationToken);
-            visit.Complete();
+            var linkedVisitIds = await db.ServiceOrderVisitLinks.Where(x => x.OrderId == order.Id &&
+                    x.TenantId == tenantId).Select(x => x.VisitId).ToListAsync(cancellationToken);
+            if (linkedVisitIds.Count == 0) linkedVisitIds.Add(order.VisitId);
+            var linkedVisits = await db.Visits.Where(x => linkedVisitIds.Contains(x.Id) &&
+                    x.TenantId == tenantId).ToListAsync(cancellationToken);
+            foreach (var visit in linkedVisits)
+            {
+                if (visit.Status == VisitStatus.ServiceEnded) visit.Complete();
+                else if (visit.Status != VisitStatus.Completed)
+                    throw new DomainRuleException("VISIT_NOT_READY",
+                        "账单关联的设施服务尚未全部结束，不能完成收款");
+            }
             db.Payments.Add(payment);
             AddReceipt(tenantId, command.CommandId, command.OperatorId, hash, payment.Id, now);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "payment.complete", "Payment", payment.Id,
