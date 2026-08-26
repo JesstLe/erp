@@ -120,10 +120,21 @@ internal sealed partial class LegacyImportService(
                 row => row.SourceId,
                 row => CleanText(Field(row, "unit_name"), 20) ?? "件",
                 StringComparer.OrdinalIgnoreCase);
-            var tradeCodes = Rows(rows, "employee-trades").ToDictionary(
-                row => row.SourceId,
+            var tradeRows = Rows(rows, "employee-trades");
+            var tradeCodes = tradeRows.ToDictionary(row => row.SourceId,
                 row => CleanCode(Field(row, "ework_code"), 40) ?? $"LEGACY-{row.SourceId}",
                 StringComparer.OrdinalIgnoreCase);
+            var existingPositionCodes = await db.EmployeePositions.Where(x => x.TenantId == tenant.Id)
+                .Select(x => x.Code).ToListAsync(cancellationToken);
+            foreach (var row in tradeRows)
+            {
+                var code = tradeCodes[row.SourceId];
+                if (existingPositionCodes.Contains(code, StringComparer.OrdinalIgnoreCase)) continue;
+                var name = CleanText(Field(row, "ework_name"), 60) ?? code;
+                if (name.Length < 2) name = $"岗位{name}";
+                db.EmployeePositions.Add(new EmployeePosition(tenant.Id, code, name, 100));
+                existingPositionCodes.Add(code);
+            }
 
             foreach (var row in Rows(rows, "employees"))
             {
@@ -140,6 +151,11 @@ internal sealed partial class LegacyImportService(
                 var position = tradeCodes.GetValueOrDefault(positionSource) ??
                     CleanCode(positionSource, 40) ?? "LEGACY-STAFF";
                 if (position.Length < 2) position = $"P{position}";
+                if (!existingPositionCodes.Contains(position, StringComparer.OrdinalIgnoreCase))
+                {
+                    db.EmployeePositions.Add(new EmployeePosition(tenant.Id, position, position, 100));
+                    existingPositionCodes.Add(position);
+                }
                 var employee = new Employee(tenant.Id, $"LEGACY-{row.SourceId}", name, position, null);
                 if (LooksDisabled(Field(row, "emplee_end"))) employee.Deactivate();
                 db.Employees.Add(employee);

@@ -10,6 +10,14 @@ public sealed record EmployeeDto(Guid Id, string EmployeeNo, string DisplayName,
 
 public sealed record RoleDto(Guid Id, string Code, string Name);
 
+public sealed record EmployeePositionDto(Guid Id, string Code, string Name, int SortOrder, string Status,
+    uint Version);
+
+public sealed record CreateEmployeePositionCommand(string Name, int SortOrder, Guid OperatorId);
+public sealed record UpdateEmployeePositionCommand(Guid Id, string Name, int SortOrder, bool IsEnabled,
+    uint ExpectedVersion, Guid OperatorId);
+public sealed record DeleteEmployeePositionCommand(Guid Id, uint ExpectedVersion, Guid OperatorId);
+
 public sealed record CreateEmployeeCommand(string DisplayName, string PositionCode,
     IReadOnlyList<Guid> StoreIds, bool CreateLoginAccount, string? Account, string? InitialPassword,
     IReadOnlyList<string> Roles, Guid OperatorId);
@@ -28,6 +36,15 @@ public interface IEmployeeService
         CancellationToken cancellationToken);
 
     Task<IReadOnlyList<RoleDto>> ListRolesAsync(Guid tenantId, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<EmployeePositionDto>> ListPositionsAsync(Guid tenantId,
+        CancellationToken cancellationToken);
+    Task<Result<EmployeePositionDto>> CreatePositionAsync(Guid tenantId, CreateEmployeePositionCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<EmployeePositionDto>> UpdatePositionAsync(Guid tenantId, UpdateEmployeePositionCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<bool>> DeletePositionAsync(Guid tenantId, DeleteEmployeePositionCommand command,
+        CancellationToken cancellationToken);
 
     Task<Result<EmployeeDto>> CreateAsync(Guid tenantId, CreateEmployeeCommand command, CancellationToken cancellationToken);
 

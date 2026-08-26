@@ -27,6 +27,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
 
     public DbSet<Employee> Employees => Set<Employee>();
 
+    public DbSet<EmployeePosition> EmployeePositions => Set<EmployeePosition>();
+
     public DbSet<EmployeeStore> EmployeeStores => Set<EmployeeStore>();
 
     public DbSet<RoleActionGrant> RoleActionGrants => Set<RoleActionGrant>();
@@ -260,6 +262,17 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasIndex(x => new { x.TenantId, x.EmployeeNo }).IsUnique();
             entity.HasIndex(x => x.UserId).IsUnique();
             entity.HasOne<ApplicationUser>().WithOne().HasForeignKey<Employee>(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<EmployeePosition>(entity =>
+        {
+            entity.ToTable("organization_employee_positions");
+            ConfigureBase(entity);
+            entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(40);
+            entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(60);
+            entity.Property(x => x.SortOrder).HasColumnName("sort_order");
+            entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
+            entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         });
 
         builder.Entity<EmployeeStore>(entity =>

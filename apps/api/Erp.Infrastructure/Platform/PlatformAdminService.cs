@@ -104,7 +104,12 @@ internal sealed partial class PlatformAdminService(
                     $"负责人账号创建失败：{string.Join(';', createResult.Errors.Select(x => x.Code))}");
             db.UserRoles.Add(new IdentityUserRole<Guid> { UserId = owner.Id, RoleId = roles[SystemRoles.Owner].Id });
             db.UserStores.Add(new UserStore(tenant.Id, owner.Id, store.Id, true));
-            var employee = new Employee(tenant.Id, "E0001", application.ContactName, "负责人", owner.Id);
+            db.EmployeePositions.AddRange(
+                new EmployeePosition(tenant.Id, "OWNER", "负责人", 10),
+                new EmployeePosition(tenant.Id, "STORE_MANAGER", "门店负责人", 20),
+                new EmployeePosition(tenant.Id, "STAFF", "员工", 30),
+                new EmployeePosition(tenant.Id, "OTHER", "其他岗位", 999));
+            var employee = new Employee(tenant.Id, "E0001", application.ContactName, "OWNER", owner.Id);
             db.Employees.Add(employee);
             db.EmployeeStores.Add(new EmployeeStore(tenant.Id, employee.Id, store.Id, true));
             foreach (var (roleName, role) in roles)

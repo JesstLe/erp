@@ -99,7 +99,7 @@ export const classicDashboardReference = {
     layout: 'single-chart',
     chartTitles: ['本月员工综合业绩图表'],
     latestTitle: '最新登记员工列表',
-    latestHeaders: ['所属门店', '员工编号', '员工姓名', '性别', '手机号码', '员工工种', '技师等级', '进店日期'],
+    latestHeaders: ['所属门店', '员工编号', '员工姓名', '性别', '手机号码', '员工岗位', '在职状态', '入职日期'],
     managementTitle: '员工管理',
     managementActionCount: 5,
     queryTitle: '报表查询',

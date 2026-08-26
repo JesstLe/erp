@@ -69,8 +69,13 @@ public sealed partial class ProductionBootstrapper(ErpDbContext db, UserManager<
             EnsureSucceeded(await userManager.AddToRoleAsync(owner, SystemRoles.Owner), "分配最高权限角色");
 
             db.UserStores.Add(new UserStore(tenant.Id, owner.Id, store.Id, true));
+            db.EmployeePositions.AddRange(
+                new EmployeePosition(tenant.Id, "OWNER", options.OwnerPosition, 10),
+                new EmployeePosition(tenant.Id, "STORE_MANAGER", "门店负责人", 20),
+                new EmployeePosition(tenant.Id, "STAFF", "员工", 30),
+                new EmployeePosition(tenant.Id, "OTHER", "其他岗位", 999));
             var employee = new Employee(tenant.Id, options.OwnerEmployeeNo, options.OwnerDisplayName,
-                options.OwnerPosition, owner.Id);
+                "OWNER", owner.Id);
             db.Employees.Add(employee);
             db.EmployeeStores.Add(new EmployeeStore(tenant.Id, employee.Id, store.Id, true));
 

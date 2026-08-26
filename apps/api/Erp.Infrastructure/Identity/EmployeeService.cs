@@ -35,6 +35,8 @@ internal sealed partial class EmployeeService(ErpDbContext db, UserManager<Appli
             employeeQuery = employeeQuery.Where(employee =>
                 employee.EmployeeNo.Contains(term) || employee.DisplayName.Contains(term) ||
                 employee.PositionCode.Contains(term) ||
+                db.EmployeePositions.Any(position => position.TenantId == tenantId &&
+                    position.Code == employee.PositionCode && position.Name.Contains(term)) ||
                 db.Users.Any(user => employee.UserId.HasValue && user.Id == employee.UserId.Value &&
                     user.TenantId == tenantId && user.UserName != null && user.UserName.Contains(term)) ||
                 db.Set<EmployeeStore>().Any(assignment => assignment.EmployeeId == employee.Id &&
@@ -74,6 +76,104 @@ internal sealed partial class EmployeeService(ErpDbContext db, UserManager<Appli
             RoleNames.TryGetValue(x.Name!, out var displayName) ? displayName : x.Name!)).ToList();
     }
 
+    public async Task<IReadOnlyList<EmployeePositionDto>> ListPositionsAsync(Guid tenantId,
+        CancellationToken cancellationToken) => await db.EmployeePositions.AsNoTracking()
+        .Where(x => x.TenantId == tenantId)
+        .OrderBy(x => x.SortOrder).ThenBy(x => x.Code)
+        .Select(x => new EmployeePositionDto(x.Id, x.Code, x.Name, x.SortOrder,
+            x.Status.ToString().ToUpperInvariant(), x.Version))
+        .ToListAsync(cancellationToken);
+
+    public async Task<Result<EmployeePositionDto>> CreatePositionAsync(Guid tenantId,
+        CreateEmployeePositionCommand command, CancellationToken cancellationToken)
+    {
+        var name = command.Name.Trim();
+        if (await db.EmployeePositions.AnyAsync(x => x.TenantId == tenantId && x.Name == name,
+                cancellationToken))
+            return ResultFactory.Failure<EmployeePositionDto>("POSITION_NAME_EXISTS", "岗位名称已存在");
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var code = await codeGenerator.NextEmployeePositionCodeAsync(tenantId, cancellationToken);
+            var position = new EmployeePosition(tenantId, code, name, command.SortOrder);
+            db.EmployeePositions.Add(position);
+            AddPositionAudit(tenantId, command.OperatorId, "employee.position.create", position.Id, null,
+                JsonSerializer.Serialize(Map(position)));
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return ResultFactory.Success(Map(position));
+        }
+        catch (DomainRuleException exception)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<EmployeePositionDto>(exception.Code, exception.Message);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<EmployeePositionDto>("POSITION_CREATE_CONFLICT", "岗位创建冲突，请刷新后重试");
+        }
+    }
+
+    public async Task<Result<EmployeePositionDto>> UpdatePositionAsync(Guid tenantId,
+        UpdateEmployeePositionCommand command, CancellationToken cancellationToken)
+    {
+        var position = await db.EmployeePositions.SingleOrDefaultAsync(x => x.TenantId == tenantId &&
+            x.Id == command.Id, cancellationToken);
+        if (position is null)
+            return ResultFactory.Failure<EmployeePositionDto>("POSITION_NOT_FOUND", "岗位不存在");
+        if (position.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<EmployeePositionDto>("VERSION_CONFLICT", "岗位已被其他人修改，请刷新后重试");
+        var name = command.Name.Trim();
+        if (await db.EmployeePositions.AnyAsync(x => x.TenantId == tenantId && x.Id != position.Id &&
+                x.Name == name, cancellationToken))
+            return ResultFactory.Failure<EmployeePositionDto>("POSITION_NAME_EXISTS", "岗位名称已存在");
+        try
+        {
+            var previous = JsonSerializer.Serialize(Map(position));
+            position.Update(name, command.SortOrder);
+            if (command.IsEnabled) position.Enable(); else position.Disable();
+            AddPositionAudit(tenantId, command.OperatorId, "employee.position.update", position.Id, previous,
+                JsonSerializer.Serialize(Map(position)));
+            await db.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(Map(position));
+        }
+        catch (DomainRuleException exception)
+        {
+            return ResultFactory.Failure<EmployeePositionDto>(exception.Code, exception.Message);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ResultFactory.Failure<EmployeePositionDto>("VERSION_CONFLICT", "岗位已被其他人修改，请刷新后重试");
+        }
+    }
+
+    public async Task<Result<bool>> DeletePositionAsync(Guid tenantId, DeleteEmployeePositionCommand command,
+        CancellationToken cancellationToken)
+    {
+        var position = await db.EmployeePositions.SingleOrDefaultAsync(x => x.TenantId == tenantId &&
+            x.Id == command.Id, cancellationToken);
+        if (position is null)
+            return ResultFactory.Failure<bool>("POSITION_NOT_FOUND", "岗位不存在");
+        if (position.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<bool>("VERSION_CONFLICT", "岗位已被其他人修改，请刷新后重试");
+        if (await db.Employees.AnyAsync(x => x.TenantId == tenantId && x.PositionCode == position.Code,
+                cancellationToken))
+            return ResultFactory.Failure<bool>("RESOURCE_IN_USE", "该岗位已有员工使用，请先改派员工或停用岗位");
+        try
+        {
+            db.EmployeePositions.Remove(position);
+            AddPositionAudit(tenantId, command.OperatorId, "employee.position.delete", position.Id,
+                JsonSerializer.Serialize(Map(position)), null);
+            await db.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(true);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ResultFactory.Failure<bool>("VERSION_CONFLICT", "岗位已被其他人修改，请刷新后重试");
+        }
+    }
+
     public async Task<Result<EmployeeDto>> CreateAsync(Guid tenantId, CreateEmployeeCommand command,
         CancellationToken cancellationToken)
     {
@@ -84,6 +184,9 @@ internal sealed partial class EmployeeService(ErpDbContext db, UserManager<Appli
             return ResultFactory.Failure<EmployeeDto>("VALIDATION_FAILED", "请检查员工姓名和岗位");
         if (storeIds.Count == 0)
             return ResultFactory.Failure<EmployeeDto>("VALIDATION_FAILED", "至少选择一个所属门店");
+        if (!await db.EmployeePositions.AnyAsync(x => x.TenantId == tenantId && x.Code == positionCode &&
+                x.Status == EmployeePositionStatus.Enabled, cancellationToken))
+            return ResultFactory.Failure<EmployeeDto>("INVALID_POSITION", "所选岗位不存在或已停用");
         var stores = await db.Stores.Where(x => x.TenantId == tenantId && storeIds.Contains(x.Id) && x.Status == StoreStatus.Enabled)
             .OrderBy(x => x.Name).ToListAsync(cancellationToken);
         if (stores.Count != storeIds.Count)
@@ -210,6 +313,10 @@ internal sealed partial class EmployeeService(ErpDbContext db, UserManager<Appli
             return ResultFactory.Failure<EmployeeDto>("EMPLOYEE_NOT_FOUND", "员工不存在");
         if (employee.Version != command.ExpectedVersion)
             return ResultFactory.Failure<EmployeeDto>("VERSION_CONFLICT", "员工资料已变化，请刷新后重试");
+        if (!string.Equals(employee.PositionCode, positionCode, StringComparison.Ordinal) &&
+            !await db.EmployeePositions.AnyAsync(x => x.TenantId == tenantId && x.Code == positionCode &&
+                x.Status == EmployeePositionStatus.Enabled, cancellationToken))
+            return ResultFactory.Failure<EmployeeDto>("INVALID_POSITION", "所选岗位不存在或已停用");
         ApplicationUser? user = null;
         IList<string> currentRoles = [];
         if (employee.UserId.HasValue)
@@ -460,6 +567,9 @@ internal sealed partial class EmployeeService(ErpDbContext db, UserManager<Appli
         employee.PositionCode, employee.Status.ToString(), user?.Id, user?.UserName, user?.IsEnabled,
         user?.MustChangePassword, roles, stores, employee.CreatedAtUtc, employee.Version);
 
+    private static EmployeePositionDto Map(EmployeePosition position) => new(position.Id, position.Code,
+        position.Name, position.SortOrder, position.Status.ToString().ToUpperInvariant(), position.Version);
+
     private static async Task<Result<EmployeeDto>> RollbackFailure(Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction,
         string code, string message, CancellationToken cancellationToken)
     {
@@ -474,6 +584,15 @@ internal sealed partial class EmployeeService(ErpDbContext db, UserManager<Appli
         EntityId = employeeId, PreviousState = previousState, CurrentState = currentState,
         TraceId = httpContextAccessor.HttpContext?.TraceIdentifier ?? Guid.NewGuid().ToString("N"),
         Metadata = metadata ?? "{}", OccurredAtUtc = DateTimeOffset.UtcNow,
+    });
+
+    private void AddPositionAudit(Guid tenantId, Guid operatorId, string action, Guid positionId,
+        string? previousState, string? currentState) => db.AuditEvents.Add(new AuditEventRecord
+    {
+        TenantId = tenantId, StoreId = null, OperatorId = operatorId, Action = action,
+        EntityType = "EmployeePosition", EntityId = positionId, PreviousState = previousState,
+        CurrentState = currentState, TraceId = httpContextAccessor.HttpContext?.TraceIdentifier ?? Guid.NewGuid().ToString("N"),
+        Metadata = "{}", OccurredAtUtc = DateTimeOffset.UtcNow,
     });
 
     [GeneratedRegex("^[A-Za-z0-9._@-]{4,100}$", RegexOptions.CultureInvariant)]

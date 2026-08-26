@@ -61,6 +61,20 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
         }
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        var defaultPositions = new[]
+        {
+            new { Code = "OWNER", Name = "负责人", SortOrder = 10 },
+            new { Code = "STORE_MANAGER", Name = "门店负责人", SortOrder = 20 },
+            new { Code = "STAFF", Name = "员工", SortOrder = 30 },
+            new { Code = "OTHER", Name = "其他岗位", SortOrder = 999 },
+        };
+        var existingPositionCodes = await dbContext.EmployeePositions.Where(x => x.TenantId == tenant.Id)
+            .Select(x => x.Code).ToListAsync(cancellationToken);
+        foreach (var position in defaultPositions.Where(position => !existingPositionCodes.Contains(position.Code)))
+            dbContext.EmployeePositions.Add(new EmployeePosition(tenant.Id, position.Code, position.Name,
+                position.SortOrder));
+        await dbContext.SaveChangesAsync(cancellationToken);
+
         var owner = await userManager.FindByNameAsync("owner01");
         if (owner is null)
         {
