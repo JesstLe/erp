@@ -36,7 +36,7 @@ public sealed class ServiceOrder : Entity
     public Guid VisitId { get; private set; }
     public Guid? CustomerId { get; private set; }
     public string OrderNo { get; private set; } = string.Empty;
-    public Guid PriceBookId { get; private set; }
+    public Guid? PriceBookId { get; private set; }
     public string? Note { get; private set; }
     public ServiceOrderStatus Status { get; private set; }
     public long ReferenceAmountMinor { get; private set; }

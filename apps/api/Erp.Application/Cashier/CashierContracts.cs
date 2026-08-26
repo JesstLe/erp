@@ -13,7 +13,7 @@ public sealed record ServiceOrderLineDto(Guid Id, string LineType, Guid? Service
     long LineAmountMinor, string? PriceOverrideReason, Guid? ServiceEmployeeId, string? EmployeeNo,
     string? EmployeeName);
 public sealed record ServiceOrderDto(Guid Id, string OrderNo, Guid VisitId, Guid? CustomerId, string Status,
-    Guid PriceBookId, long ReferenceAmountMinor, long ReceivableMinor, long RefundedMinor, string? Note, uint Version,
+    Guid? PriceBookId, long ReferenceAmountMinor, long ReceivableMinor, long RefundedMinor, string? Note, uint Version,
     DateTimeOffset CreatedAtUtc, string PriceAuthorizationStatus, Guid? PricePolicyId, int? PricePolicyVersion,
     Guid? PriceAuthorizedBy, DateTimeOffset? PriceAuthorizedAtUtc, IReadOnlyList<ServiceOrderLineDto> Lines);
 public sealed record PriceOverridePolicyDto(Guid Id, int PolicyVersion, int ManagerLineDiscountBasisPoints,

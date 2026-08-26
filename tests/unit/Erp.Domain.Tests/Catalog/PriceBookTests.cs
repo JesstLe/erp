@@ -68,4 +68,33 @@ public sealed class PriceBookTests
         Assert.Equal(PriceBookStatus.Retired, book.Status);
         Assert.Throws<DomainRuleException>(() => book.UpdateDraft("不能修改", new DateOnly(2026, 9, 2)));
     }
+
+    [Fact]
+    public void EditingDraftCanReplaceAllPriceLines()
+    {
+        var book = new PriceBook(Guid.CreateVersion7(), "原草稿", new DateOnly(2026, 8, 18));
+        book.SetPrice(Guid.CreateVersion7(), 5_000);
+        book.SetProductPrice(Guid.CreateVersion7(), 2_000);
+
+        book.ClearDraftPrices();
+        var replacement = Guid.CreateVersion7();
+        book.SetPrice(replacement, 6_000);
+
+        Assert.Equal(replacement, Assert.Single(book.Lines).ServiceItemId);
+        Assert.Empty(book.ProductLines);
+    }
+
+    [Fact]
+    public void PublishedVersionCanBeRetiredButDraftCannot()
+    {
+        var book = new PriceBook(Guid.CreateVersion7(), "已发布版本", new DateOnly(2026, 8, 18));
+        book.SetPrice(Guid.CreateVersion7(), 5_000);
+        book.Publish(DateTimeOffset.UtcNow);
+
+        book.Retire();
+
+        Assert.Equal(PriceBookStatus.Retired, book.Status);
+        var draft = new PriceBook(Guid.CreateVersion7(), "草稿", new DateOnly(2026, 8, 18));
+        Assert.Throws<DomainRuleException>(draft.Retire);
+    }
 }

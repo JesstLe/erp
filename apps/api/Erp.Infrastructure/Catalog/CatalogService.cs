@@ -280,15 +280,38 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
         { return ResultFactory.Failure<StoredFileContent>(exception.Code, exception.Message); }
     }
 
-    public async Task<IReadOnlyList<PriceBookDto>> ListPriceBooksAsync(Guid tenantId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<PriceBookDto>> ListPriceBooksAsync(Guid tenantId, string? query,
+        PriceBookStatus? status, DateOnly? effectiveFrom, DateOnly? effectiveTo,
+        CancellationToken cancellationToken)
     {
-        var books = await dbContext.PriceBooks.AsNoTracking().AsSplitQuery().Include(x => x.Lines).Include(x => x.ProductLines)
-            .Where(x => x.TenantId == tenantId)
+        var normalizedQuery = query?.Trim();
+        var priceBooks = dbContext.PriceBooks.AsNoTracking().AsSplitQuery()
+            .Include(x => x.Lines).Include(x => x.ProductLines)
+            .Where(x => x.TenantId == tenantId);
+        if (!string.IsNullOrWhiteSpace(normalizedQuery))
+            priceBooks = priceBooks.Where(x => x.Name.Contains(normalizedQuery));
+        if (status.HasValue) priceBooks = priceBooks.Where(x => x.Status == status.Value);
+        if (effectiveFrom.HasValue) priceBooks = priceBooks.Where(x => x.EffectiveFrom >= effectiveFrom.Value);
+        if (effectiveTo.HasValue) priceBooks = priceBooks.Where(x => x.EffectiveFrom <= effectiveTo.Value);
+        var books = await priceBooks
             .OrderByDescending(x => x.EffectiveFrom)
+            .ThenByDescending(x => x.CreatedAtUtc)
             .ToListAsync(cancellationToken);
         var names = await ServiceItemNamesAsync(tenantId, cancellationToken);
         var products = await ProductItemNamesAsync(tenantId, cancellationToken);
         return books.Select(book => Map(book, names, products)).ToList();
+    }
+
+    public async Task<Result<PriceBookDto>> GetPriceBookAsync(Guid tenantId, Guid id,
+        CancellationToken cancellationToken)
+    {
+        var book = await dbContext.PriceBooks.AsNoTracking().AsSplitQuery()
+            .Include(x => x.Lines).Include(x => x.ProductLines)
+            .SingleOrDefaultAsync(x => x.TenantId == tenantId && x.Id == id, cancellationToken);
+        return book is null
+            ? ResultFactory.Failure<PriceBookDto>("PRICE_BOOK_NOT_FOUND", "价格版本不存在")
+            : ResultFactory.Success(Map(book, await ServiceItemNamesAsync(tenantId, cancellationToken),
+                await ProductItemNamesAsync(tenantId, cancellationToken)));
     }
 
     public async Task<Result<PriceBookDto>> CreatePriceBookAsync(Guid tenantId, CreatePriceBookCommand command, CancellationToken cancellationToken)
@@ -391,6 +414,7 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
         try
         {
             book.UpdateDraft(command.Name, command.EffectiveFrom);
+            book.ClearDraftPrices();
             foreach (var line in command.Lines) book.SetPrice(line.ServiceItemId, line.UnitPriceMinor);
             foreach (var line in command.ProductLines) book.SetProductPrice(line.ProductItemId, line.UnitPriceMinor);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.price_book.update", "PriceBook",
@@ -433,6 +457,90 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
         catch (DbUpdateConcurrencyException)
         {
             return ResultFactory.Failure<PriceBookDto>("VERSION_CONFLICT", "价格草稿已变化，请刷新后重试");
+        }
+    }
+
+    public async Task<Result<bool>> DeletePriceBookAsync(Guid tenantId, DeletePriceBookCommand command,
+        CancellationToken cancellationToken)
+    {
+        var reason = command.Reason.Trim();
+        if (reason.Length is < 2 or > 200)
+            return ResultFactory.Failure<bool>("VALIDATION_FAILED", "删除原因长度应为2到200个字符");
+        var book = await dbContext.PriceBooks.AsSplitQuery().Include(x => x.Lines).Include(x => x.ProductLines)
+            .SingleOrDefaultAsync(x => x.Id == command.Id && x.TenantId == tenantId, cancellationToken);
+        if (book is null) return ResultFactory.Failure<bool>("PRICE_BOOK_NOT_FOUND", "价格版本不存在");
+        if (book.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<bool>("VERSION_CONFLICT", "价格版本已变化，请刷新后重试");
+        try
+        {
+            var previous = book.Status.ToString();
+            dbContext.PriceBooks.Remove(book);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.price_book.delete", "PriceBook",
+                book.Id, previous, null, reason);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(true);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ResultFactory.Failure<bool>("VERSION_CONFLICT", "价格版本已变化，请刷新后重试");
+        }
+    }
+
+    public async Task<Result<PriceBookDto>> CopyPriceBookAsync(Guid tenantId, CopyPriceBookCommand command,
+        CancellationToken cancellationToken)
+    {
+        var source = await dbContext.PriceBooks.AsNoTracking().AsSplitQuery()
+            .Include(x => x.Lines).Include(x => x.ProductLines)
+            .SingleOrDefaultAsync(x => x.Id == command.Id && x.TenantId == tenantId, cancellationToken);
+        if (source is null)
+            return ResultFactory.Failure<PriceBookDto>("PRICE_BOOK_NOT_FOUND", "价格版本不存在");
+        try
+        {
+            var copy = new PriceBook(tenantId, command.Name, command.EffectiveFrom);
+            foreach (var line in source.Lines) copy.SetPrice(line.ServiceItemId, line.UnitPriceMinor);
+            foreach (var line in source.ProductLines) copy.SetProductPrice(line.ProductItemId, line.UnitPriceMinor);
+            dbContext.PriceBooks.Add(copy);
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.price_book.copy", "PriceBook",
+                copy.Id, source.Id.ToString(), copy.Status.ToString());
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(Map(copy, await ServiceItemNamesAsync(tenantId, cancellationToken),
+                await ProductItemNamesAsync(tenantId, cancellationToken)));
+        }
+        catch (DomainRuleException exception)
+        {
+            return ResultFactory.Failure<PriceBookDto>(exception.Code, exception.Message);
+        }
+    }
+
+    public async Task<Result<PriceBookDto>> RetirePriceBookAsync(Guid tenantId, RetirePriceBookCommand command,
+        CancellationToken cancellationToken)
+    {
+        var reason = command.Reason.Trim();
+        if (reason.Length is < 2 or > 200)
+            return ResultFactory.Failure<PriceBookDto>("VALIDATION_FAILED", "停用原因长度应为2到200个字符");
+        var book = await dbContext.PriceBooks.AsSplitQuery().Include(x => x.Lines).Include(x => x.ProductLines)
+            .SingleOrDefaultAsync(x => x.Id == command.Id && x.TenantId == tenantId, cancellationToken);
+        if (book is null)
+            return ResultFactory.Failure<PriceBookDto>("PRICE_BOOK_NOT_FOUND", "价格版本不存在");
+        if (book.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<PriceBookDto>("VERSION_CONFLICT", "价格版本已变化，请刷新后重试");
+        try
+        {
+            var previous = book.Status.ToString();
+            book.Retire();
+            AddAudit(tenantId, command.StoreId, command.OperatorId, "catalog.price_book.retire", "PriceBook",
+                book.Id, previous, book.Status.ToString(), reason);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(Map(book, await ServiceItemNamesAsync(tenantId, cancellationToken),
+                await ProductItemNamesAsync(tenantId, cancellationToken)));
+        }
+        catch (DomainRuleException exception)
+        {
+            return ResultFactory.Failure<PriceBookDto>(exception.Code, exception.Message);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ResultFactory.Failure<PriceBookDto>("VERSION_CONFLICT", "价格版本已变化，请刷新后重试");
         }
     }
 
@@ -484,10 +592,11 @@ public sealed class CatalogService(ErpDbContext dbContext, IHttpContextAccessor 
             }).ToList(), book.Version);
 
     private void AddAudit(Guid tenantId, Guid? storeId, Guid operatorId, string action, string entityType, Guid entityId,
-        string? previousState, string? currentState) => dbContext.AuditEvents.Add(new AuditEventRecord
+        string? previousState, string? currentState, string? reason = null) => dbContext.AuditEvents.Add(new AuditEventRecord
     {
         TenantId = tenantId, StoreId = storeId, OperatorId = operatorId, Action = action, EntityType = entityType,
         EntityId = entityId, PreviousState = previousState, CurrentState = currentState,
+        Reason = reason,
         TraceId = httpContextAccessor.HttpContext?.TraceIdentifier ?? "background", OccurredAtUtc = DateTimeOffset.UtcNow,
     });
 }

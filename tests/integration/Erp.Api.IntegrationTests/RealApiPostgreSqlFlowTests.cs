@@ -108,7 +108,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202608200032", ready?.SchemaVersion);
+        Assert.Equal("202608260033", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {
@@ -398,6 +398,30 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var published = await PostAsync<PriceBookDto>(client,
             $"/api/v1/catalog/price-books/{priceBook.Id}/publish", new { });
         Assert.Equal("PUBLISHED", published.Status);
+        var copiedPriceBook = await PostAsync<PriceBookDto>(client,
+            $"/api/v1/catalog/price-books/{published.Id}/copies", new
+            {
+                name = "自动回归价格复制版", effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow),
+            }, HttpStatusCode.Created);
+        Assert.Equal("DRAFT", copiedPriceBook.Status);
+        Assert.Equal(published.Lines.Count, copiedPriceBook.Lines.Count);
+        Assert.Equal(published.ProductLines.Count, copiedPriceBook.ProductLines.Count);
+        copiedPriceBook = await PostAsync<PriceBookDto>(client,
+            $"/api/v1/catalog/price-books/{copiedPriceBook.Id}/publish", new { });
+        var detailPriceBook = await client.GetFromJsonAsync<PriceBookDto>(
+            $"/api/v1/catalog/price-books/{copiedPriceBook.Id}");
+        Assert.Equal(copiedPriceBook.Id, detailPriceBook!.Id);
+        var filteredPriceBooks = await client.GetFromJsonAsync<IReadOnlyList<PriceBookDto>>(
+            "/api/v1/catalog/price-books?query=%E5%A4%8D%E5%88%B6%E7%89%88&status=PUBLISHED");
+        Assert.Contains(filteredPriceBooks!, x => x.Id == copiedPriceBook.Id);
+        using (var deletePublished = await SendAsync(client, HttpMethod.Delete,
+                   $"/api/v1/catalog/price-books/{published.Id}", new
+                   {
+                       expectedVersion = published.Version, reason = "自动回归验证已发布版本删除",
+                   }))
+            Assert.Equal(HttpStatusCode.NoContent, deletePublished.StatusCode);
+        using (var deletedPublished = await client.GetAsync($"/api/v1/catalog/price-books/{published.Id}"))
+            Assert.Equal(HttpStatusCode.NotFound, deletedPublished.StatusCode);
         var cancelledDraft = await PostAsync<PriceBookDto>(client, "/api/v1/catalog/price-books", new
         {
             name = "自动回归待取消价格", effectiveFrom = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)),
@@ -925,6 +949,17 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             $"/api/v1/inventory/balances?storeId={secondStore.Id}"))!.Single(x =>
                 x.ProductItemId == product.Id);
         Assert.Equal(2, destinationBalance.OnHandQuantity);
+        using (var deleteReferencedPublished = await SendAsync(client, HttpMethod.Delete,
+                   $"/api/v1/catalog/price-books/{copiedPriceBook.Id}", new
+                   {
+                       expectedVersion = copiedPriceBook.Version, reason = "自动回归验证已被订单引用的版本删除",
+                   }))
+            Assert.Equal(HttpStatusCode.NoContent, deleteReferencedPublished.StatusCode);
+        var orderAfterPriceBookDeletion = await client.GetFromJsonAsync<ServiceOrderDto>(
+            $"/api/v1/cashier/orders/{order.Id}?storeId={storeId}");
+        Assert.Null(orderAfterPriceBookDeletion!.PriceBookId);
+        Assert.NotEmpty(orderAfterPriceBookDeletion.Lines);
+        Assert.True(orderAfterPriceBookDeletion.ReceivableMinor > 0);
         var invalidOrderPage = await client.GetAsync(
             $"/api/v1/cashier/orders?storeId={storeId}&page=1&pageSize=101");
         Assert.Equal(HttpStatusCode.UnprocessableEntity, invalidOrderPage.StatusCode);
