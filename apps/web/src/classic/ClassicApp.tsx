@@ -12,6 +12,7 @@ import {
   LineChartOutlined,
   LockOutlined,
   LogoutOutlined,
+  MenuOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MessageOutlined,
@@ -52,12 +53,14 @@ import { BrandLogo } from '../components/BrandLogo'
 import { Permission, type PermissionCode } from '../security/permissions'
 import { useAuthorization } from '../security/useAuthorization'
 import { ClassicLegacyPage } from './ClassicLegacyPage'
-import { classicDefaultHeaders, getClassicManifestModule, getClassicManifestPage, type ClassicManifestPage } from './classicManifest'
+import { classicDashboardReference, type ClassicDashboardReference } from './classicDashboardReference'
+import { getClassicManifestModule, getClassicManifestPage, type ClassicManifestPage } from './classicManifest'
 import './classic.css'
 
-const FacilitiesPage = lazy(() => import('../pages/FacilitiesPage').then((module) => ({ default: module.FacilitiesPage })))
+const ClassicCashierFacilitiesPage = lazy(() => import('./ClassicCashierFacilitiesPage').then((module) => ({ default: module.ClassicCashierFacilitiesPage })))
+const ClassicCustomerDashboard = lazy(() => import('./ClassicCustomerPage').then((module) => ({ default: module.ClassicCustomerDashboard })))
+const ClassicCustomerListPage = lazy(() => import('./ClassicCustomerPage').then((module) => ({ default: module.ClassicCustomerListPage })))
 const SchedulingPage = lazy(() => import('../pages/SchedulingPage').then((module) => ({ default: module.SchedulingPage })))
-const CustomersPage = lazy(() => import('../pages/CustomersPage').then((module) => ({ default: module.CustomersPage })))
 const CashierPage = lazy(() => import('../pages/CashierPage').then((module) => ({ default: module.CashierPage })))
 const InventoryPage = lazy(() => import('../pages/InventoryPage').then((module) => ({ default: module.InventoryPage })))
 const SupplyChainPage = lazy(() => import('../pages/SupplyChainPage').then((module) => ({ default: module.SupplyChainPage })))
@@ -317,37 +320,91 @@ function ClassicModuleDashboard({ module }: { module: ClassicModuleDefinition })
     const amount = report.data?.daily.filter((item) => item.date.slice(5, 7) === month).reduce((sum, item) => sum + item.netRevenueMinor, 0) ?? 0
     return { month: `${index + 1}月`, amount: amount / 100 }
   }), [report.data])
-  const categoryData = (report.data?.services.length ? report.data.services.slice(0, 5) : [{ itemName: '全部分类', revenueMinor: 1 }]).map((item) => ({ name: item.itemName, value: Math.max(1, item.revenueMinor) }))
-  const rows = (report.data?.services ?? []).slice(0, 7)
+  const reference: ClassicDashboardReference = classicDashboardReference[module.key]
+  const categoryData = reference.chartDataMode === 'operations' && report.data?.services.length
+    ? report.data.services.slice(0, 5).map((item) => ({ name: item.itemName, value: Math.max(1, item.revenueMinor), actual: item.revenueMinor }))
+    : [{ name: '全部分类', value: 1, actual: 0 }]
   const pageAction = (page: ClassicManifestPage): ClassicAction => ({
     label: page.label,
     path: `/ui/new/legacy/${module.key}/${page.id}`,
     permission: module.permission,
     icon: page.kind === 'query' ? <SearchOutlined /> : <FileSearchOutlined />,
   })
-  const inventoryManagement = inventoryModule?.pages.filter((page) => page.kind === 'management').map(pageAction) ?? []
-  const inventoryQueries = inventoryModule?.pages.filter((page) => page.kind === 'query').map(pageAction) ?? []
+  const inventoryManagement = inventoryModule?.pages.slice(0, reference.managementActionCount).map(pageAction) ?? []
+  const inventoryQueries = inventoryModule?.pages.slice(reference.managementActionCount).map(pageAction) ?? []
   const managementActions = inventoryManagement.length ? inventoryManagement : module.actions.filter((item) => can(item.permission))
   const queryActions = inventoryQueries.length ? inventoryQueries : module.queries.filter((item) => can(item.permission))
-  const dashboardHeaders = classicDefaultHeaders[module.key] ?? ['单号/编码', '日期', '业务名称', '数量', '金额', '状态']
-  const categoryChartTitle = module.key === 'purchase' ? '产品分类进货占比' : module.key === 'sales' ? '销售分类占比' : module.key === 'inventory' ? '库存分类占比' : `${module.label}业务分类占比`
+  const dashboardHeaders = reference.latestHeaders ?? []
+  const chartMonthData = reference.chartDataMode === 'operations' ? monthData : monthData.map((item) => ({ ...item, amount: 0 }))
+  if (reference.layout === 'cashier') {
+    return <ClassicCashierDashboard actions={managementActions} onNavigate={navigate} />
+  }
+  if (module.key === 'customer') {
+    return <ClassicCustomerDashboard />
+  }
+  const charts = reference.layout === 'analysis'
+    ? <ClassicAnalysisCharts titles={reference.chartTitles} categoryData={categoryData} report={report.data} />
+    : reference.layout === 'single-chart'
+      ? <ClassicSingleChart title={reference.chartTitles[0]} monthData={chartMonthData} />
+      : <ClassicStandardCharts titles={reference.chartTitles} categoryData={categoryData} monthData={chartMonthData} />
   return <div className="classic-module-dashboard">
-    <div className="classic-dashboard-left">
-      <section className="classic-module-charts">
-        <div className="classic-panel"><header><strong>{categoryChartTitle}</strong><FileSearchOutlined /></header><div className="classic-chart-wrap"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={54} outerRadius={86} isAnimationActive={false}>{categoryData.map((entry, index) => <Cell key={entry.name} fill={['#78ace2', '#83c988', '#efb25a', '#9c74cb', '#74c5c8'][index % 5]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></div></div>
-        <div className="classic-panel"><header><strong>{module.chartTitle}</strong><FileSearchOutlined /></header><div className="classic-chart-wrap"><ResponsiveContainer width="100%" height="100%"><BarChart data={monthData}><CartesianGrid stroke="#e6e8eb" vertical={false} /><XAxis dataKey="month" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} width={48} /><Tooltip formatter={(value) => `¥${money(Number(value) * 100)}`} /><Bar dataKey="amount" fill="#75a9df" maxBarSize={24} isAnimationActive={false} /></BarChart></ResponsiveContainer></div></div>
-      </section>
-      <section className="classic-panel classic-latest"><header><strong>{module.listTitle}</strong><button type="button" onClick={() => queryActions[0] && navigate(queryActions[0].path)}><SearchOutlined /> 查询</button></header><div className="classic-table-scroll"><table><thead><tr>{dashboardHeaders.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.length ? rows.map((row) => { const values = [row.itemCode, report.data?.toDate, row.itemName, row.quantity, `¥${money(row.revenueMinor)}`, '已记录']; return <tr key={row.serviceItemId}>{dashboardHeaders.map((header, index) => <td key={header}>{values[index] ?? '-'}</td>)}</tr> }) : Array.from({ length: 6 }, (_, index) => <tr key={index}><td colSpan={dashboardHeaders.length}>{index === 2 ? '暂无业务数据' : '\u00a0'}</td></tr>)}</tbody></table></div></section>
+    <div className={`classic-dashboard-left classic-layout-${reference.layout}`}>
+      {charts}
+      {reference.layout !== 'analysis' && <ClassicLatestTable title={reference.latestTitle ?? module.listTitle} headers={dashboardHeaders} onQuery={() => queryActions[0] && navigate(queryActions[0].path)} />}
     </div>
     <aside className="classic-quick-column">
-      <ClassicQuickGroup title={module.managementTitle} actions={managementActions} onNavigate={navigate} />
-      <ClassicQuickGroup title={module.queryTitle} actions={queryActions} onNavigate={navigate} more={queryActions.length > 0} />
+      <ClassicQuickGroup title={reference.managementTitle} actions={managementActions} onNavigate={navigate} more={managementActions.length > 5} moreLabel={reference.layout === 'analysis' ? '查看更多报表' : '查看更多功能'} />
+      {reference.queryTitle && <ClassicQuickGroup title={reference.queryTitle} actions={queryActions} onNavigate={navigate} more={queryActions.length > 5} moreLabel="查看更多报表" />}
     </aside>
   </div>
 }
 
-function ClassicQuickGroup({ title, actions, onNavigate, more }: { title: string; actions: ClassicAction[]; onNavigate: (path: string) => void; more?: boolean }) {
-  return <section className="classic-quick-group"><h2>{title}</h2>{actions.map((action) => <button type="button" key={`${action.path}-${action.label}`} onClick={() => onNavigate(action.path)}><span>{action.icon}</span>{action.label}</button>)}{more && <button type="button" className="classic-more" onClick={() => actions[0] && onNavigate(actions[0].path)}>查看更多报表 <span>»</span></button>}</section>
+function ClassicChartPanel({ title, children, className = '', action }: { title: string; children: ReactNode; className?: string; action?: ReactNode }) {
+  return <section className={`classic-panel classic-chart-panel ${className}`}><header><strong>{title}</strong>{action ?? <MenuOutlined />}</header><div className="classic-chart-wrap">{children}</div></section>
+}
+
+function ClassicStandardCharts({ titles, categoryData, monthData }: { titles: readonly string[]; categoryData: { name: string; value: number; actual: number }[]; monthData: { month: string; amount: number }[] }) {
+  const hasMonthData = monthData.some((item) => item.amount > 0)
+  return <section className="classic-module-charts">
+    <ClassicChartPanel title={titles[0]}><div className="classic-donut-layout"><ResponsiveContainer width="72%" height="100%"><PieChart><Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={56} outerRadius={84} startAngle={90} endAngle={-180} isAnimationActive={false}>{categoryData.map((entry, index) => <Cell key={entry.name} fill={['#78ace2', '#83c988', '#efb25a', '#9c74cb', '#74c5c8'][index % 5]} />)}</Pie><Tooltip formatter={(_, _name, item) => Number(item.payload.actual ?? 0).toLocaleString('zh-CN')} /></PieChart></ResponsiveContainer><div className="classic-donut-legend"><i />全部分类</div></div></ClassicChartPanel>
+    <ClassicChartPanel title={titles[1]}><ResponsiveContainer width="100%" height="100%"><BarChart data={monthData}><CartesianGrid stroke="#e6e8eb" vertical={false} /><XAxis dataKey="month" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} width={48} domain={hasMonthData ? ['auto', 'auto'] : [0, 1]} ticks={hasMonthData ? undefined : [0]} /><Tooltip formatter={(value) => `¥${money(Number(value) * 100)}`} /><Bar dataKey="amount" fill="#75a9df" maxBarSize={24} isAnimationActive={false} /></BarChart></ResponsiveContainer></ClassicChartPanel>
+  </section>
+}
+
+function ClassicSingleChart({ title, monthData }: { title: string; monthData: { month: string; amount: number }[] }) {
+  return <section className="classic-module-single-chart"><ClassicChartPanel title={title}><ResponsiveContainer width="100%" height="100%"><BarChart data={monthData}><CartesianGrid stroke="#e6e8eb" vertical={false} /><XAxis dataKey="month" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} width={48} /><Tooltip formatter={(value) => `¥${money(Number(value) * 100)}`} /><Bar dataKey="amount" fill="#75a9df" maxBarSize={30} isAnimationActive={false} /></BarChart></ResponsiveContainer></ClassicChartPanel></section>
+}
+
+function ClassicAnalysisCharts({ titles, categoryData, report }: { titles: readonly string[]; categoryData: { name: string; value: number; actual: number }[]; report?: OperationsReport }) {
+  const daily = report?.daily.map((item) => ({ day: item.date.slice(-2), amount: item.netRevenueMinor / 100 })) ?? []
+  const serviceData = report?.services.slice(0, 12).map((item) => ({ name: item.itemName, amount: item.revenueMinor / 100 })) ?? []
+  const trendData = daily.length ? daily.map((item) => ({ label: item.day, amount: item.amount })) : Array.from({ length: 31 }, (_, index) => ({ label: String(index + 1).padStart(2, '0'), amount: 0 }))
+  const hasCategoryData = categoryData.some((item) => item.actual > 0)
+  const periodAction = <Select size="small" value="本日" options={[{ value: '本日', label: '本日' }]} />
+  return <section className="classic-analysis-grid">
+    <ClassicChartPanel title={titles[0]} action={periodAction}><div className="classic-analysis-chart-shell"><MenuOutlined className="classic-plot-menu" />{hasCategoryData && <ResponsiveContainer width="100%" height="72%"><PieChart><Pie data={categoryData} dataKey="value" nameKey="name" innerRadius={50} outerRadius={76} isAnimationActive={false}>{categoryData.map((entry, index) => <Cell key={entry.name} fill={['#78ace2', '#83c988', '#efb25a', '#9c74cb'][index % 4]} />)}</Pie><Tooltip formatter={(_, _name, item) => `¥${money(Number(item.payload.actual ?? 0))}`} /></PieChart></ResponsiveContainer>}<div className="classic-analysis-legend">{['顾客储值', '次卡销售', '项目消费', '产品销售'].map((label, index) => <span key={label}><i style={{ background: ['#78ace2', '#83c988', '#efb25a', '#7a77d2'][index] }} />{label}</span>)}</div></div></ClassicChartPanel>
+    <ClassicChartPanel title={titles[1]} action={periodAction}><div className="classic-analysis-chart-shell"><MenuOutlined className="classic-plot-menu" /><ResponsiveContainer width="100%" height="100%"><BarChart data={serviceData}><CartesianGrid stroke="#e6e8eb" vertical={false} /><XAxis dataKey="name" tick={{ fontSize: 9 }} interval={0} angle={-38} textAnchor="end" height={72} /><YAxis tick={{ fontSize: 10 }} width={48} /><Tooltip formatter={(value) => `¥${Number(value).toLocaleString('zh-CN')}`} /><Bar dataKey="amount" fill="#75a9df" maxBarSize={24} isAnimationActive={false} /></BarChart></ResponsiveContainer></div></ClassicChartPanel>
+    <ClassicChartPanel title={titles[2]} className="classic-analysis-trend" action={<Select size="small" value="本月" options={[{ value: '本月', label: '本月' }]} />}><div className="classic-analysis-chart-shell"><MenuOutlined className="classic-plot-menu" /><ResponsiveContainer width="100%" height="100%"><LineChart data={trendData}><CartesianGrid stroke="#e6e8eb" vertical={false} /><XAxis dataKey="label" tick={{ fontSize: 10 }} /><YAxis tick={{ fontSize: 10 }} width={48} /><Tooltip formatter={(value) => `¥${Number(value).toLocaleString('zh-CN')}`} /><Line type="monotone" dataKey="amount" stroke="#75a9df" dot={{ r: 3 }} strokeWidth={2} isAnimationActive={false} /></LineChart></ResponsiveContainer></div></ClassicChartPanel>
+  </section>
+}
+
+function ClassicLatestTable({ title, headers, onQuery }: { title: string; headers: readonly string[]; onQuery: () => void }) {
+  return <section className="classic-panel classic-latest"><header><strong>{title}</strong><button type="button" onClick={onQuery}><SearchOutlined /> 查询</button></header><div className="classic-table-scroll"><table><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{Array.from({ length: 6 }, (_, index) => <tr key={index}>{headers.map((header) => <td key={header}>&nbsp;</td>)}</tr>)}</tbody></table></div></section>
+}
+
+function ClassicCashierDashboard({ actions, onNavigate }: { actions: ClassicAction[]; onNavigate: (path: string) => void }) {
+  const visibleActions = actions.slice(0, 10)
+  return <section className="classic-cashier-dashboard">
+    <header><strong>前台收银</strong><span>当前门店设施与接待状态</span></header>
+    <div className="classic-cashier-stage"><Button type="primary" icon={<ClockCircleOutlined />} onClick={() => onNavigate('/ui/new/cashier/facilities')}>进入设施接待操作台</Button></div>
+    <footer>{visibleActions.map((action) => <button type="button" key={`${action.path}-${action.label}`} onClick={() => onNavigate(action.path)}><span>{action.icon}</span><b>{action.label.slice(0, 2)}</b><small>{action.label.slice(2) || '业务'}</small></button>)}</footer>
+  </section>
+}
+
+function ClassicQuickGroup({ title, actions, onNavigate, more, moreLabel = '查看更多' }: { title: string; actions: ClassicAction[]; onNavigate: (path: string) => void; more?: boolean; moreLabel?: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const visibleActions = more && !expanded ? actions.slice(0, 5) : actions
+  return <section className="classic-quick-group"><h2>{title}</h2>{visibleActions.map((action) => <button type="button" key={`${action.path}-${action.label}`} onClick={() => onNavigate(action.path)}><span>{action.icon}</span>{action.label}</button>)}{more && <button type="button" className="classic-more" onClick={() => setExpanded((value) => !value)}>{expanded ? '收起' : moreLabel} <span>{expanded ? '«' : '»'}</span></button>}</section>
 }
 
 function ClassicFeatureFrame({ children, title }: { children: ReactNode; title?: string }) {
@@ -376,7 +433,7 @@ function ClassicLegacyRoute() {
   const manifestModule = getClassicManifestModule(moduleKey)
   const page = getClassicManifestPage(moduleKey, pageId)
   if (!moduleDefinition || !manifestModule || !page) return <Navigate to="/ui/new/index" replace />
-  return <ClassicAuthorized permission={moduleDefinition.permission}><ClassicFeatureFrame title={page.label}><ClassicLegacyPage module={manifestModule} page={page} /></ClassicFeatureFrame></ClassicAuthorized>
+  return <ClassicAuthorized permission={moduleDefinition.permission}><ClassicLegacyPage module={manifestModule} page={page} /></ClassicAuthorized>
 }
 
 export function ClassicApp() {
@@ -388,10 +445,10 @@ export function ClassicApp() {
           <Route element={<ClassicLayout />}>
             <Route path="index" element={<ClassicAuthorized permission={Permission.DashboardRead}><ClassicHome /></ClassicAuthorized>} />
             {classicModules.map((item) => <Route key={item.key} path={item.key} element={<ClassicModuleRoute moduleKey={item.key} />} />)}
-            <Route path="cashier/facilities" element={<ClassicPageRoute permission={Permission.FacilityOperate} component={FacilitiesPage} />} />
+            <Route path="cashier/facilities" element={<ClassicPageRoute permission={Permission.FacilityOperate} component={ClassicCashierFacilitiesPage} />} />
             <Route path="cashier/checkout" element={<ClassicPageRoute permission={Permission.CashierCheckout} component={CashierPage} />} />
             <Route path="cashier/scheduling" element={<ClassicPageRoute permission={Permission.SchedulingOperate} component={SchedulingPage} />} />
-            <Route path="customer/list" element={<ClassicPageRoute permission={Permission.CustomerRead} component={CustomersPage} />} />
+            <Route path="customer/list" element={<ClassicAuthorized permission={Permission.CustomerRead}><ClassicCustomerListPage /></ClassicAuthorized>} />
             <Route path="promotion/prices" element={<ClassicPageRoute permission={Permission.CatalogRead} component={PriceBooksPage} />} />
             <Route path="promotion/services" element={<ClassicPageRoute permission={Permission.CatalogRead} component={ServiceItemsPage} />} />
             <Route path="promotion/products" element={<ClassicPageRoute permission={Permission.CatalogRead} component={ProductsPage} />} />

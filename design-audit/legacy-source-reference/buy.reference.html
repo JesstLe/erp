@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- Browser-visible client reference only. Business rows, credentials, cookies and form values are intentionally excluded. -->
+<section class="row home-head" data-module="buy">
+  <main class="col-sm-10">
+    <div class="row home-main">
+      <div id="container-buy1" class="" style="min-width:400px;height:305px;"></div>
+      <div id="container-buy2" class="" style="min-width:400px;height:305px;"></div>
+    </div>
+    <section class="row home-table">
+      <header class="title">最新进货入库单列表 <span class="search" onclick="javascript:top.layerMax('../print/frame.php?act=buy_come_list&type=S');">查询</span></header>
+      <table class="table table-bordered"><thead><tr><th>单号</th><th>日期</th><th>供应商</th><th>经办人</th><th>货品总额</th><th>优惠金额</th><th>应付金额</th><th>已付金额</th><th>制单人</th><th>审核人</th></tr></thead><tbody><tr data-redacted="business-data"><td colspan="99">[业务数据已脱敏]</td></tr></tbody></table>
+    </section>
+  </main>
+  <aside class="col-sm-2">
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(1);">进货管理</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('buy_front','','0');"><i class="iconfont icon-buyfront"></i> 进货订单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('buy_come','S','0');"><i class="iconfont icon-buycomeS"></i> 进货入库单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('buy_come','T','0');"><i class="iconfont icon-buycomeT"></i> 进货退货单</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerBill('buy_cpay','','0');"><i class="iconfont icon-buycpay"></i> 进货付款单</a></td></tr>
+      </tbody></table>
+      <footer class="mores"></footer>
+    </section>
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(2);">报表查询</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_front_list');"><i class="iconfont icon-search"></i> 进货订单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_come_list&type=S');"><i class="iconfont icon-search"></i> 进货入库单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_come_list&type=T');"><i class="iconfont icon-search"></i> 进货退货单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_cpay_list');"><i class="iconfont icon-search"></i> 进货付款单查询</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_front_goods');"><i class="iconfont icon-report"></i> 商品订货统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_front_shop');"><i class="iconfont icon-report"></i> 门店订货统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_front_client');"><i class="iconfont icon-report"></i> 供应商订货统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_front_child');"><i class="iconfont icon-report"></i> 进货订单明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_come_goods');"><i class="iconfont icon-report"></i> 商品进货统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_come_shop');"><i class="iconfont icon-report"></i> 门店进货统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_come_client');"><i class="iconfont icon-report"></i> 供应商进货统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_come_emplee');"><i class="iconfont icon-report"></i> 职员进货统计</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=buy_come_child');"><i class="iconfont icon-report"></i> 进货明细表</a></td></tr>
+      </tbody></table>
+      <footer class="mores">查看更多报表</footer>
+    </section>
+  </aside>
+</section>
+<script>
+/* Inline initialization retained from the rendered page: */
+$(document).ready(function(){
+    chartBuy1();
+    chartBuy2();
+});
+</script>

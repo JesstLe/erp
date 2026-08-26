@@ -1,0 +1,44 @@
+<!doctype html>
+<!-- Browser-visible client reference only. Business rows, credentials, cookies and form values are intentionally excluded. -->
+<section class="row home-head" data-module="sms">
+  <main class="col-sm-10">
+    <div class="row home-main">
+      <div id="container-sms1" class="" style="min-width:400px;height:305px;"></div>
+      <div id="container-sms2" class="" style="min-width:400px;height:305px;"></div>
+    </div>
+    <section class="row home-table">
+      <header class="title">最新发送短信列表 <span class="search" onclick="javascript:top.layerMax('../sms/frame.php?act=send');">查询</span></header>
+      <table class="table table-bordered"><thead><tr><th>所属门店</th><th>手机号码</th><th>短信内容</th><th>发送时间</th><th>状态</th></tr></thead><tbody><tr data-redacted="business-data"><td colspan="99">[业务数据已脱敏]</td></tr></tbody></table>
+    </section>
+  </main>
+  <aside class="col-sm-2">
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(1);">短信管理</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../sms/frame.php?act=member');"><i class="iconfont icon-smsmember"></i> 顾客短信</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../sms/frame.php?act=emplee');"><i class="iconfont icon-smsemplee"></i> 员工短信</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerWin('短信群发','../sms/qun.php',700,483);"><i class="iconfont icon-smsqun"></i> 短信群发</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../sms/frame.php?act=send');"><i class="iconfont icon-smssend"></i> 已发短信</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../sms/frame.php?act=feelist');"><i class="iconfont icon-smsqun"></i> 余额查询</a></td></tr>
+      </tbody></table>
+      <footer class="mores"></footer>
+    </section>
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(2);">短信设置</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../sms/frame.php?act=often');"><i class="iconfont icon-favorites"></i> 常用短语</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../sms/frame.php?act=template');"><i class="iconfont icon-template"></i> 短信模版</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerWin('短信账户设置','../sms/account.php',500,315);"><i class="iconfont icon-system"></i> 短信账户</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerWin('修改短信密码','../sms/password.php',500,270);"><i class="iconfont icon-password"></i> 修改密码</a></td></tr>
+      </tbody></table>
+      <footer class="mores"></footer>
+    </section>
+  </aside>
+</section>
+<script>
+/* Inline initialization retained from the rendered page: */
+$(document).ready(function(){
+    chartSms1();
+    chartSms2();
+});
+</script>

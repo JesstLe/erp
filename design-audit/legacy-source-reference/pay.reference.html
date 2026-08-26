@@ -1,0 +1,49 @@
+<!doctype html>
+<!-- Browser-visible client reference only. Business rows, credentials, cookies and form values are intentionally excluded. -->
+<section class="row home-head" data-module="pay">
+  <main class="col-sm-10">
+    <div class="row home-main">
+      <div id="container-pay" class="" style="height:245px;"></div>
+    </div>
+    <section class="row home-table">
+      <header class="title">最新登记员工列表 <span class="search" onclick="javascript:top.layerMax('../base/frame.php?act=emplee');">查询</span></header>
+      <table class="table table-bordered"><thead><tr><th>所属门店</th><th>员工编号</th><th>员工姓名</th><th>性别</th><th>手机号码</th><th>员工工种</th><th>技师等级</th><th>进店日期</th></tr></thead><tbody><tr data-redacted="business-data"><td colspan="99">[业务数据已脱敏]</td></tr></tbody></table>
+    </section>
+  </main>
+  <aside class="col-sm-2">
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(1);">员工管理</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../base/frame.php?act=emplee');"><i class="iconfont icon-base-emplee"></i> 员工信息</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../pay/frame.php?act=assess');"><i class="iconfont icon-pay-assess"></i> 绩效考核</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../pay/frame.php?act=reward');"><i class="iconfont icon-pay-reward"></i> 员工奖罚</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../pay/frame.php?act=pdata');"><i class="iconfont icon-pay-data"></i> 工资核算</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../pay/frame.php?act=pmoney');"><i class="iconfont icon-pay-pmoney"></i> 支付工资</a></td></tr>
+      </tbody></table>
+      <footer class="mores"></footer>
+    </section>
+    <section class="row home-right">
+      <header class="title" onclick="rightToggle(2);">报表查询</header>
+      <table><tbody>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=pay_bonus_parent');"><i class="iconfont icon-report"></i> 员工综合业绩汇总表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=pay_assess_parent');"><i class="iconfont icon-report"></i> 员工绩效考核统计表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=pay_full_parent');"><i class="iconfont icon-report"></i> 员工储值业绩汇总表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=pay_fnum_parent');"><i class="iconfont icon-report"></i> 员工售卡业绩汇总表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=pay_sell_parent&type=manual');"><i class="iconfont icon-report"></i> 员工服务手工业绩表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=pay_sell_parent&type=service');"><i class="iconfont icon-report"></i> 员工销售项目业绩表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=pay_sell_parent&type=product');"><i class="iconfont icon-report"></i> 员工销售产品业绩表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=pay_emplee_parent');"><i class="iconfont icon-report"></i> 员工分销佣金汇总表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=pay_emplee_child');"><i class="iconfont icon-report"></i> 员工分销佣金明细表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=pay_pdata_parent');"><i class="iconfont icon-report"></i> 员工工资汇总表</a></td></tr>
+        <tr><td><a href="javascript:void(0);" onclick="javascript:top.layerMax('../print/frame.php?act=pay_pdata_child');"><i class="iconfont icon-report"></i> 员工工资明细表</a></td></tr>
+      </tbody></table>
+      <footer class="mores">查看更多报表</footer>
+    </section>
+  </aside>
+</section>
+<script>
+/* Inline initialization retained from the rendered page: */
+$(document).ready(function(){
+    chartPay();
+});
+</script>
