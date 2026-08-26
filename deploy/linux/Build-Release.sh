@@ -52,7 +52,8 @@ dotnet restore "$repository_root/tests/unit/Erp.Domain.Tests/Erp.Domain.Tests.cs
 dotnet test "$repository_root/tests/unit/Erp.Domain.Tests/Erp.Domain.Tests.csproj" -c Release --no-restore
 dotnet restore "$repository_root/apps/api/Erp.Api/Erp.Api.csproj" --locked-mode
 dotnet publish "$repository_root/apps/api/Erp.Api/Erp.Api.csproj" -c Release \
-  --no-restore --runtime linux-x64 --self-contained false -p:UseAppHost=false -p:Version="$version" \
+  --no-restore --runtime linux-x64 --self-contained false -p:UseAppHost=false \
+  -p:CopyLocalLockFileAssemblies=true -p:Version="$version" \
   -p:InformationalVersion="$version+$git_commit" -o "$app_directory"
 
 for required_assembly in Erp.Api.dll Microsoft.EntityFrameworkCore.dll Npgsql.dll; do
@@ -63,7 +64,8 @@ log '发布仅供服务器管理员运行的旧系统迁移工具'
 legacy_tool_directory="$staging_directory/ops/legacy-migration"
 dotnet restore "$repository_root/tools/Erp.LegacyMigration/Erp.LegacyMigration.csproj" --locked-mode
 dotnet publish "$repository_root/tools/Erp.LegacyMigration/Erp.LegacyMigration.csproj" -c Release \
-  --no-restore --runtime linux-x64 --self-contained false -p:UseAppHost=false -p:Version="$version" \
+  --no-restore --runtime linux-x64 --self-contained false -p:UseAppHost=false \
+  -p:CopyLocalLockFileAssemblies=true -p:Version="$version" \
   -p:InformationalVersion="$version+$git_commit" -o "$legacy_tool_directory"
 
 log '审计、测试并构建 React 前端'
