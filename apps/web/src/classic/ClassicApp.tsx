@@ -433,6 +433,9 @@ function ClassicLegacyRoute() {
   const manifestModule = getClassicManifestModule(moduleKey)
   const page = getClassicManifestPage(moduleKey, pageId)
   if (!moduleDefinition || !manifestModule || !page) return <Navigate to="/ui/new/index" replace />
+  if (moduleKey === 'employee' && pageId === 'employee-001') {
+    return <ClassicAuthorized permission={Permission.EmployeeManage}><ClassicFeatureFrame title="员工信息"><EmployeesPage /></ClassicFeatureFrame></ClassicAuthorized>
+  }
   return <ClassicAuthorized permission={moduleDefinition.permission}><ClassicLegacyPage module={manifestModule} page={page} /></ClassicAuthorized>
 }
 

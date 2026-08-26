@@ -37,6 +37,45 @@ public static class EmployeeEndpoints
             return current is null ? Results.Unauthorized() : Results.Ok(await employees.ListRolesAsync(current.TenantId, cancellationToken));
         });
 
+        group.MapGet("/positions", async (IIdentityService identity, IEmployeeService employees,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : Results.Ok(
+                await employees.ListPositionsAsync(current.TenantId, cancellationToken));
+        });
+
+        group.MapPost("/positions", async (CreateEmployeePositionRequest request, IIdentityService identity,
+            IEmployeeService employees, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await employees.CreatePositionAsync(current.TenantId,
+                    new CreateEmployeePositionCommand(request.Name ?? string.Empty, request.SortOrder, current.Id),
+                    cancellationToken), value => Results.Created($"/api/v1/employees/positions/{value.Id}", value));
+        });
+
+        group.MapPut("/positions/{positionId:guid}", async (Guid positionId,
+            UpdateEmployeePositionRequest request, IIdentityService identity, IEmployeeService employees,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await employees.UpdatePositionAsync(current.TenantId,
+                    new UpdateEmployeePositionCommand(positionId, request.Name ?? string.Empty, request.SortOrder,
+                        request.IsEnabled, request.ExpectedVersion, current.Id), cancellationToken));
+        });
+
+        group.MapDelete("/positions/{positionId:guid}", async (Guid positionId, uint expectedVersion,
+            IIdentityService identity, IEmployeeService employees, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await employees.DeletePositionAsync(current.TenantId,
+                    new DeleteEmployeePositionCommand(positionId, expectedVersion, current.Id), cancellationToken),
+                _ => Results.NoContent());
+        });
+
         group.MapPost("", async (CreateEmployeeRequest request, IIdentityService identity, IEmployeeService employees,
             CancellationToken cancellationToken) =>
         {
@@ -99,6 +138,9 @@ public static class EmployeeEndpoints
     private sealed record CreateEmployeeRequest(string? DisplayName, string? PositionCode,
         IReadOnlyList<Guid>? StoreIds, bool CreateLoginAccount, string? Account, string? InitialPassword,
         IReadOnlyList<string>? Roles);
+    private sealed record CreateEmployeePositionRequest(string? Name, int SortOrder);
+    private sealed record UpdateEmployeePositionRequest(string? Name, int SortOrder, bool IsEnabled,
+        uint ExpectedVersion);
     private sealed record SetAccountStatusRequest(bool IsEnabled);
     private sealed record UpdateEmployeeRequest(string? DisplayName, string? PositionCode,
         IReadOnlyList<Guid>? StoreIds, IReadOnlyList<string>? Roles, uint ExpectedVersion);

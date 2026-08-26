@@ -37,6 +37,7 @@ describe('EmployeesPage regression', () => {
   beforeEach(() => {
     apiRequestMock.mockReset().mockImplementation((path: string) => {
       if (path === '/api/v1/employees/roles') return Promise.resolve([{ id: 'role-1', code: 'TECHNICIAN', name: '服务员工' }])
+      if (path === '/api/v1/employees/positions') return Promise.resolve([{ id: 'position-1', code: 'TECHNICIAN', name: '顾问', sortOrder: 10, status: 'ENABLED', version: 1 }])
       if (path.startsWith('/api/v1/employees?')) return Promise.resolve({ items: [employee], total: 1, page: 1, pageSize: 20 })
       return Promise.reject(new Error(`unexpected request ${path}`))
     })

@@ -1,10 +1,12 @@
 import {
+  DeleteOutlined,
   EditOutlined,
   KeyOutlined,
   LoadingOutlined,
   PlusOutlined,
   SafetyCertificateOutlined,
   SearchOutlined,
+  SettingOutlined,
   StopOutlined,
   UserOutlined,
 } from "@ant-design/icons";
@@ -18,6 +20,7 @@ import {
   Empty,
   Form,
   Input,
+  InputNumber,
   Modal,
   Popconfirm,
   Select,
@@ -30,7 +33,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "../api/client";
-import type { Employee, EmployeeRole, PageResult } from "../api/types";
+import type { Employee, EmployeePosition, EmployeeRole, PageResult } from "../api/types";
 import { useAuth } from "../auth/useAuth";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { PASSWORD_POLICY_HINT, passwordRules } from "../security/passwordPolicy";
@@ -57,15 +60,11 @@ interface ResetPasswordValues {
   newInitialPassword: string;
   reason: string;
 }
-
-const positionOptions = [
-  { value: "OWNER", label: "负责人" },
-  { value: "STORE_MANAGER", label: "店长" },
-  { value: "FRONT_DESK", label: "前台" },
-  { value: "CASHIER", label: "收银员" },
-  { value: "TECHNICIAN", label: "服务员工" },
-  { value: "OTHER", label: "其他岗位" },
-];
+interface PositionValues {
+  name: string;
+  sortOrder: number;
+  isEnabled: boolean;
+}
 const roleColor: Record<string, string> = {
   OWNER: "purple",
   STORE_MANAGER: "blue",
@@ -81,10 +80,14 @@ export function EmployeesPage() {
   const [editForm] = Form.useForm<EditValues>();
   const [employmentForm] = Form.useForm<EmploymentValues>();
   const [passwordForm] = Form.useForm<ResetPasswordValues>();
+  const [positionForm] = Form.useForm<PositionValues>();
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [employmentOpen, setEmploymentOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [positionsOpen, setPositionsOpen] = useState(false);
+  const [positionEditOpen, setPositionEditOpen] = useState(false);
+  const [selectedPosition, setSelectedPosition] = useState<EmployeePosition>();
   const [selected, setSelected] = useState<Employee>();
   const [queryText, setQueryText] = useState("");
   const appliedQuery = useDebouncedValue(queryText.trim());
@@ -106,6 +109,20 @@ export function EmployeesPage() {
     queryKey: ["employee-roles"],
     queryFn: () => apiRequest<EmployeeRole[]>("/api/v1/employees/roles"),
   });
+  const positions = useQuery({
+    queryKey: ["employee-positions"],
+    queryFn: () => apiRequest<EmployeePosition[]>("/api/v1/employees/positions"),
+  });
+  const enabledPositions = positions.data?.filter((position) => position.status === "ENABLED") ?? [];
+  const positionOptions = enabledPositions.map((position) => ({
+    value: position.code,
+    label: `${position.name} · ${position.code}`,
+  }));
+  const allPositionOptions = (positions.data ?? []).map((position) => ({
+    value: position.code,
+    label: `${position.name} · ${position.code}${position.status === "ENABLED" ? "" : "（已停用）"}`,
+    disabled: position.status !== "ENABLED" && position.code !== selected?.positionCode,
+  }));
   const loginEnabled = Form.useWatch("createLoginAccount", createForm);
   const onError = (error: unknown) =>
     message.error(error instanceof ApiError ? error.message : "操作失败");
@@ -208,15 +225,67 @@ export function EmployeesPage() {
     },
     onError,
   });
+  const createPosition = useMutation({
+    mutationFn: (values: PositionValues) => apiRequest<EmployeePosition>("/api/v1/employees/positions", {
+      method: "POST",
+      body: JSON.stringify({ name: values.name, sortOrder: values.sortOrder }),
+    }),
+    onSuccess: async () => {
+      message.success("岗位已新增");
+      setPositionEditOpen(false);
+      positionForm.resetFields();
+      await queryClient.invalidateQueries({ queryKey: ["employee-positions"] });
+    },
+    onError,
+  });
+  const updatePosition = useMutation({
+    mutationFn: (values: PositionValues) => apiRequest<EmployeePosition>(`/api/v1/employees/positions/${selectedPosition!.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ ...values, expectedVersion: selectedPosition!.version }),
+    }),
+    onSuccess: async () => {
+      message.success("岗位已更新");
+      setPositionEditOpen(false);
+      setSelectedPosition(undefined);
+      positionForm.resetFields();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["employee-positions"] }),
+        queryClient.invalidateQueries({ queryKey: ["employees"] }),
+      ]);
+    },
+    onError,
+  });
+  const deletePosition = useMutation({
+    mutationFn: (position: EmployeePosition) => apiRequest<void>(`/api/v1/employees/positions/${position.id}?expectedVersion=${position.version}`, { method: "DELETE" }),
+    onSuccess: async () => {
+      message.success("岗位已删除");
+      await queryClient.invalidateQueries({ queryKey: ["employee-positions"] });
+    },
+    onError,
+  });
 
   const openCreate = () => {
     createForm.setFieldsValue({
       createLoginAccount: true,
       storeIds: auth.store ? [auth.store.id] : [],
-      positionCode: "STORE_MANAGER",
+      positionCode: enabledPositions.find((position) => position.code === "STORE_MANAGER")?.code ?? enabledPositions[0]?.code,
       roles: ["STORE_MANAGER"],
     });
     setCreateOpen(true);
+  };
+  const openCreatePosition = () => {
+    setSelectedPosition(undefined);
+    positionForm.setFieldsValue({ name: "", sortOrder: 100, isEnabled: true });
+    setPositionEditOpen(true);
+  };
+  const openEditPosition = (position: EmployeePosition) => {
+    setSelectedPosition(position);
+    positionForm.setFieldsValue({
+      name: position.name,
+      sortOrder: position.sortOrder,
+      isEnabled: position.status === "ENABLED",
+    });
+    setPositionEditOpen(true);
   };
   const openEdit = () => {
     if (!selected) return;
@@ -250,7 +319,7 @@ export function EmployeesPage() {
       title: "岗位",
       dataIndex: "positionCode",
       render: (value: string) =>
-        positionOptions.find((item) => item.value === value)?.label ?? value,
+        positions.data?.find((item) => item.code === value)?.name ?? value,
     },
     {
       title: "在职状态",
@@ -336,9 +405,14 @@ export function EmployeesPage() {
             员工档案、在职状态、登录凭据、角色和门店范围分别管理；离职与停用均保留历史业务。
           </Typography.Paragraph>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          新增员工
-        </Button>
+        <Space>
+          <Button icon={<SettingOutlined />} onClick={() => setPositionsOpen(true)}>
+            岗位设置
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!enabledPositions.length}>
+            新增员工
+          </Button>
+        </Space>
       </div>
       <Alert
         type="info"
@@ -400,6 +474,70 @@ export function EmployeesPage() {
           })}
         />
       </Card>
+
+      <Modal
+        title="岗位设置"
+        width={760}
+        open={positionsOpen}
+        onCancel={() => setPositionsOpen(false)}
+        footer={<Button onClick={() => setPositionsOpen(false)}>关闭</Button>}
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          showIcon
+          title="岗位是品牌自己的业务字典，与登录角色和系统权限分开管理。岗位名称可自定义，编码由系统自动生成且不随改名变化。"
+          className="modal-alert"
+        />
+        <Space style={{ marginBottom: 12 }}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreatePosition}>新增岗位</Button>
+          <Typography.Text type="secondary">已使用的岗位不能删除，但可以停用。</Typography.Text>
+        </Space>
+        <Table<EmployeePosition>
+          rowKey="id"
+          size="small"
+          loading={positions.isFetching}
+          pagination={false}
+          dataSource={positions.data}
+          columns={[
+            { title: "岗位编码", dataIndex: "code", width: 130 },
+            { title: "岗位名称", dataIndex: "name" },
+            { title: "排序", dataIndex: "sortOrder", width: 80 },
+            { title: "状态", dataIndex: "status", width: 90, render: (value: string) => <Tag color={value === "ENABLED" ? "green" : "default"}>{value === "ENABLED" ? "启用" : "停用"}</Tag> },
+            { title: "操作", key: "action", width: 150, render: (_: unknown, position: EmployeePosition) => <Space>
+              <Button size="small" icon={<EditOutlined />} onClick={() => openEditPosition(position)}>修改</Button>
+              <Popconfirm title="确认删除该岗位？" description="只有未被任何员工使用的岗位才能删除。" onConfirm={() => deletePosition.mutate(position)}>
+                <Button size="small" danger icon={<DeleteOutlined />} loading={deletePosition.isPending}>删除</Button>
+              </Popconfirm>
+            </Space> },
+          ]}
+        />
+      </Modal>
+
+      <Modal
+        title={selectedPosition ? "修改岗位" : "新增岗位"}
+        open={positionEditOpen}
+        onCancel={() => setPositionEditOpen(false)}
+        onOk={() => positionForm.submit()}
+        okText="保存"
+        confirmLoading={createPosition.isPending || updatePosition.isPending}
+        destroyOnHidden
+      >
+        <Form<PositionValues>
+          form={positionForm}
+          layout="vertical"
+          onFinish={(values) => selectedPosition ? updatePosition.mutate(values) : createPosition.mutate(values)}
+        >
+          {selectedPosition && <Form.Item label="岗位编码"><Input value={selectedPosition.code} disabled /></Form.Item>}
+          <Form.Item name="name" label="岗位名称" rules={[{ required: true }, { min: 2 }, { max: 60 }]}>
+            <Input maxLength={60} placeholder="例如：顾问、安装工程师、课程老师" />
+          </Form.Item>
+          <Form.Item name="sortOrder" label="显示顺序" rules={[{ required: true }]}>
+            <InputNumber min={0} max={9999} style={{ width: "100%" }} />
+          </Form.Item>
+          {selectedPosition && <Form.Item name="isEnabled" valuePropName="checked"><Checkbox>启用该岗位</Checkbox></Form.Item>}
+        </Form>
+      </Modal>
 
       <Modal
         title="新增员工"
@@ -536,7 +674,7 @@ export function EmployeesPage() {
               label="岗位"
               rules={[{ required: true }]}
             >
-              <Select options={positionOptions} />
+              <Select options={allPositionOptions} />
             </Form.Item>
           </div>
           <Form.Item
@@ -684,9 +822,9 @@ export function EmployeesPage() {
                   key: "position",
                   label: "岗位",
                   children:
-                    positionOptions.find(
-                      (item) => item.value === selected.positionCode,
-                    )?.label ?? selected.positionCode,
+                    positions.data?.find(
+                      (item) => item.code === selected.positionCode,
+                    )?.name ?? selected.positionCode,
                 },
                 {
                   key: "store",

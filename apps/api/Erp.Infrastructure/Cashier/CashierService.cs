@@ -68,7 +68,9 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                     assignment.StoreId == storeId))
             .OrderBy(employee => employee.DisplayName).ThenBy(employee => employee.EmployeeNo)
             .Select(employee => new ServiceEmployeeDto(employee.Id, employee.EmployeeNo, employee.DisplayName,
-                employee.PositionCode)).ToListAsync(cancellationToken);
+                employee.PositionCode, db.EmployeePositions.Where(position => position.TenantId == tenantId &&
+                    position.Code == employee.PositionCode).Select(position => position.Name).FirstOrDefault() ??
+                    employee.PositionCode)).ToListAsync(cancellationToken);
 
     public async Task<PageResult<ServiceOrderDto>> ListOrdersAsync(Guid tenantId, Guid storeId,
         ServiceOrderSearchCriteria criteria, int page, int pageSize, CancellationToken cancellationToken)

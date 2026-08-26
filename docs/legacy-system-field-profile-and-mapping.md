@@ -84,7 +84,7 @@
 | `employees.emplee_letter` | `A` | 旧搜索简码 |
 | `employees.emplee_memo` | `E` | 自由文本；仅在确认有价值后加密保留并限制权限 |
 | `employee-trades.ework_id` | `D` | 工种来源映射键 |
-| `employee-trades.ework_code`, `employee-trades.ework_name` | `E` | 建议建立可配置岗位/工种字典，再由员工引用代码 |
+| `employee-trades.ework_code`, `employee-trades.ework_name` | `E` | 导入品牌级可配置岗位字典，员工只引用不可变岗位编码；岗位名称可在新系统继续修改 |
 | `employee-trades.ework_memo` | `A` | 源数据全空 |
 
 ### 4.4 服务项目

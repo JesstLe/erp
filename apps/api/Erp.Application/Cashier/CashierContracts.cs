@@ -6,7 +6,8 @@ public sealed record CashierVisitDto(Guid Id, string VisitNo, string Status, Gui
     string CustomerDisplayName, Guid? PlannedServiceItemId, string? PlannedServiceItemName,
     string FacilityNames, DateTimeOffset ArrivedAtUtc, DateTimeOffset? ServiceEndedAtUtc,
     long FacilitySeconds, string? Note);
-public sealed record ServiceEmployeeDto(Guid Id, string EmployeeNo, string DisplayName, string PositionCode);
+public sealed record ServiceEmployeeDto(Guid Id, string EmployeeNo, string DisplayName, string PositionCode,
+    string PositionName);
 public sealed record ServiceOrderLineDto(Guid Id, string LineType, Guid? ServiceItemId, Guid? ProductItemId,
     string ItemCode, string ItemName, string? UnitName, int Quantity, int ReturnedQuantity,
     int? ActualSeconds, long ReferencePriceMinor, long EnteredPriceMinor,

@@ -3585,10 +3585,10 @@ function OrderLineEditor({
               <Select
                 showSearch
                 optionFilterProp="label"
-                placeholder="选择技师、技工或其他员工"
+                placeholder="选择实际服务员工"
                 options={employees.map((employee) => ({
                   value: employee.id,
-                  label: `${employee.displayName} · ${employee.employeeNo} · ${employee.positionCode}`,
+                  label: `${employee.displayName} · ${employee.employeeNo} · ${employee.positionName}`,
                 }))}
               />
             </Form.Item>
