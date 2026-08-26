@@ -44,6 +44,12 @@ public sealed record UpdatePriceBookCommand(Guid Id, string Name, DateOnly Effec
     IReadOnlyList<CreatePriceBookLineCommand> Lines, IReadOnlyList<CreateProductPriceBookLineCommand> ProductLines,
     uint ExpectedVersion, Guid OperatorId, Guid? StoreId);
 public sealed record CancelPriceBookCommand(Guid Id, uint ExpectedVersion, Guid OperatorId, Guid? StoreId);
+public sealed record DeletePriceBookCommand(Guid Id, uint ExpectedVersion, string Reason, Guid OperatorId,
+    Guid? StoreId);
+public sealed record CopyPriceBookCommand(Guid Id, string Name, DateOnly EffectiveFrom, Guid OperatorId,
+    Guid? StoreId);
+public sealed record RetirePriceBookCommand(Guid Id, uint ExpectedVersion, string Reason, Guid OperatorId,
+    Guid? StoreId);
 
 public interface ICatalogService
 {
@@ -70,12 +76,20 @@ public interface ICatalogService
     Task<Result<StoredFileContent>> ReadProductImageAsync(Guid tenantId, Guid productItemId,
         CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<PriceBookDto>> ListPriceBooksAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<PriceBookDto>> ListPriceBooksAsync(Guid tenantId, string? query, PriceBookStatus? status,
+        DateOnly? effectiveFrom, DateOnly? effectiveTo, CancellationToken cancellationToken);
+    Task<Result<PriceBookDto>> GetPriceBookAsync(Guid tenantId, Guid id, CancellationToken cancellationToken);
 
     Task<Result<PriceBookDto>> CreatePriceBookAsync(Guid tenantId, CreatePriceBookCommand command, CancellationToken cancellationToken);
     Task<Result<PriceBookDto>> UpdatePriceBookAsync(Guid tenantId, UpdatePriceBookCommand command,
         CancellationToken cancellationToken);
     Task<Result<PriceBookDto>> CancelPriceBookAsync(Guid tenantId, CancelPriceBookCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<bool>> DeletePriceBookAsync(Guid tenantId, DeletePriceBookCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<PriceBookDto>> CopyPriceBookAsync(Guid tenantId, CopyPriceBookCommand command,
+        CancellationToken cancellationToken);
+    Task<Result<PriceBookDto>> RetirePriceBookAsync(Guid tenantId, RetirePriceBookCommand command,
         CancellationToken cancellationToken);
 
     Task<Result<PriceBookDto>> PublishPriceBookAsync(Guid tenantId, Guid priceBookId, Guid operatorId, Guid? storeId,

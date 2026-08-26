@@ -83,9 +83,25 @@ public sealed class PriceBook : Entity
         Touch();
     }
 
+    public void ClearDraftPrices()
+    {
+        EnsureDraft();
+        _lines.Clear();
+        _productLines.Clear();
+        Touch();
+    }
+
     public void CancelDraft()
     {
         EnsureDraft();
+        Status = PriceBookStatus.Retired;
+        Touch();
+    }
+
+    public void Retire()
+    {
+        if (Status != PriceBookStatus.Published)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "只有已发布价格版本可以停用");
         Status = PriceBookStatus.Retired;
         Touch();
     }

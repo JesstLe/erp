@@ -143,10 +143,29 @@ public static class CatalogEndpoints
             return Results.File(result.Value.Content, result.Value.ContentType, enableRangeProcessing: false);
         });
 
-        group.MapGet("/price-books", async (IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        group.MapGet("/price-books", async (string? query, string? status, DateOnly? effectiveFrom,
+            DateOnly? effectiveTo, IIdentityService identity, ICatalogService catalog,
+            CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
-            return current is null ? Results.Unauthorized() : Results.Ok(await catalog.ListPriceBooksAsync(current.TenantId, cancellationToken));
+            if (current is null) return Results.Unauthorized();
+            if (query?.Trim().Length > 100) return InvalidQuery();
+            if (!TryParsePriceBookStatus(status, out var parsedStatus)) return InvalidPriceBookStatus();
+            if (effectiveFrom.HasValue && effectiveTo.HasValue && effectiveFrom > effectiveTo)
+                return Results.Json(new
+                {
+                    error = new { code = "VALIDATION_FAILED", message = "生效日期起始值不能晚于结束值" },
+                }, statusCode: StatusCodes.Status422UnprocessableEntity);
+            return Results.Ok(await catalog.ListPriceBooksAsync(current.TenantId, query, parsedStatus,
+                effectiveFrom, effectiveTo, cancellationToken));
+        });
+
+        group.MapGet("/price-books/{id:guid}", async (Guid id, IIdentityService identity,
+            ICatalogService catalog, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await catalog.GetPriceBookAsync(current.TenantId, id, cancellationToken));
         });
 
         group.MapPost("/price-books", async (CreatePriceBookRequest request, IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
@@ -198,6 +217,38 @@ public static class CatalogEndpoints
                     DefaultStoreId(current)), cancellationToken));
         }).RequireAuthorization(SystemPermissions.PricePublish);
 
+        group.MapDelete("/price-books/{id:guid}", async (Guid id,
+            [Microsoft.AspNetCore.Mvc.FromBody] DeletePriceBookRequest request,
+            IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await catalog.DeletePriceBookAsync(current.TenantId,
+                    new DeletePriceBookCommand(id, request.ExpectedVersion, request.Reason ?? string.Empty,
+                        current.Id, DefaultStoreId(current)), cancellationToken), _ => Results.NoContent());
+        }).RequireAuthorization(SystemPermissions.PricePublish);
+
+        group.MapPost("/price-books/{id:guid}/copies", async (Guid id, CopyPriceBookRequest request,
+            IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await catalog.CopyPriceBookAsync(current.TenantId,
+                    new CopyPriceBookCommand(id, request.Name ?? string.Empty, request.EffectiveFrom,
+                        current.Id, DefaultStoreId(current)), cancellationToken),
+                value => Results.Created($"/api/v1/catalog/price-books/{value.Id}", value));
+        }).RequireAuthorization(SystemPermissions.PricePublish);
+
+        group.MapPost("/price-books/{id:guid}/retire", async (Guid id, RetirePriceBookRequest request,
+            IIdentityService identity, ICatalogService catalog, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await catalog.RetirePriceBookAsync(current.TenantId,
+                    new RetirePriceBookCommand(id, request.ExpectedVersion, request.Reason ?? string.Empty,
+                        current.Id, DefaultStoreId(current)), cancellationToken));
+        }).RequireAuthorization(SystemPermissions.PricePublish);
+
         return endpoints;
     }
 
@@ -229,6 +280,24 @@ public static class CatalogEndpoints
 
     private static IResult InvalidStatus() => Results.Json(
         new { error = new { code = "VALIDATION_FAILED", message = "状态只能是 ENABLED 或 DISABLED" } },
+        statusCode: StatusCodes.Status422UnprocessableEntity);
+
+    private static bool TryParsePriceBookStatus(string? value, out PriceBookStatus? status)
+    {
+        status = null;
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        status = value.Trim().ToUpperInvariant() switch
+        {
+            "DRAFT" => PriceBookStatus.Draft,
+            "PUBLISHED" => PriceBookStatus.Published,
+            "RETIRED" => PriceBookStatus.Retired,
+            _ => null,
+        };
+        return status.HasValue;
+    }
+
+    private static IResult InvalidPriceBookStatus() => Results.Json(
+        new { error = new { code = "VALIDATION_FAILED", message = "价格版本状态只能是草稿、已发布或已停用" } },
         statusCode: StatusCodes.Status422UnprocessableEntity);
 
     private static IResult InvalidQuery() => Results.Json(
@@ -268,4 +337,7 @@ public static class CatalogEndpoints
         IReadOnlyList<CreatePriceBookLineRequest>? Lines,
         IReadOnlyList<CreateProductPriceBookLineRequest>? ProductLines, uint ExpectedVersion);
     private sealed record CancelPriceBookRequest(uint ExpectedVersion);
+    private sealed record DeletePriceBookRequest(uint ExpectedVersion, string? Reason);
+    private sealed record CopyPriceBookRequest(string? Name, DateOnly EffectiveFrom);
+    private sealed record RetirePriceBookRequest(uint ExpectedVersion, string? Reason);
 }
