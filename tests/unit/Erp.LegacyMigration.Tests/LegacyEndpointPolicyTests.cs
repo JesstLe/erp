@@ -138,4 +138,93 @@ public sealed class LegacyEndpointPolicyTests
         Assert.DoesNotContain(entities, entity => entity == LegacyEntityDefinition.Customers);
         Assert.Equal(entities.Count, entities.Select(entity => entity.Path).Distinct().Count());
     }
+
+    [Fact]
+    public void ResolvesCoreLedgersWithBoundedFullHistoryFilters()
+    {
+        var entities = LegacyEntityCatalog.Resolve(LegacyEntityCatalog.CoreLedgersSelection);
+
+        Assert.Equal(8, entities.Count);
+        Assert.All(entities, entity =>
+        {
+            Assert.True(entity.IsReport);
+            var uri = entity.BuildPageUri(1, 100);
+            Assert.Contains("act=grid", uri.Query, StringComparison.Ordinal);
+            Assert.Contains("search_find=Y", uri.Query, StringComparison.Ordinal);
+            Assert.Contains("search_bdate=2019-01-01", uri.Query, StringComparison.Ordinal);
+            Assert.Contains("search_edate=", uri.Query, StringComparison.Ordinal);
+            Assert.Contains("type=", uri.Query, StringComparison.Ordinal);
+            _policy.EnsureAllowed(HttpMethod.Get, uri);
+        });
+    }
+
+    [Theory]
+    [InlineData("https://app5.siweicloud.com/swshop/print/vip_sell_list.php?act=drop")]
+    [InlineData("https://app5.siweicloud.com/swshop/print/vip_full_list.php?act=delete")]
+    [InlineData("https://app5.siweicloud.com/swshop/print/vip_score_list.php?act=update")]
+    public void RejectsWriteActionsForCoreLedgerControllers(string value)
+    {
+        Assert.Throws<LegacyMigrationException>(() =>
+            _policy.EnsureAllowed(HttpMethod.Get, new Uri(value)));
+    }
+
+    [Fact]
+    public void ResolvesOperationalLedgersWithExplicitTypeVariants()
+    {
+        var entities = LegacyEntityCatalog.Resolve(LegacyEntityCatalog.OperationalLedgersSelection);
+
+        Assert.Equal(20, entities.Count);
+        Assert.Equal(entities.Count, entities.Select(entity => entity.Name).Distinct().Count());
+        Assert.Contains(entities, entity => entity.Name == "purchase-orders" &&
+                                            entity.BuildPageUri(1, 100).Query.Contains("type=S", StringComparison.Ordinal));
+        Assert.Contains(entities, entity => entity.Name == "purchase-returns" &&
+                                            entity.BuildPageUri(1, 100).Query.Contains("type=T", StringComparison.Ordinal));
+        Assert.Contains(entities, entity => entity.Name == "inventory-front-outbound" &&
+                                            entity.BuildPageUri(1, 100).Query.Contains("type=T", StringComparison.Ordinal));
+        Assert.All(entities, entity => _policy.EnsureAllowed(HttpMethod.Get, entity.BuildPageUri(1, 100)));
+    }
+
+    [Fact]
+    public void ResolvesLedgerLinesWithServiceProductAndInventoryVariants()
+    {
+        var entities = LegacyEntityCatalog.Resolve(LegacyEntityCatalog.LedgerLinesSelection);
+
+        Assert.Equal(17, entities.Count);
+        Assert.Contains(entities, entity => entity.Name == "customer-service-lines" &&
+                                            entity.BuildPageUri(1, 100).Query.Contains("type=service", StringComparison.Ordinal));
+        Assert.Contains(entities, entity => entity.Name == "customer-product-lines" &&
+                                            entity.BuildPageUri(1, 100).Query.Contains("type=product", StringComparison.Ordinal));
+        Assert.Contains(entities, entity => entity.Name == "inventory-transfer-out-lines" &&
+                                            entity.BuildPageUri(1, 100).Query.Contains("type=O", StringComparison.Ordinal));
+        Assert.All(entities, entity => _policy.EnsureAllowed(HttpMethod.Get, entity.BuildPageUri(1, 100)));
+    }
+
+    [Fact]
+    public void ResolvesSupplementalLedgersWithoutAddingThemToBaseMaster()
+    {
+        var supplemental = LegacyEntityCatalog.Resolve(LegacyEntityCatalog.SupplementalLedgersSelection);
+        var baseMaster = LegacyEntityCatalog.Resolve(LegacyEntityCatalog.BaseMasterSelection);
+
+        Assert.Equal(6, supplemental.Count);
+        Assert.Contains(supplemental, entity => entity.Name == "appointments");
+        Assert.Contains(supplemental, entity => entity.Name == "payroll-data");
+        Assert.DoesNotContain(supplemental, baseMaster.Contains);
+        Assert.All(supplemental, entity =>
+        {
+            Assert.True(entity.IncludeFullHistoryFilters);
+            _policy.EnsureAllowed(HttpMethod.Get, entity.BuildPageUri(1, 100));
+        });
+    }
+
+    [Fact]
+    public void AllowsReadOnlyPreflightForReviewedDirectLedgerPage()
+    {
+        _policy.EnsureAllowed(
+            HttpMethod.Get,
+            new Uri("https://app5.siweicloud.com/swshop/pay/pdata.php"));
+
+        Assert.Throws<LegacyMigrationException>(() => _policy.EnsureAllowed(
+            HttpMethod.Get,
+            new Uri("https://app5.siweicloud.com/swshop/pay/pdata.php?act=save")));
+    }
 }

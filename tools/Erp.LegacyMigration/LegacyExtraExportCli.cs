@@ -48,10 +48,17 @@ public static class LegacyExtraExportCli
             await output.WriteLineAsync(
                 $"顾客照片导出完成：档案={photoResult.CustomerCount}，照片={photoResult.PhotoCount}，缺失={photoResult.MissingCount}，失败={photoResult.FailedCount}。");
 
-            var carePhotoEngine = new LegacyCarePhotoExportEngine(session, payloadStore, output);
-            var carePhotoResult = await carePhotoEngine.ExportAsync(options, cancellationToken);
-            await output.WriteLineAsync(
-                $"护理照片导出完成：记录={carePhotoResult.CareRecordCount}，照片={carePhotoResult.PhotoCount}，缺失={carePhotoResult.MissingCount}，失败={carePhotoResult.FailedCount}。");
+            if (options.SkipCarePhotos)
+            {
+                await output.WriteLineAsync("护理照片已按本次迁移范围明确跳过。");
+            }
+            else
+            {
+                var carePhotoEngine = new LegacyCarePhotoExportEngine(session, payloadStore, output);
+                var carePhotoResult = await carePhotoEngine.ExportAsync(options, cancellationToken);
+                await output.WriteLineAsync(
+                    $"护理照片导出完成：记录={carePhotoResult.CareRecordCount}，照片={carePhotoResult.PhotoCount}，缺失={carePhotoResult.MissingCount}，失败={carePhotoResult.FailedCount}。");
+            }
             return 0;
         }
         catch (OperationCanceledException)
@@ -78,7 +85,8 @@ public sealed record LegacyExtraExportOptions(
     int MaxPages,
     int DelayMilliseconds,
     string? Captcha,
-    long? ProbeCustomerId)
+    long? ProbeCustomerId,
+    bool SkipCarePhotos)
 {
     public static LegacyExtraExportOptions Parse(string[] args)
     {
@@ -91,6 +99,7 @@ public sealed record LegacyExtraExportOptions(
         var maxPages = 10_000;
         var delay = 100;
         long? probeCustomerId = null;
+        var skipCarePhotos = false;
         for (var index = 1; index < args.Length; index += 2)
         {
             if (index + 1 >= args.Length) throw new LegacyMigrationException($"参数 {args[index]} 缺少值。");
@@ -108,6 +117,11 @@ public sealed record LegacyExtraExportOptions(
                     probeCustomerId = long.TryParse(value, out var parsedId) && parsedId > 0
                         ? parsedId : throw new LegacyMigrationException("--probe-id 必须是正整数。");
                     break;
+                case "--skip-care-photos":
+                    skipCarePhotos = bool.TryParse(value, out var parsedSkipCarePhotos)
+                        ? parsedSkipCarePhotos
+                        : throw new LegacyMigrationException("--skip-care-photos 必须是 true 或 false。");
+                    break;
                 default: throw new LegacyMigrationException($"不支持的参数：{name}");
             }
         }
@@ -117,7 +131,7 @@ public sealed record LegacyExtraExportOptions(
         var fullInput = Path.GetFullPath(input);
         if (!Directory.Exists(fullInput)) throw new LegacyMigrationException("顾客导出目录不存在。");
         return new LegacyExtraExportOptions(fullInput, Path.GetFullPath(output), pageSize, maxPages, delay, captcha,
-            probeCustomerId);
+            probeCustomerId, skipCarePhotos);
     }
 
     private static int ParseInt(string name, string value, int min, int max) =>

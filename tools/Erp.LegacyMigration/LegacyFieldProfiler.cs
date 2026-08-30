@@ -352,7 +352,7 @@ public sealed class LegacyFieldProfiler
             }
         }
 
-        if (rowCount != manifest.RowCount || rowCount != manifest.SourceRecords)
+        if (rowCount != manifest.RowCount)
         {
             throw new LegacyMigrationException("字段画像逐行数量与导出清单不一致。");
         }
@@ -371,8 +371,11 @@ public sealed class LegacyFieldProfiler
 
     private static void ValidateManifest(LegacyExportManifest manifest)
     {
+        var rowCountMatchesSource = manifest.RowCount == manifest.SourceRecords ||
+            string.Equals(manifest.Entity, LegacyEntityDefinition.PayrollData.Name, StringComparison.Ordinal) &&
+            manifest.SourceRecords <= manifest.RowCount;
         if (manifest.SchemaVersion != 1 || manifest.RowCount < 0 || manifest.SourceRecords < 0 ||
-            manifest.RowCount > MaxRowsPerEntity || manifest.RowCount != manifest.SourceRecords ||
+            manifest.RowCount > MaxRowsPerEntity || !rowCountMatchesSource ||
             !string.Equals(manifest.SourceHost, LegacyEndpointPolicy.Origin.Host, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(manifest.Encryption, "AES-256-GCM/ERPLEG1", StringComparison.Ordinal) ||
             manifest.RowsSha256.Length != 64 || !manifest.RowsSha256.All(Uri.IsHexDigit) ||

@@ -69,6 +69,32 @@ public sealed class LegacyFieldProfilerTests
         await Assert.ThrowsAsync<LegacyMigrationException>(() => fixture.ProfileAsync());
     }
 
+    [Fact]
+    public async Task AcceptsReviewedPayrollMetadataCountWhenActualRowsAreGreater()
+    {
+        await using var fixture = await ProfileFixture.CreateAsync(
+            "{\"employee\":\"one\"}\n{\"employee\":\"two\"}\n",
+            rowCount: 2,
+            entity: "payroll-data",
+            endpoint: "/swshop/pay/pdata.php?act=grid",
+            sourceRecords: 1);
+
+        var report = await fixture.ProfileAsync();
+
+        Assert.Equal(2, report.TotalRows);
+    }
+
+    [Fact]
+    public async Task RejectsMetadataCountMismatchForOtherEntities()
+    {
+        await using var fixture = await ProfileFixture.CreateAsync(
+            "{\"id\":\"one\"}\n{\"id\":\"two\"}\n",
+            rowCount: 2,
+            sourceRecords: 1);
+
+        await Assert.ThrowsAsync<LegacyMigrationException>(() => fixture.ProfileAsync());
+    }
+
     private sealed class ProfileFixture : IAsyncDisposable
     {
         private readonly byte[] _key;
@@ -87,10 +113,13 @@ public sealed class LegacyFieldProfilerTests
         public static async Task<ProfileFixture> CreateAsync(
             string rows,
             int rowCount,
-            string rowsFile = "rows.jsonl.enc")
+            string rowsFile = "rows.jsonl.enc",
+            string entity = "customers",
+            string endpoint = "/swshop/base/member.php?act=grid",
+            int? sourceRecords = null)
         {
             var root = Path.Combine(Path.GetTempPath(), $"erp-legacy-profile-{Guid.NewGuid():N}");
-            var entityDirectory = Path.Combine(root, "customers");
+            var entityDirectory = Path.Combine(root, entity);
             Directory.CreateDirectory(entityDirectory);
             var key = RandomNumberGenerator.GetBytes(32);
             var actualRowsPath = Path.Combine(entityDirectory, "rows.jsonl.enc");
@@ -103,15 +132,15 @@ public sealed class LegacyFieldProfilerTests
             var manifest = new LegacyExportManifest(
                 SchemaVersion: 1,
                 RunId: Guid.NewGuid(),
-                Entity: "customers",
+                Entity: entity,
                 SourceHost: LegacyEndpointPolicy.Origin.Host,
-                Endpoint: "/swshop/base/member.php?act=grid",
+                Endpoint: endpoint,
                 StartedAtUtc: DateTimeOffset.UtcNow,
                 CompletedAtUtc: DateTimeOffset.UtcNow,
                 PageSize: 100,
                 PageCount: 1,
                 RowCount: rowCount,
-                SourceRecords: rowCount,
+                SourceRecords: sourceRecords ?? rowCount,
                 Encryption: "AES-256-GCM/ERPLEG1",
                 RowsFile: rowsFile,
                 RowsSha256: hash,
