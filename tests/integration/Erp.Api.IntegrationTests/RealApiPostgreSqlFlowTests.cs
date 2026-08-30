@@ -108,7 +108,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202608270037", ready?.SchemaVersion);
+        Assert.Equal("202608300038", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {
@@ -594,7 +594,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             lines = new object[]
             {
                 new { lineType = "PRODUCT", serviceItemId = (Guid?)null, productItemId = product.Id,
-                    serviceEmployeeId = (Guid?)null, quantity = 1, actualSeconds = (int?)null,
+                    serviceEmployeeId = employee.Id, quantity = 1, actualSeconds = (int?)null,
                     enteredPriceMinor = 5_000L, priceOverrideReason = (string?)null },
             },
             commandId = Guid.NewGuid(),
@@ -623,6 +623,8 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         });
         Assert.Equal(2, order.Lines.Count);
         Assert.Equal(15_000, order.ReceivableMinor);
+        Assert.Contains(order.Lines, line => line.LineType == "Product" &&
+            line.ServiceEmployeeId == employee.Id && line.EmployeeName == employee.DisplayName);
         var prebill = await PostAsync<ServiceOrderPrebillDto>(client,
             $"/api/v1/cashier/orders/{order.Id}/prebill", new
             {

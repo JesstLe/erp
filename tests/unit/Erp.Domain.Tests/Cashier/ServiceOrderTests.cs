@@ -195,6 +195,21 @@ public sealed class ServiceOrderTests
     }
 
     [Fact]
+    public void ProductLineCanKeepOptionalAddedByEmployeeWithoutCommission()
+    {
+        var employeeId = Guid.CreateVersion7();
+        var order = CreateOrder([ServiceOrderLineDraft.Product(Guid.CreateVersion7(), "P02", "护理用品", "件",
+            1, 5_000, 5_000, null, employeeId, "E002", "李店员")]);
+        var line = order.Lines.Single();
+
+        Assert.Equal(employeeId, line.ServiceEmployeeId);
+        Assert.Equal("E002", line.EmployeeNoSnapshot);
+        Assert.Equal("李店员", line.EmployeeNameSnapshot);
+        Assert.Equal(CommissionMode.None, line.CommissionModeSnapshot);
+        Assert.Equal(0, line.CommissionAmountMinor);
+    }
+
+    [Fact]
     public void PendingOrderCanBeVoidedButSettledOrderCannot()
     {
         var pending = CreateOrder([new(Guid.CreateVersion7(), "S01", "标准服务", 1, null, 10_000,

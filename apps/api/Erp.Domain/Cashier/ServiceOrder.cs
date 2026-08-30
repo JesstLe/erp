@@ -276,7 +276,8 @@ public sealed record ServiceOrderLineDraft
     }
 
     private ServiceOrderLineDraft(Guid productItemId, string itemCode, string itemName, string unitName,
-        int quantity, long referencePriceMinor, long enteredPriceMinor, string? priceOverrideReason)
+        int quantity, long referencePriceMinor, long enteredPriceMinor, string? priceOverrideReason,
+        Guid? addedByEmployeeId, string? employeeNo, string? employeeName)
     {
         LineType = ServiceOrderLineType.Product;
         ProductItemId = productItemId;
@@ -287,12 +288,17 @@ public sealed record ServiceOrderLineDraft
         ReferencePriceMinor = referencePriceMinor;
         EnteredPriceMinor = enteredPriceMinor;
         PriceOverrideReason = priceOverrideReason;
+        ServiceEmployeeId = addedByEmployeeId;
+        EmployeeNo = employeeNo;
+        EmployeeName = employeeName;
     }
 
     public static ServiceOrderLineDraft Product(Guid productItemId, string itemCode, string itemName,
         string unitName, int quantity, long referencePriceMinor, long enteredPriceMinor,
-        string? priceOverrideReason) => new(productItemId, itemCode, itemName, unitName, quantity,
-        referencePriceMinor, enteredPriceMinor, priceOverrideReason);
+        string? priceOverrideReason, Guid? addedByEmployeeId = null, string? employeeNo = null,
+        string? employeeName = null) => new(productItemId, itemCode, itemName, unitName, quantity,
+        referencePriceMinor, enteredPriceMinor, priceOverrideReason, addedByEmployeeId, employeeNo,
+        employeeName);
 
     public ServiceOrderLineType LineType { get; }
     public Guid? ServiceItemId { get; }
@@ -392,19 +398,24 @@ public sealed class ServiceOrderLine : Entity
 
     private void SetCommissionSnapshot(ServiceOrderLineDraft draft)
     {
-        if (LineType == ServiceOrderLineType.Product)
-        {
-            if (draft.ServiceEmployeeId.HasValue || draft.CommissionMode != CommissionMode.None)
-                throw new DomainRuleException("VALIDATION_FAILED", "商品明细不能填写服务员工或服务提成");
-            CommissionModeSnapshot = CommissionMode.None;
-            return;
-        }
-
         var employeeNo = string.IsNullOrWhiteSpace(draft.EmployeeNo) ? null : draft.EmployeeNo.Trim();
         var employeeName = string.IsNullOrWhiteSpace(draft.EmployeeName) ? null : draft.EmployeeName.Trim();
         if (draft.ServiceEmployeeId.HasValue != (employeeNo is not null && employeeName is not null) ||
             employeeNo?.Length > 32 || employeeName?.Length > 100)
-            throw new DomainRuleException("VALIDATION_FAILED", "服务员工快照无效");
+            throw new DomainRuleException("VALIDATION_FAILED", "员工归属快照无效");
+
+        if (LineType == ServiceOrderLineType.Product)
+        {
+            if (draft.CommissionMode != CommissionMode.None || draft.CommissionRateBasisPoints is not null ||
+                draft.CommissionFixedMinor is not null)
+                throw new DomainRuleException("VALIDATION_FAILED", "商品明细不能填写服务提成");
+            ServiceEmployeeId = draft.ServiceEmployeeId;
+            EmployeeNoSnapshot = employeeNo;
+            EmployeeNameSnapshot = employeeName;
+            CommissionModeSnapshot = CommissionMode.None;
+            return;
+        }
+
         if (draft.CommissionMode != CommissionMode.None && !draft.ServiceEmployeeId.HasValue)
             throw new DomainRuleException("SERVICE_EMPLOYEE_REQUIRED", "该服务项目已设置提成，必须选择服务员工");
 
