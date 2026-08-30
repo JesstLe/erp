@@ -99,17 +99,21 @@ function fromOrder(order: ServiceOrder): ClassicCashierDraftLine[] {
 export function ModernFacilityCashierWorkbench({ facility, availableFacilities, onFacilityChanged, onExit, onCompleted }: Props) {
   const auth = useAuth(); const storeId = auth.store?.id; const navigate = useNavigate(); const queryClient = useQueryClient()
   const [modal, modalContextHolder] = Modal.useModal()
+  const isBeforeStart = facility.status === 'AVAILABLE' && !facility.sessionId && !facility.visitId
   const [tick, setTick] = useState(Date.now()); const [tab, setTab] = useState<WorkbenchTab>('service'); const [catalogSearch, setCatalogSearch] = useState('')
   const [lines, setLines] = useState<ClassicCashierDraftLine[]>([]); const [customerId, setCustomerId] = useState<string>(); const [note, setNote] = useState('')
   const [sourceChannel, setSourceChannel] = useState(''); const [manualTicketNo, setManualTicketNo] = useState(''); const [maleGuestCount, setMaleGuestCount] = useState(0); const [maleAgeBand, setMaleAgeBand] = useState<string>(); const [femaleGuestCount, setFemaleGuestCount] = useState(0); const [femaleAgeBand, setFemaleAgeBand] = useState<string>()
+  const [consultantEmployeeId, setConsultantEmployeeId] = useState<string>()
+  const [productToAddId, setProductToAddId] = useState<string>(); const [productAddedByEmployeeId, setProductAddedByEmployeeId] = useState<string>()
   const [memberSearch, setMemberSearch] = useState(''); const [discountOpen, setDiscountOpen] = useState(false); const [employeeOpen, setEmployeeOpen] = useState(false); const [consultantOpen, setConsultantOpen] = useState(false)
   const [switchOpen, setSwitchOpen] = useState(false); const [mergeOpen, setMergeOpen] = useState(false); const [mergeOrderId, setMergeOrderId] = useState<string>(); const [settleOpen, setSettleOpen] = useState(false); const [prebill, setPrebill] = useState<ServiceOrderPrebill>()
-  const [serviceEnded, setServiceEnded] = useState(!facility.sessionId || !['IN_USE', 'PAUSED'].includes(facility.status))
+  const [serviceEnded, setServiceEnded] = useState(!isBeforeStart && (!facility.sessionId || !['IN_USE', 'PAUSED'].includes(facility.status)))
   const [discountForm] = Form.useForm<DiscountValues>(); const [switchForm] = Form.useForm<SwitchValues>(); const [settleForm] = Form.useForm<SettleValues>()
   const chosenMethodId = Form.useWatch('methodId', settleForm); const debouncedMemberSearch = useDebouncedValue(memberSearch.trim())
   const draftCommand = useRef(commandId())
   const draftSaveQueue = useRef(createSerialTaskQueue())
   const hydratedOrderId = useRef<string | undefined>(undefined)
+  const linesRef = useRef<ClassicCashierDraftLine[]>([])
   const liveAnchor = useRef({ facilityId: facility.id, status: facility.status, at: Date.now(), activeSeconds: facility.activeSeconds })
 
   useEffect(() => { const timer = window.setInterval(() => setTick(Date.now()), 1000); return () => window.clearInterval(timer) }, [])
@@ -123,7 +127,8 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   useEffect(() => {
     if (!draft.data || hydratedOrderId.current === draft.data.id) return
     hydratedOrderId.current = draft.data.id
-    setLines(fromOrder(draft.data)); setCustomerId(draft.data.customerId); setNote(draft.data.note ?? '')
+    const hydratedLines = fromOrder(draft.data); linesRef.current = hydratedLines; setLines(hydratedLines); setCustomerId(draft.data.customerId); setNote(draft.data.note ?? '')
+    setConsultantEmployeeId(draft.data.consultantEmployeeId)
     setSourceChannel(draft.data.sourceChannel ?? ''); setManualTicketNo(draft.data.manualTicketNo ?? ''); setMaleGuestCount(draft.data.maleGuestCount ?? 0); setMaleAgeBand(draft.data.maleAgeBand); setFemaleGuestCount(draft.data.femaleGuestCount ?? 0); setFemaleAgeBand(draft.data.femaleAgeBand)
   }, [draft.data])
 
@@ -144,7 +149,7 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   const memberAccounts = customerDetail.data?.cards.flatMap((card) => card.accounts.filter((account) => ['Active', 'ACTIVE'].includes(account.status)).map((account) => ({ ...account, label: `${card.cardTypeName} · ${account.accountType} · ${money(account.balanceUnits)}` }))) ?? []
   const chosenMethod = paymentMethods.data?.find((item) => item.id === chosenMethodId)
   const liveSeconds = facility.startedAtUtc && facility.status === 'IN_USE' ? liveAnchor.current.activeSeconds + Math.max(0, Math.floor((tick - liveAnchor.current.at) / 1000)) : facility.activeSeconds
-  const editable = draft.data?.status === 'Draft'
+  const editable = isBeforeStart || draft.data?.status === 'Draft'
 
   const updateDraft = async (order: ServiceOrder, next: DraftUpdate) => {
     if (!storeId) throw new Error('当前门店无效')
@@ -162,7 +167,7 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
       maleAgeBand: nextMaleGuestCount ? (Object.hasOwn(next, 'maleAgeBand') ? next.maleAgeBand : order.maleAgeBand) ?? null : null,
       femaleGuestCount: nextFemaleGuestCount,
       femaleAgeBand: nextFemaleGuestCount ? (Object.hasOwn(next, 'femaleAgeBand') ? next.femaleAgeBand : order.femaleAgeBand) ?? null : null,
-      lines: nextLines.map((line) => ({ lineType: line.lineType, serviceItemId: line.lineType === 'Service' ? line.itemId : null, productItemId: line.lineType === 'Product' ? line.itemId : null, serviceEmployeeId: line.lineType === 'Service' ? line.employeeId ?? null : null, quantity: line.quantity, actualSeconds: line.lineType === 'Service' && line.actualMinutes !== undefined ? Math.round(line.actualMinutes * 60) : null, enteredPriceMinor: line.enteredPriceMinor, priceOverrideReason: line.priceOverrideReason ?? null })),
+      lines: nextLines.map((line) => ({ lineType: line.lineType, serviceItemId: line.lineType === 'Service' ? line.itemId : null, productItemId: line.lineType === 'Product' ? line.itemId : null, serviceEmployeeId: line.employeeId ?? null, quantity: line.quantity, actualSeconds: line.lineType === 'Service' && line.actualMinutes !== undefined ? Math.round(line.actualMinutes * 60) : null, enteredPriceMinor: line.enteredPriceMinor, priceOverrideReason: line.priceOverrideReason ?? null })),
       expectedVersion: order.version,
       commandId: commandId(),
     }) })
@@ -188,13 +193,59 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
     onSuccess: (order) => queryClient.setQueryData(orderKey, order),
     onError: (error) => message.error(requestError(error)),
   })
-  const persistLines = async (nextLines: ClassicCashierDraftLine[]) => { setLines(nextLines); await saveDraft.mutateAsync({ lines: nextLines }) }
-  const addService = async (item: typeof serviceCatalog[number]) => persistLines([...lines, { key: commandId(), lineType: 'Service', itemId: item.id, code: item.code, name: item.name, quantity: 1, actualMinutes: item.duration, referencePriceMinor: item.priceMinor, enteredPriceMinor: item.priceMinor }])
-  const addProduct = async (item: typeof productCatalog[number]) => persistLines([...lines, { key: commandId(), lineType: 'Product', itemId: item.id, code: item.code, name: item.name, unitName: item.unitName, quantity: 1, referencePriceMinor: item.priceMinor, enteredPriceMinor: item.priceMinor }])
-  const updateLine = (key: string, patch: Partial<ClassicCashierDraftLine>) => setLines((current) => current.map((line) => line.key === key ? { ...line, ...patch } : line))
-  const persistCurrentLines = () => saveDraft.mutateAsync({ lines })
+  const setLocalLines = (nextLines: ClassicCashierDraftLine[]) => { linesRef.current = nextLines; setLines(nextLines) }
+  const persistLines = async (nextLines: ClassicCashierDraftLine[]) => {
+    setLocalLines(nextLines)
+    if (!isBeforeStart) await saveDraft.mutateAsync({ lines: nextLines })
+  }
+  const addService = async (item: typeof serviceCatalog[number]) => persistLines([...linesRef.current, { key: commandId(), lineType: 'Service', itemId: item.id, code: item.code, name: item.name, quantity: 1, actualMinutes: item.duration, referencePriceMinor: item.priceMinor, enteredPriceMinor: item.priceMinor }])
+  const openAddProduct = (item: typeof productCatalog[number]) => { setProductToAddId(item.id); setProductAddedByEmployeeId(undefined) }
+  const confirmAddProduct = async () => {
+    const item = productCatalog.find((entry) => entry.id === productToAddId)
+    if (!item) return
+    const employee = employees.data?.find((entry) => entry.id === productAddedByEmployeeId)
+    setProductToAddId(undefined); setProductAddedByEmployeeId(undefined)
+    await persistLines([...linesRef.current, { key: commandId(), lineType: 'Product', itemId: item.id, code: item.code, name: item.name, unitName: item.unitName, quantity: 1, referencePriceMinor: item.priceMinor, enteredPriceMinor: item.priceMinor, employeeId: employee?.id, employeeName: employee?.displayName }])
+  }
+  const updateLine = (key: string, patch: Partial<ClassicCashierDraftLine>) => {
+    const next = linesRef.current.map((line) => line.key === key ? { ...line, ...patch } : line)
+    setLocalLines(next)
+  }
+  const persistCurrentLines = () => isBeforeStart ? Promise.resolve() : saveDraft.mutateAsync({ lines: linesRef.current })
 
   const facilityMutation = useMutation({ mutationFn: ({ path, body }: { path: string; body: object }) => retryVersionConflictOnce(() => apiRequest<FacilityBoardItem>(path, { method: 'POST', body: JSON.stringify(body) })), onError: (error) => message.error(requestError(error)) })
+  const startReception = useMutation({
+    mutationFn: async () => {
+      if (!storeId || !isBeforeStart) throw new Error('当前设施不能开始计时')
+      if (linesRef.current.some((line) => line.lineType === 'Service' && !line.employeeId))
+        throw new Error('请先为已选服务项目指定服务员工')
+      const plannedService = linesRef.current.find((line) => line.lineType === 'Service')
+      let started: FacilityBoardItem | undefined
+      let initialOrder: ServiceOrder | undefined
+      try {
+        started = await apiRequest<FacilityBoardItem>('/api/v1/facilities/sessions/start', { method: 'POST', body: JSON.stringify({
+          storeId, facilityId: facility.id, customerId: customerId ?? null,
+          plannedServiceItemId: plannedService?.itemId ?? null,
+          expectedDurationMinutes: plannedService?.actualMinutes ?? null,
+          note: note || null, commandId: commandId(),
+        }) })
+        if (!started.visitId) throw new Error('设施已开始，但接待编号生成失败')
+        initialOrder = await apiRequest<ServiceOrder>(`/api/v1/cashier/visits/${started.visitId}/draft`, { method: 'POST', body: JSON.stringify({ storeId, commandId: commandId() }) })
+        const saved = await updateDraft(initialOrder, { lines: linesRef.current, customerId, consultantEmployeeId, note, sourceChannel, manualTicketNo, maleGuestCount, maleAgeBand, femaleGuestCount, femaleAgeBand })
+        queryClient.setQueryData(['facility-cashier-order', storeId, started.visitId], saved)
+        hydratedOrderId.current = saved.id
+        return { started, saved }
+      } catch (error) {
+        if (started) {
+          if (initialOrder) { queryClient.setQueryData(['facility-cashier-order', storeId, started.visitId], initialOrder); hydratedOrderId.current = initialOrder.id }
+          onFacilityChanged(started); setServiceEnded(false); await onCompleted()
+        }
+        throw error
+      }
+    },
+    onSuccess: async ({ started }) => { onFacilityChanged(started); setServiceEnded(false); await onCompleted(); message.success('接待信息已保存，设施现在开始计时') },
+    onError: (error) => message.error(requestError(error)),
+  })
   const facilityOperation = async (action: 'pause' | 'resume' | 'end') => {
     if (!storeId || !facility.sessionId) return
     await draftSaveQueue.current.idle()
@@ -206,9 +257,9 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   const switchFacility = async (values: SwitchValues) => { if (!storeId || !facility.sessionId) return; await draftSaveQueue.current.idle(); const result = await facilityMutation.mutateAsync({ path: `/api/v1/facilities/sessions/${facility.sessionId}/switch`, body: { storeId, targetFacilityId: values.facilityId, reason: values.reason, commandId: commandId() } }); onFacilityChanged(result); setSwitchOpen(false); switchForm.resetFields(); await onCompleted(); message.success('已更换服务位，原计时段与账单草稿均已保留') }
 
   const assignEmployee = async (employeeId: string) => { const employee = employees.data?.find((item) => item.id === employeeId); const next = lines.map((line) => line.lineType === 'Service' ? { ...line, employeeId, employeeName: employee?.displayName } : line); setEmployeeOpen(false); await persistLines(next) }
-  const assignConsultant = async (employeeId?: string) => { setConsultantOpen(false); await saveDraft.mutateAsync({ consultantEmployeeId: employeeId }) }
+  const assignConsultant = async (employeeId?: string) => { setConsultantEmployeeId(employeeId); setConsultantOpen(false); if (!isBeforeStart) await saveDraft.mutateAsync({ consultantEmployeeId: employeeId }) }
   const applyDiscount = async (values: DiscountValues) => { const next = applyClassicOrderDiscount(lines, values.percent, values.reason); setDiscountOpen(false); discountForm.resetFields(); await persistLines(next); message.success('整单折扣已保存，并已按权限策略完成授权判断') }
-  const clearDraft = () => modal.confirm({ title: '删除当前账单内容？', content: '项目、产品、员工、顾问和主单信息会被清空；设施计时与接待记录不会删除，操作会保留审计记录。', okText: '确认删除', okButtonProps: { danger: true }, onOk: async () => { setLines([]); setCustomerId(undefined); setNote(''); setSourceChannel(''); setManualTicketNo(''); setMaleGuestCount(0); setMaleAgeBand(undefined); setFemaleGuestCount(0); setFemaleAgeBand(undefined); await saveDraft.mutateAsync({ lines: [], customerId: undefined, consultantEmployeeId: undefined, note: '', sourceChannel: '', manualTicketNo: '', maleGuestCount: 0, maleAgeBand: undefined, femaleGuestCount: 0, femaleAgeBand: undefined }) } })
+  const clearDraft = () => modal.confirm({ title: '删除当前账单内容？', content: isBeforeStart ? '已选择的项目、产品、员工、顾问和主单信息会被清空；设施仍保持空闲。' : '项目、产品、员工、顾问和主单信息会被清空；设施计时与接待记录不会删除，操作会保留审计记录。', okText: '确认删除', okButtonProps: { danger: true }, onOk: async () => { setLocalLines([]); setCustomerId(undefined); setConsultantEmployeeId(undefined); setNote(''); setSourceChannel(''); setManualTicketNo(''); setMaleGuestCount(0); setMaleAgeBand(undefined); setFemaleGuestCount(0); setFemaleAgeBand(undefined); if (!isBeforeStart) await saveDraft.mutateAsync({ lines: [], customerId: undefined, consultantEmployeeId: undefined, note: '', sourceChannel: '', manualTicketNo: '', maleGuestCount: 0, maleAgeBand: undefined, femaleGuestCount: 0, femaleAgeBand: undefined }) } })
 
   const mergeMutation = useMutation({ mutationFn: async () => { await draftSaveQueue.current.idle(); const target = queryClient.getQueryData<ServiceOrder>(orderKey) ?? draft.data; const source = mergeCandidates.data?.find((item) => item.id === mergeOrderId); if (!storeId || !target || !source) throw new Error('请选择待合并账单'); return apiRequest<ServiceOrder>(`/api/v1/cashier/orders/${target.id}/merge`, { method: 'POST', body: JSON.stringify({ storeId, sourceOrderId: source.id, expectedTargetVersion: target.version, expectedSourceVersion: source.version, commandId: commandId() }) }) }, onSuccess: (order) => { queryClient.setQueryData(orderKey, order); setLines(fromOrder(order)); setCustomerId(order.customerId); setMergeOpen(false); setMergeOrderId(undefined); queryClient.invalidateQueries({ queryKey: ['cashier-orders', storeId] }); message.success('账单已合并，关联接待将在同一笔收款完成') }, onError: (error) => message.error(requestError(error)) })
   const prebillMutation = useMutation({ mutationFn: async () => { const order = queryClient.getQueryData<ServiceOrder>(orderKey) ?? draft.data; if (!storeId || !order) throw new Error('消费单草稿尚未加载'); await persistCurrentLines(); const latest = queryClient.getQueryData<ServiceOrder>(orderKey) ?? order; return apiRequest<ServiceOrderPrebill>(`/api/v1/cashier/orders/${latest.id}/prebill`, { method: 'POST', body: JSON.stringify({ storeId, expectedVersion: latest.version, commandId: commandId() }) }) }, onSuccess: setPrebill, onError: (error) => message.error(requestError(error)) })
@@ -234,20 +285,20 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
     onSuccess: async (result) => { if (result.pendingApproval) { message.warning('改价已提交审批；审批完成后可在收银待处理列表继续收款'); setSettleOpen(false); navigate('/cashier'); return } if (result.channel) { message.info('官方渠道付款码将在完整收款台生成，当前账单已进入待支付'); setSettleOpen(false); navigate('/cashier'); return } message.success('收款完成，接待和账单均已完成'); setSettleOpen(false); settleForm.resetFields(); await onCompleted(); onExit() },
     onError: (error) => message.error(requestError(error)),
   })
-  const openSettlement = () => { if (!lines.length) { message.warning('请先选择项目或产品'); return } if (lines.some((line) => line.lineType === 'Service' && !line.employeeId)) { message.warning('请先通过“整单员工”或明细选择服务员工'); return } const method = paymentMethods.data?.find((item) => !item.channelProvider) ?? paymentMethods.data?.[0]; settleForm.setFieldsValue({ methodId: method?.id, amountYuan: totalMinor / 100, cashTenderedYuan: totalMinor / 100 }); setSettleOpen(true) }
+  const openSettlement = () => { if (isBeforeStart) { message.warning('请先确认录单信息并点击“开始计时”'); return } if (!lines.length) { message.warning('请先选择项目或产品'); return } if (lines.some((line) => line.lineType === 'Service' && !line.employeeId)) { message.warning('请先通过“整单员工”或明细选择服务员工'); return } const method = paymentMethods.data?.find((item) => !item.channelProvider) ?? paymentMethods.data?.[0]; settleForm.setFieldsValue({ methodId: method?.id, amountYuan: totalMinor / 100, cashTenderedYuan: totalMinor / 100 }); setSettleOpen(true) }
 
-  if (draft.isLoading) return <div className="modern-cashier-loading"><Spin size="large" description="正在恢复该服务位的账单草稿" /></div>
-  if (draft.error || !draft.data) return <Alert type="error" showIcon title={requestError(draft.error)} action={<Button onClick={() => draft.refetch()}>重新加载</Button>} />
+  if (!isBeforeStart && draft.isLoading) return <div className="modern-cashier-loading"><Spin size="large" description="正在恢复该服务位的账单草稿" /></div>
+  if (!isBeforeStart && (draft.error || !draft.data)) return <Alert type="error" showIcon title={requestError(draft.error)} action={<Button onClick={() => draft.refetch()}>重新加载</Button>} />
 
   return <div className="modern-facility-cashier">{modalContextHolder}
     <header className="modern-cashier-tabs">
-      <div className="modern-cashier-room"><b>{facility.displayName}</b><span>{facility.code} · {duration(liveSeconds)}</span><Tag color={serviceEnded ? 'default' : facility.status === 'PAUSED' ? 'orange' : 'processing'}>{serviceEnded ? '服务已结束' : facility.status === 'PAUSED' ? '已暂停' : '服务中'}</Tag></div>
+      <div className="modern-cashier-room"><b>{facility.displayName}</b><span>{facility.code} · {duration(isBeforeStart ? 0 : liveSeconds)}</span><Tag color={isBeforeStart ? 'gold' : serviceEnded ? 'default' : facility.status === 'PAUSED' ? 'orange' : 'processing'}>{isBeforeStart ? '待开始计时' : serviceEnded ? '服务已结束' : facility.status === 'PAUSED' ? '已暂停' : '服务中'}</Tag></div>
       <button type="button" className={tab === 'main' ? 'active' : ''} onClick={() => setTab('main')}><FileTextOutlined /><span>主单</span><small>信息</small></button>
       <button type="button" onClick={() => navigate('/scheduling')}><ClockCircleOutlined /><span>顾客</span><small>预约</small></button>
       <button type="button" className={tab === 'member' ? 'active' : ''} onClick={() => setTab('member')}><TeamOutlined /><span>会员</span><small>刷卡</small></button>
       <button type="button" className={tab === 'service' ? 'active' : ''} onClick={() => setTab('service')}><AppstoreOutlined /><span>项目</span><small>列表</small></button>
       <button type="button" className={tab === 'product' ? 'active' : ''} onClick={() => setTab('product')}><ShoppingOutlined /><span>产品</span><small>列表</small></button>
-      <button type="button" className="is-settle" onClick={openSettlement}>结算</button>
+      <button type="button" className="is-settle" disabled={isBeforeStart} onClick={openSettlement}>结算</button>
     </header>
     <div className="modern-cashier-body">
       <section className="modern-bill-pane">
@@ -255,29 +306,31 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
         {!lines.length ? <Empty description="当前没有选择消费的任何项目或产品" /> : <div className="modern-bill-lines">{lines.map((line, index) => <article key={line.key}>
           <header><b>{index + 1}. {line.name}</b><Tag>{line.lineType === 'Service' ? '项目' : '产品'}</Tag><Button type="text" danger icon={<DeleteOutlined />} disabled={!editable} onClick={() => persistLines(lines.filter((item) => item.key !== line.key))} /></header>
           <div className="modern-line-meta"><span>编号 {line.code}</span><span>单价 {money(line.enteredPriceMinor)}</span><strong>小计 {money(classicCashierLineAmount(line))}</strong></div>
-          <div className="modern-line-edit"><label>数量<InputNumber min={1} max={999} value={line.quantity} disabled={!editable} onChange={(value) => updateLine(line.key, { quantity: Number(value ?? 1) })} onBlur={persistCurrentLines} /></label>{line.lineType === 'Service' && <><label>时长<InputNumber min={0} max={1440} value={line.actualMinutes} disabled={!editable} onChange={(value) => updateLine(line.key, { actualMinutes: value === null ? undefined : Number(value) })} onBlur={persistCurrentLines} /><em>分</em></label><label>员工<Select value={line.employeeId} disabled={!editable} placeholder="请选择" options={employees.data?.map((employee) => ({ value: employee.id, label: employee.displayName }))} onChange={(value) => { const employee = employees.data?.find((entry) => entry.id === value); const next = lines.map((entry) => entry.key === line.key ? { ...entry, employeeId: value, employeeName: employee?.displayName } : entry); void persistLines(next) }} /></label></>}</div>
+          <div className="modern-line-edit"><label>数量<InputNumber min={1} max={999} value={line.quantity} disabled={!editable} onChange={(value) => updateLine(line.key, { quantity: Number(value ?? 1) })} onBlur={persistCurrentLines} /></label>{line.lineType === 'Service' && <label>时长<InputNumber min={0} max={1440} value={line.actualMinutes} disabled={!editable} onChange={(value) => updateLine(line.key, { actualMinutes: value === null ? undefined : Number(value) })} onBlur={persistCurrentLines} /><em>分</em></label>}<label>{line.lineType === 'Service' ? '服务员工' : '添加人'}<Select allowClear value={line.employeeId} disabled={!editable} placeholder="可选择员工" options={employees.data?.map((employee) => ({ value: employee.id, label: employee.displayName }))} onChange={(value?: string) => { const employee = employees.data?.find((entry) => entry.id === value); const next = linesRef.current.map((entry) => entry.key === line.key ? { ...entry, employeeId: value, employeeName: employee?.displayName } : entry); void persistLines(next) }} /></label></div>
         </article>)}</div>}
       </section>
       <section className="modern-catalog-pane">
-        {tab === 'main' && <div className="modern-main-order"><h2>主单信息</h2><div className="modern-order-facts"><span>消费单号<strong>{draft.data.orderNo}</strong></span><span>接待编号<strong>{facility.visitNo ?? '-'}</strong></span><span>整单顾问<strong>{draft.data.consultantEmployeeName ?? '未选择'}</strong></span><span>草稿状态<strong>{draft.data.priceAuthorizationStatus === 'PendingApproval' ? '改价待审批' : draft.data.status}</strong></span></div><label>关联顾客<Select allowClear showSearch optionFilterProp="label" value={customerId} disabled={!editable} placeholder="可暂不识别顾客" options={customers.data?.map((item) => ({ value: item.id, label: `${item.displayName} · ${item.maskedMobile}` }))} onChange={async (value) => { setCustomerId(value); await saveDraft.mutateAsync({ customerId: value }) }} /></label><div className="modern-reception-grid"><label>来店渠道<Input value={sourceChannel} disabled={!editable} maxLength={80} placeholder="可自定义，例如朋友介绍、线上平台" onChange={(event) => setSourceChannel(event.target.value)} onBlur={() => saveDraft.mutateAsync({ sourceChannel })} /></label><label>手工票号<Input value={manualTicketNo} disabled={!editable} maxLength={80} placeholder="可选" onChange={(event) => setManualTicketNo(event.target.value)} onBlur={() => saveDraft.mutateAsync({ manualTicketNo })} /></label><label>男客人数<InputNumber min={0} max={99} value={maleGuestCount} disabled={!editable} onChange={(value) => setMaleGuestCount(Number(value ?? 0))} onBlur={() => saveDraft.mutateAsync({ maleGuestCount })} /></label><label>男客年龄段<Select allowClear options={ageBands} value={maleAgeBand} disabled={!editable || maleGuestCount === 0} onChange={setMaleAgeBand} onBlur={() => saveDraft.mutateAsync({ maleAgeBand })} /></label><label>女客人数<InputNumber min={0} max={99} value={femaleGuestCount} disabled={!editable} onChange={(value) => setFemaleGuestCount(Number(value ?? 0))} onBlur={() => saveDraft.mutateAsync({ femaleGuestCount })} /></label><label>女客年龄段<Select allowClear options={ageBands} value={femaleAgeBand} disabled={!editable || femaleGuestCount === 0} onChange={setFemaleAgeBand} onBlur={() => saveDraft.mutateAsync({ femaleAgeBand })} /></label></div><label>接待备注<Input.TextArea rows={3} value={note} disabled={!editable} maxLength={1000} showCount onChange={(event) => setNote(event.target.value)} onBlur={() => saveDraft.mutateAsync({ note })} /></label><Alert type="info" showIcon title="设施占用时长仅作运营记录；收费金额只由当前项目、产品和店长确认的成交价决定。" /></div>}
-        {tab === 'member' && <div className="modern-member-search"><div className="modern-catalog-search"><Input prefix={<SearchOutlined />} value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} placeholder="输入姓名、完整手机号或卡号自动查询" allowClear /></div><div className="modern-member-results">{customers.isFetching && <Spin size="small" />}{customers.data?.map((customer) => <button type="button" key={customer.id} className={customer.id === customerId ? 'active' : ''} disabled={!editable} onClick={async () => { setCustomerId(customer.id); await saveDraft.mutateAsync({ customerId: customer.id }); setTab('service') }}><UserOutlined /><b>{customer.displayName}</b><span>{customer.maskedMobile}</span><small>{customer.homeStoreName} · {customer.activeCardCount} 张有效卡</small></button>)}</div></div>}
-        {(tab === 'service' || tab === 'product') && <><div className="modern-catalog-search"><Select value="all" options={[{ value: 'all', label: '全部分类' }]} /><Input prefix={<SearchOutlined />} value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="输入编号或名称自动查询" allowClear /></div><div className="modern-catalog-grid">{tab === 'service' ? serviceCatalog.map((item) => <button type="button" key={item.id} disabled={!editable || saveDraft.isPending} onClick={() => addService(item)}><small>No.{item.code}</small><b>{item.name}</b><span>{money(item.priceMinor)} / {item.duration ?? '-'} 分钟</span></button>) : productCatalog.map((item) => <button type="button" key={item.id} disabled={!editable || saveDraft.isPending} onClick={() => addProduct(item)}><small>No.{item.code}</small><b>{item.name}</b><span>{money(item.priceMinor)} / 库存 {item.stock ?? '-'} {item.unitName}</span></button>)}</div></>}
+        {tab === 'main' && <div className="modern-main-order"><h2>主单信息</h2><div className="modern-order-facts"><span>消费单号<strong>{draft.data?.orderNo ?? '开始后自动生成'}</strong></span><span>接待编号<strong>{facility.visitNo ?? '开始后自动生成'}</strong></span><span>整单顾问<strong>{draft.data?.consultantEmployeeName ?? employees.data?.find((employee) => employee.id === consultantEmployeeId)?.displayName ?? '未选择'}</strong></span><span>草稿状态<strong>{isBeforeStart ? '待开始计时' : draft.data?.priceAuthorizationStatus === 'PendingApproval' ? '改价待审批' : draft.data?.status}</strong></span></div><label>关联顾客<Select allowClear showSearch optionFilterProp="label" value={customerId} disabled={!editable} placeholder="可暂不识别顾客" options={customers.data?.map((item) => ({ value: item.id, label: `${item.displayName} · ${item.maskedMobile}` }))} onChange={async (value) => { setCustomerId(value); if (!isBeforeStart) await saveDraft.mutateAsync({ customerId: value }) }} /></label><div className="modern-reception-grid"><label>来店渠道<Input value={sourceChannel} disabled={!editable} maxLength={80} placeholder="可自定义，例如朋友介绍、线上平台" onChange={(event) => setSourceChannel(event.target.value)} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ sourceChannel }) }} /></label><label>手工票号<Input value={manualTicketNo} disabled={!editable} maxLength={80} placeholder="可选" onChange={(event) => setManualTicketNo(event.target.value)} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ manualTicketNo }) }} /></label><label>男客人数<InputNumber min={0} max={99} value={maleGuestCount} disabled={!editable} onChange={(value) => setMaleGuestCount(Number(value ?? 0))} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ maleGuestCount }) }} /></label><label>男客年龄段<Select allowClear options={ageBands} value={maleAgeBand} disabled={!editable || maleGuestCount === 0} onChange={setMaleAgeBand} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ maleAgeBand }) }} /></label><label>女客人数<InputNumber min={0} max={99} value={femaleGuestCount} disabled={!editable} onChange={(value) => setFemaleGuestCount(Number(value ?? 0))} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ femaleGuestCount }) }} /></label><label>女客年龄段<Select allowClear options={ageBands} value={femaleAgeBand} disabled={!editable || femaleGuestCount === 0} onChange={setFemaleAgeBand} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ femaleAgeBand }) }} /></label></div><label>接待备注<Input.TextArea rows={3} value={note} disabled={!editable} maxLength={1000} showCount onChange={(event) => setNote(event.target.value)} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ note }) }} /></label><Alert type="info" showIcon title={isBeforeStart ? '当前尚未计时。选好顾客、项目、产品和员工后，请点击“开始计时”。' : '设施占用时长仅作运营记录；收费金额只由当前项目、产品和店长确认的成交价决定。'} /></div>}
+        {tab === 'member' && <div className="modern-member-search"><div className="modern-catalog-search"><Input prefix={<SearchOutlined />} value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} placeholder="输入姓名、完整手机号或卡号自动查询" allowClear /></div><div className="modern-member-results">{customers.isFetching && <Spin size="small" />}{customers.data?.map((customer) => <button type="button" key={customer.id} className={customer.id === customerId ? 'active' : ''} disabled={!editable} onClick={async () => { setCustomerId(customer.id); if (!isBeforeStart) await saveDraft.mutateAsync({ customerId: customer.id }); setTab('service') }}><UserOutlined /><b>{customer.displayName}</b><span>{customer.maskedMobile}</span><small>{customer.homeStoreName} · {customer.activeCardCount} 张有效卡</small></button>)}</div></div>}
+        {(tab === 'service' || tab === 'product') && <><div className="modern-catalog-search"><Select value="all" options={[{ value: 'all', label: '全部分类' }]} /><Input prefix={<SearchOutlined />} value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="输入编号或名称自动查询" allowClear /></div><div className="modern-catalog-grid">{tab === 'service' ? serviceCatalog.map((item) => <button type="button" key={item.id} disabled={!editable || saveDraft.isPending} onClick={() => addService(item)}><small>No.{item.code}</small><b>{item.name}</b><span>{money(item.priceMinor)} / {item.duration ?? '-'} 分钟</span></button>) : productCatalog.map((item) => <button type="button" key={item.id} disabled={!editable || saveDraft.isPending} onClick={() => openAddProduct(item)}><small>No.{item.code}</small><b>{item.name}</b><span>{money(item.priceMinor)} / 库存 {item.stock ?? '-'} {item.unitName}</span></button>)}</div></>}
       </section>
     </div>
     <footer className="modern-cashier-actions">
+      {isBeforeStart && <button type="button" className="is-start" disabled={startReception.isPending} onClick={() => startReception.mutate()}><PlayCircleOutlined /><span>开始</span><small>计时</small></button>}
       <button type="button" disabled={!editable} onClick={() => setEmployeeOpen(true)}><TeamOutlined /><span>整单</span><small>员工</small></button>
       <button type="button" disabled={!editable} onClick={() => setConsultantOpen(true)}><UserOutlined /><span>整单</span><small>顾问</small></button>
       <button type="button" disabled={!editable} onClick={() => { discountForm.setFieldsValue({ percent: 100, reason: '' }); setDiscountOpen(true) }}><span>整单</span><small>折扣</small></button>
-      <button type="button" disabled={serviceEnded} onClick={() => setSwitchOpen(true)}><SwapOutlined /><span>更换</span><small>房台</small></button>
-      <button type="button" disabled={!editable} onClick={() => setMergeOpen(true)}><MergeCellsOutlined /><span>合并</span><small>账单</small></button>
-      <button type="button" onClick={() => prebillMutation.mutate()}><PrinterOutlined /><span>预结</span><small>小票</small></button>
+      <button type="button" disabled={isBeforeStart || serviceEnded} onClick={() => setSwitchOpen(true)}><SwapOutlined /><span>更换</span><small>房台</small></button>
+      <button type="button" disabled={isBeforeStart || !editable} onClick={() => setMergeOpen(true)}><MergeCellsOutlined /><span>合并</span><small>账单</small></button>
+      <button type="button" disabled={isBeforeStart} onClick={() => prebillMutation.mutate()}><PrinterOutlined /><span>预结</span><small>小票</small></button>
       <button type="button" disabled={!editable} onClick={clearDraft}><DeleteOutlined /><span>删除</span><small>账单</small></button>
       {!serviceEnded && facility.status === 'IN_USE' && <button type="button" onClick={() => facilityOperation('pause')}><PauseCircleOutlined /><span>暂停</span><small>计时</small></button>}
       {!serviceEnded && facility.status === 'PAUSED' && <button type="button" onClick={() => facilityOperation('resume')}><PlayCircleOutlined /><span>继续</span><small>计时</small></button>}
-      <button type="button" disabled={serviceEnded} onClick={() => facilityOperation('end')}><span>结束</span><small>服务</small></button>
+      <button type="button" disabled={isBeforeStart || serviceEnded} onClick={() => facilityOperation('end')}><span>结束</span><small>服务</small></button>
       <button type="button" className="is-return" onClick={onExit}><span>返回</span><small>房台</small></button>
     </footer>
 
+    <Modal title={`添加产品 · ${productCatalog.find((item) => item.id === productToAddId)?.name ?? ''}`} open={Boolean(productToAddId)} onCancel={() => { setProductToAddId(undefined); setProductAddedByEmployeeId(undefined) }} onOk={() => confirmAddProduct()} okText="添加到本单" confirmLoading={saveDraft.isPending} destroyOnHidden><Alert type="info" showIcon title="添加人用于记录是谁将该产品加入本次消费，可选；后续仍可在左侧产品明细中修改。" className="modal-alert" /><label>添加人（可选）<Select allowClear showSearch optionFilterProp="label" className="full-width" value={productAddedByEmployeeId} placeholder="请选择当前门店员工" options={employees.data?.map((employee) => ({ value: employee.id, label: `${employee.displayName} · ${employee.positionName}` }))} onChange={setProductAddedByEmployeeId} /></label></Modal>
     <Modal title="整单员工" open={employeeOpen} onCancel={() => setEmployeeOpen(false)} footer={null}><div className="modern-employee-picker">{employees.data?.map((employee) => <button type="button" key={employee.id} onClick={() => assignEmployee(employee.id)}><b>{employee.displayName}</b><span>{employee.employeeNo} · {employee.positionName}</span></button>)}</div></Modal>
     <Modal title="整单顾问" open={consultantOpen} onCancel={() => setConsultantOpen(false)} footer={null}><div className="modern-employee-picker"><button type="button" onClick={() => assignConsultant(undefined)}><b>不设置顾问</b><span>清除当前整单顾问归属</span></button>{employees.data?.map((employee) => <button type="button" key={employee.id} onClick={() => assignConsultant(employee.id)}><b>{employee.displayName}</b><span>{employee.employeeNo} · {employee.positionName}</span></button>)}</div></Modal>
     <Modal title="整单折扣" open={discountOpen} onCancel={() => setDiscountOpen(false)} onOk={() => discountForm.submit()} okText="应用折扣" confirmLoading={saveDraft.isPending}><Form form={discountForm} layout="vertical" onFinish={applyDiscount}><Form.Item name="percent" label="折后比例（%）" rules={[{ required: true }, { type: 'number', min: 0, max: 100 }]}><InputNumber min={0} max={100} precision={2} className="full-width" /></Form.Item><Form.Item name="reason" label="改价原因" rules={[{ required: true, message: '请输入改价原因' }, { min: 2, max: 500 }]}><Input.TextArea rows={3} maxLength={500} /></Form.Item></Form></Modal>

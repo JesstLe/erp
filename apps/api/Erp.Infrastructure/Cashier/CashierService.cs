@@ -212,10 +212,6 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                     type == ServiceOrderLineType.Service).Select(x => x.ServiceItemId!.Value).Distinct().ToList();
             var productIds = command.Lines.Where(x => TryGetLineType(x, out var type) &&
                     type == ServiceOrderLineType.Product).Select(x => x.ProductItemId!.Value).Distinct().ToList();
-            if (command.Lines.Any(line => TryGetLineType(line, out var type) &&
-                    type == ServiceOrderLineType.Product && line.ServiceEmployeeId.HasValue))
-                return await FailureAndRollback(transaction, "VALIDATION_FAILED", "商品明细不能选择服务员工",
-                    cancellationToken);
             var items = await db.ServiceItems.Where(x => x.TenantId == tenantId && serviceIds.Contains(x.Id) &&
                 x.Status == CatalogItemStatus.Enabled).ToDictionaryAsync(x => x.Id, cancellationToken);
             if (items.Count != serviceIds.Count)
@@ -235,7 +231,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                 .ToDictionaryAsync(employee => employee.Id, cancellationToken);
             if (employees.Count != employeeIds.Count)
                 return await FailureAndRollback(transaction, "SERVICE_EMPLOYEE_NOT_ELIGIBLE",
-                    "所选服务员工不存在、已停用或不属于当前门店", cancellationToken);
+                    "所选员工不存在、已停用或不属于当前门店", cancellationToken);
             var prices = priceBook.Lines.ToDictionary(x => x.ServiceItemId, x => x.UnitPriceMinor);
             var productPrices = priceBook.ProductLines.ToDictionary(x => x.ProductItemId, x => x.UnitPriceMinor);
             if (serviceIds.Any(id => !prices.ContainsKey(id)))
@@ -294,8 +290,12 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                 }
                 var productId = line.ProductItemId!.Value;
                 var product = products[productId];
+                Employee? addedByEmployee = line.ServiceEmployeeId.HasValue
+                    ? employees[line.ServiceEmployeeId.Value]
+                    : null;
                 return ServiceOrderLineDraft.Product(productId, product.Code, product.Name, product.UnitName,
-                    line.Quantity, productPrices[productId], line.EnteredPriceMinor, line.PriceOverrideReason);
+                    line.Quantity, productPrices[productId], line.EnteredPriceMinor, line.PriceOverrideReason,
+                    addedByEmployee?.Id, addedByEmployee?.EmployeeNo, addedByEmployee?.DisplayName);
             }).ToList();
             var consultant = command.ConsultantEmployeeId.HasValue
                 ? employees[command.ConsultantEmployeeId.Value]
@@ -942,10 +942,6 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
     {
         if (commands.Count > 100 || commands.Any(line => !TryGetLineType(line, out _)))
             throw new DomainRuleException("VALIDATION_FAILED", "消费单草稿明细无效");
-        if (commands.Any(line => TryGetLineType(line, out var type) &&
-                type == ServiceOrderLineType.Product && line.ServiceEmployeeId.HasValue))
-            throw new DomainRuleException("VALIDATION_FAILED", "商品明细不能选择服务员工");
-
         PriceBook? priceBook = null;
         if (priceBookId.HasValue)
             priceBook = await db.PriceBooks.Include(x => x.Lines).Include(x => x.ProductLines)
@@ -1018,8 +1014,12 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             }
             var productId = line.ProductItemId!.Value;
             var product = products[productId];
+            Employee? addedByEmployee = line.ServiceEmployeeId.HasValue
+                ? employees[line.ServiceEmployeeId.Value]
+                : null;
             return ServiceOrderLineDraft.Product(productId, product.Code, product.Name, product.UnitName,
-                line.Quantity, productPrices[productId], line.EnteredPriceMinor, line.PriceOverrideReason);
+                line.Quantity, productPrices[productId], line.EnteredPriceMinor, line.PriceOverrideReason,
+                addedByEmployee?.Id, addedByEmployee?.EmployeeNo, addedByEmployee?.DisplayName);
         }).ToList();
         return new PreparedDraft(priceBook.Id, lines, consultantEmployeeId.HasValue
             ? employees[consultantEmployeeId.Value]
