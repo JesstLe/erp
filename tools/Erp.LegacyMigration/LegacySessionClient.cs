@@ -19,6 +19,7 @@ public sealed class LegacySessionClient : IDisposable
     private readonly LegacyEndpointPolicy _policy;
     private readonly HttpClient _client;
     private bool _carePageInitialized;
+    private readonly HashSet<string> _initializedDirectLedgerPages = new(StringComparer.Ordinal);
 
     public LegacySessionClient(LegacyEndpointPolicy policy, HttpMessageHandler? handler = null)
     {
@@ -133,7 +134,7 @@ public sealed class LegacySessionClient : IDisposable
             EnsureSuccess(pageResponse);
             var pagePayload = await ReadLimitedAsync(pageResponse.Content, MaximumHtmlBytes, cancellationToken);
             var pageHtml = Encoding.UTF8.GetString(pagePayload);
-            if (pageHtml.Contains("login/login.php", StringComparison.OrdinalIgnoreCase))
+            if (LooksLikeLoginPage(pageHtml))
             {
                 throw new LegacyMigrationException("旧系统会话已失效，护理列表导出已安全停止。");
             }
@@ -151,10 +152,28 @@ public sealed class LegacySessionClient : IDisposable
             _carePageInitialized = true;
         }
 
+        if (entity != LegacyEntityDefinition.CareRecords &&
+            entity.IncludeFullHistoryFilters &&
+            !entity.IsReport &&
+            _initializedDirectLedgerPages.Add(entity.Name))
+        {
+            var pageUri = new Uri(LegacyEndpointPolicy.Origin, entity.Path);
+            using var pageResponse = await SendAsync(HttpMethod.Get, pageUri, null, cancellationToken);
+            EnsureSuccess(pageResponse);
+            var pagePayload = await ReadLimitedAsync(pageResponse.Content, MaximumHtmlBytes, cancellationToken);
+            var pageHtml = Encoding.UTF8.GetString(pagePayload);
+            if (LooksLikeLoginPage(pageHtml))
+            {
+                throw new LegacyMigrationException("旧系统会话已失效，分页导出已安全停止。");
+            }
+        }
+
         var uri = entity.BuildPageUri(page, pageSize);
         var referrer = entity == LegacyEntityDefinition.CareRecords
             ? new Uri(LegacyEndpointPolicy.Origin, "/swshop/vip/nurse.php")
-            : null;
+            : entity.IsReport || entity.IncludeFullHistoryFilters
+                ? new Uri(LegacyEndpointPolicy.Origin, entity.Path)
+                : null;
         using var response = await SendAsync(
             HttpMethod.Get,
             uri,
@@ -174,7 +193,10 @@ public sealed class LegacySessionClient : IDisposable
         if (json.AsSpan().TrimStart().StartsWith("<", StringComparison.Ordinal) ||
             json.Contains("login/login.php", StringComparison.OrdinalIgnoreCase))
         {
-            throw new LegacyMigrationException("旧系统会话已失效，分页导出已安全停止。");
+            var hints = ExtractReadOnlyGridHints(json);
+            throw new LegacyMigrationException(hints.Length == 0
+                ? "旧系统未返回表格 JSON，分页导出已安全停止。"
+                : $"旧系统未返回表格 JSON，页面只读接口提示：{string.Join(", ", hints)}。");
         }
 
         return json;
@@ -201,6 +223,22 @@ public sealed class LegacySessionClient : IDisposable
 
         return html;
     }
+
+    private static bool LooksLikeLoginPage(string html) =>
+        html.Contains("account_user", StringComparison.OrdinalIgnoreCase) &&
+        html.Contains("account_pwd", StringComparison.OrdinalIgnoreCase) &&
+        html.Contains("check_code", StringComparison.OrdinalIgnoreCase);
+
+    private static string[] ExtractReadOnlyGridHints(string html) =>
+        Regex.Matches(
+                html,
+                "[A-Za-z0-9_./-]+\\.php\\?act=[A-Za-z0-9_-]*",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
+                TimeSpan.FromSeconds(1))
+            .Select(match => match.Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(8)
+            .ToArray();
 
     public async Task<string> GetCareRecordEditPageAsync(long sourceCareRecordId, CancellationToken cancellationToken)
     {

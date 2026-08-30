@@ -5,6 +5,30 @@ namespace Erp.LegacyMigration.Tests;
 public sealed class LegacyCustomerPhotoExportTests
 {
     [Fact]
+    public void ParsesExplicitCarePhotoExclusion()
+    {
+        var input = Path.Combine(Path.GetTempPath(), $"erp-legacy-extra-input-{Guid.NewGuid():N}");
+        var output = Path.Combine(Path.GetTempPath(), $"erp-legacy-extra-output-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(input);
+        try
+        {
+            var options = LegacyExtraExportOptions.Parse(
+            [
+                "extras",
+                "--input", input,
+                "--output", output,
+                "--skip-care-photos", "true"
+            ]);
+
+            Assert.True(options.SkipCarePhotos);
+        }
+        finally
+        {
+            Directory.Delete(input, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ResolvesRelativeLegacyPhotoAgainstMemberPage()
     {
         const string html = """
