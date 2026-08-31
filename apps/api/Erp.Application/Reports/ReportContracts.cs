@@ -29,6 +29,23 @@ public sealed record BrandStoreFinancialOverviewDto(DateOnly FromDate, DateOnly 
     long TodayRevenueMinor, long PeriodNetRevenueMinor, long StoredValueNetMinor,
     long PendingReconciliationMinor, int ChannelDifferenceCount,
     IReadOnlyList<StoreFinancialOverviewDto> Stores);
+public sealed record DashboardTrendDto(DateOnly Date, long NetRevenueMinor, int OrderCount, int VisitCount);
+public sealed record DashboardPaymentMixDto(string MethodCode, string MethodName, long AmountMinor,
+    int AllocationCount);
+public sealed record DashboardStoreSnapshotDto(Guid StoreId, string StoreCode, string StoreName,
+    long TodayRevenueMinor, long MonthRevenueMinor, long LifetimeRevenueMinor,
+    long StoredValuePrincipalBalanceMinor, long StoredValueBonusBalanceMinor,
+    long StoredValueBalanceMinor, int ActiveMemberCount, int ActiveFacilityCount,
+    long PendingReconciliationMinor, int PendingReconciliationCount, int OpenShiftCount,
+    int ReviewPendingShiftCount);
+public sealed record DashboardOverviewDto(string ScopeName, DateOnly TrendFromDate, DateOnly TrendToDate,
+    long TodayRevenueMinor, long MonthRevenueMinor, long LifetimeRevenueMinor,
+    long StoredValuePrincipalBalanceMinor, long StoredValueBonusBalanceMinor,
+    long StoredValueBalanceMinor, int ActiveMemberCount, int ActiveCustomerCount,
+    int TodayVisitCount, int TodaySettledOrderCount, int ActiveFacilityCount,
+    long PendingReconciliationMinor, int PendingReconciliationCount, int OpenShiftCount,
+    int ReviewPendingShiftCount, IReadOnlyList<DashboardTrendDto> Trend,
+    IReadOnlyList<DashboardPaymentMixDto> PaymentMix, IReadOnlyList<DashboardStoreSnapshotDto> Stores);
 
 public interface IReportService
 {
@@ -36,4 +53,6 @@ public interface IReportService
         DateOnly? toDate, CancellationToken cancellationToken);
     Task<BrandStoreFinancialOverviewDto> GetStoreOverviewAsync(Guid tenantId, DateOnly? fromDate,
         DateOnly? toDate, CancellationToken cancellationToken);
+    Task<DashboardOverviewDto> GetDashboardOverviewAsync(Guid tenantId, Guid? storeId,
+        CancellationToken cancellationToken);
 }

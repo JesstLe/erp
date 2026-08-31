@@ -1,5 +1,6 @@
 using Erp.Application.Reports;
 using Erp.Domain.Cashier;
+using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
 using Erp.Domain.Organization;
 using Erp.Infrastructure.Persistence;
@@ -281,6 +282,156 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
         return new BrandStoreFinancialOverviewDto(startDate, endDate, rows.Sum(x => x.TodayRevenueMinor),
             rows.Sum(x => x.PeriodNetRevenueMinor), rows.Sum(x => x.StoredValueNetMinor),
             rows.Sum(x => x.PendingReconciliationMinor), rows.Sum(x => x.ChannelDifferenceCount), rows);
+    }
+
+    public async Task<DashboardOverviewDto> GetDashboardOverviewAsync(Guid tenantId, Guid? storeId,
+        CancellationToken cancellationToken)
+    {
+        var stores = await db.Stores.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                x.Status == StoreStatus.Enabled && (!storeId.HasValue || x.Id == storeId.Value))
+            .OrderBy(x => x.Code).ToListAsync(cancellationToken);
+        if (stores.Count == 0)
+            throw new ArgumentException("当前经营范围没有可用门店");
+
+        var storeIds = stores.Select(x => x.Id).ToArray();
+        var zones = stores.ToDictionary(x => x.Id,
+            x => TimeZoneInfo.FindSystemTimeZoneById(x.TimeZoneId));
+        var localTodayByStore = stores.ToDictionary(x => x.Id, x => DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTime(clock.GetUtcNow(), zones[x.Id]).DateTime));
+        var referenceToday = DateOnly.FromDateTime(
+            TimeZoneInfo.ConvertTime(clock.GetUtcNow(), zones[stores[0].Id]).DateTime);
+        var trendFromDate = referenceToday.AddDays(-29);
+        var monthFromDate = new DateOnly(referenceToday.Year, referenceToday.Month, 1);
+        var financialOverview = await GetStoreOverviewAsync(tenantId, monthFromDate, referenceToday,
+            cancellationToken);
+        var financialRows = financialOverview.Stores.Where(x => storeIds.Contains(x.StoreId))
+            .ToDictionary(x => x.StoreId);
+
+        var minimumRecentUtc = stores.Min(store => ToUtc(trendFromDate, zones[store.Id]));
+        var maximumRecentUtc = stores.Max(store => ToUtc(referenceToday.AddDays(1), zones[store.Id]));
+        var recentPayments = await db.Payments.AsNoTracking().Include(x => x.Allocations).Where(x =>
+                x.TenantId == tenantId && storeIds.Contains(x.StoreId) &&
+                x.BusinessType == PaymentBusinessType.ServiceOrder &&
+                (x.Status == PaymentStatus.Paid || x.Status == PaymentStatus.PartiallyRefunded ||
+                 x.Status == PaymentStatus.Refunded) && x.PaidAtUtc >= minimumRecentUtc &&
+                x.PaidAtUtc < maximumRecentUtc)
+            .ToListAsync(cancellationToken);
+        var recentRefunds = await db.Refunds.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                storeIds.Contains(x.StoreId) && x.Status == RefundStatus.Completed &&
+                x.CompletedAtUtc >= minimumRecentUtc && x.CompletedAtUtc < maximumRecentUtc &&
+                db.Payments.Any(payment => payment.Id == x.PaymentId &&
+                    payment.BusinessType == PaymentBusinessType.ServiceOrder))
+            .Select(x => new { x.StoreId, x.AmountMinor, x.CompletedAtUtc })
+            .ToListAsync(cancellationToken);
+        var recentVisits = await db.Visits.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                storeIds.Contains(x.StoreId) && x.ArrivedAtUtc >= minimumRecentUtc &&
+                x.ArrivedAtUtc < maximumRecentUtc)
+            .Select(x => new { x.StoreId, x.ArrivedAtUtc }).ToListAsync(cancellationToken);
+
+        var paymentDays = recentPayments.Select(x => new
+        {
+            Payment = x,
+            Date = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(x.PaidAtUtc!.Value, zones[x.StoreId]).DateTime),
+        }).ToList();
+        var refundDays = recentRefunds.Select(x => new
+        {
+            x.AmountMinor,
+            Date = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(x.CompletedAtUtc!.Value,
+                zones[x.StoreId]).DateTime),
+        }).ToList();
+        var visitDays = recentVisits.Select(x => new
+        {
+            x.StoreId,
+            Date = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(x.ArrivedAtUtc,
+                zones[x.StoreId]).DateTime),
+        }).ToList();
+        var trend = Enumerable.Range(0, 30).Select(offset =>
+        {
+            var date = trendFromDate.AddDays(offset);
+            var dayPayments = paymentDays.Where(x => x.Date == date).ToList();
+            return new DashboardTrendDto(date,
+                dayPayments.Sum(x => x.Payment.PaidMinor) - refundDays.Where(x => x.Date == date)
+                    .Sum(x => x.AmountMinor), dayPayments.Count, visitDays.Count(x => x.Date == date));
+        }).ToList();
+
+        var lifetimePayments = await db.Payments.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                storeIds.Contains(x.StoreId) && x.BusinessType == PaymentBusinessType.ServiceOrder &&
+                (x.Status == PaymentStatus.Paid || x.Status == PaymentStatus.PartiallyRefunded ||
+                 x.Status == PaymentStatus.Refunded))
+            .GroupBy(x => x.StoreId).Select(group => new { StoreId = group.Key, Amount = group.Sum(x => x.PaidMinor) })
+            .ToDictionaryAsync(x => x.StoreId, x => x.Amount, cancellationToken);
+        var lifetimeRefunds = await db.Refunds.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                storeIds.Contains(x.StoreId) && x.Status == RefundStatus.Completed &&
+                db.Payments.Any(payment => payment.Id == x.PaymentId &&
+                    payment.BusinessType == PaymentBusinessType.ServiceOrder))
+            .GroupBy(x => x.StoreId).Select(group => new { StoreId = group.Key, Amount = group.Sum(x => x.AmountMinor) })
+            .ToDictionaryAsync(x => x.StoreId, x => x.Amount, cancellationToken);
+
+        var accountBalances = await (from account in db.MemberAccounts.AsNoTracking()
+            join card in db.MemberCards.AsNoTracking() on account.CardId equals card.Id
+            where account.TenantId == tenantId && storeIds.Contains(card.StoreId) &&
+                  (account.AccountType == MemberAccountType.Principal ||
+                   account.AccountType == MemberAccountType.Bonus)
+            select new { card.StoreId, account.AccountType, account.BalanceUnits })
+            .ToListAsync(cancellationToken);
+        var activeCards = await db.MemberCards.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                storeIds.Contains(x.StoreId) && x.Status == MemberCardStatus.Active)
+            .Select(x => new { x.StoreId, x.CustomerId, x.ValidTo }).ToListAsync(cancellationToken);
+        var activeCustomers = await db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                storeIds.Contains(x.HomeStoreId) && x.Status == CustomerStatus.Active)
+            .GroupBy(x => x.HomeStoreId).Select(group => new { StoreId = group.Key, Count = group.Count() })
+            .ToDictionaryAsync(x => x.StoreId, x => x.Count, cancellationToken);
+        var activeFacilities = await db.FacilitySessions.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                storeIds.Contains(x.StoreId) &&
+                (x.Status == FacilitySessionStatus.Active || x.Status == FacilitySessionStatus.Paused))
+            .Select(x => new { x.StoreId, x.FacilityId }).Distinct().ToListAsync(cancellationToken);
+
+        var storeSnapshots = stores.Select(store =>
+        {
+            var financial = financialRows[store.Id];
+            var balances = accountBalances.Where(x => x.StoreId == store.Id).ToList();
+            var principal = balances.Where(x => x.AccountType == MemberAccountType.Principal)
+                .Sum(x => x.BalanceUnits);
+            var bonus = balances.Where(x => x.AccountType == MemberAccountType.Bonus)
+                .Sum(x => x.BalanceUnits);
+            var localToday = financial.LocalDate;
+            var memberCount = activeCards.Where(x => x.StoreId == store.Id &&
+                    (!x.ValidTo.HasValue || x.ValidTo.Value >= localToday))
+                .Select(x => x.CustomerId).Distinct().Count();
+            var lifetime = lifetimePayments.GetValueOrDefault(store.Id) -
+                           lifetimeRefunds.GetValueOrDefault(store.Id);
+            return new DashboardStoreSnapshotDto(store.Id, store.Code, store.Name,
+                financial.TodayRevenueMinor, financial.PeriodNetRevenueMinor, lifetime,
+                principal, bonus, checked(principal + bonus), memberCount,
+                activeFacilities.Count(x => x.StoreId == store.Id), financial.PendingReconciliationMinor,
+                financial.PendingReconciliationCount, financial.OpenShiftCount,
+                financial.ReviewPendingShiftCount);
+        }).ToList();
+
+        var paymentMix = paymentDays.Where(x => x.Date >= trendFromDate && x.Date <= referenceToday)
+            .SelectMany(x => x.Payment.Allocations).GroupBy(x => new
+            {
+                x.MethodCodeSnapshot,
+                x.MethodNameSnapshot,
+            }).Select(group => new DashboardPaymentMixDto(group.Key.MethodCodeSnapshot,
+                group.Key.MethodNameSnapshot, group.Sum(x => x.AmountMinor), group.Count()))
+            .OrderByDescending(x => x.AmountMinor).ToList();
+        var principalBalance = storeSnapshots.Sum(x => x.StoredValuePrincipalBalanceMinor);
+        var bonusBalance = storeSnapshots.Sum(x => x.StoredValueBonusBalanceMinor);
+        var todaySettledOrders = paymentDays.Count(x => x.Date == localTodayByStore[x.Payment.StoreId]);
+        var todayVisits = visitDays.Count(x => x.Date == localTodayByStore[x.StoreId]);
+        var scopeName = stores.Count == 1 ? stores[0].Name : $"全部门店（{stores.Count} 家）";
+
+        return new DashboardOverviewDto(scopeName, trendFromDate, referenceToday,
+            storeSnapshots.Sum(x => x.TodayRevenueMinor), storeSnapshots.Sum(x => x.MonthRevenueMinor),
+            storeSnapshots.Sum(x => x.LifetimeRevenueMinor), principalBalance, bonusBalance,
+            checked(principalBalance + bonusBalance), storeSnapshots.Sum(x => x.ActiveMemberCount),
+            activeCustomers.Values.Sum(), todayVisits, todaySettledOrders,
+            storeSnapshots.Sum(x => x.ActiveFacilityCount),
+            storeSnapshots.Sum(x => x.PendingReconciliationMinor),
+            storeSnapshots.Sum(x => x.PendingReconciliationCount),
+            storeSnapshots.Sum(x => x.OpenShiftCount), storeSnapshots.Sum(x => x.ReviewPendingShiftCount),
+            trend, paymentMix, storeSnapshots);
     }
 
     private static long AllocateRefundDeduction(long commissionMinor, long refundedMinor, long receivableMinor)

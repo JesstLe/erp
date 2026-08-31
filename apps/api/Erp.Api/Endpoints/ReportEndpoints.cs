@@ -43,6 +43,26 @@ public static class ReportEndpoints
             }
         });
 
+        group.MapGet("/dashboard-overview", async (Guid? storeId, IIdentityService identity,
+            IReportService reports, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            var isOwner = current.Roles.Contains(SystemRoles.Owner, StringComparer.OrdinalIgnoreCase);
+            if (!storeId.HasValue && !isOwner) return Results.Forbid();
+            if (storeId.HasValue && !current.Stores.Any(x => x.Id == storeId.Value)) return Results.Forbid();
+            try
+            {
+                return Results.Ok(await reports.GetDashboardOverviewAsync(current.TenantId,
+                    isOwner ? storeId : storeId!.Value, cancellationToken));
+            }
+            catch (ArgumentException exception)
+            {
+                return EndpointResults.From(Erp.Application.Common.ResultFactory.Failure<object>(
+                    "VALIDATION_FAILED", exception.Message));
+            }
+        });
+
         return endpoints;
     }
 }
