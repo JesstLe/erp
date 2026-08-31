@@ -167,6 +167,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
 .modern-bill-lines article header button { margin-left: auto; }
 .modern-line-meta { display: flex; gap: 16px; margin-top: 6px; color: #758491; font-size: 11px; }
 .modern-line-meta strong { margin-left: auto; color: #263746; }
+.modern-price-override-reason { display: grid; grid-template-columns: 72px minmax(0, 1fr); align-items: center; gap: 8px; margin-top: 8px; color: #a05a00; font-size: 12px; }
+.modern-price-override-reason .ant-input { border-color: #ffd591; background: #fffaf0; }
 .modern-line-edit { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
 .modern-line-edit label { display: flex; align-items: center; gap: 5px; color: #657481; font-size: 11px; }
 .modern-line-edit label em { color: #7c8994; font-style: normal; }
@@ -213,7 +215,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
 .modern-prebill h2 { text-align: center; }
 .modern-prebill > div { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px dashed #cfd9dc; }
 .modern-prebill footer { display: flex; justify-content: flex-end; gap: 18px; padding-top: 18px; font-size: 17px; }
-.payment-more-button { margin: -10px 0 18px; }
 .modern-settlement-result { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
 .modern-settlement-result span { display: flex; flex-direction: column; gap: 5px; padding: 12px; border-radius: 10px; background: #f6f9f9; color: #74818b; font-size: 12px; }
 .modern-settlement-result strong { color: #1f2f3d; font-size: 15px; }

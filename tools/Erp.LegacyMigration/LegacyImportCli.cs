@@ -67,7 +67,8 @@ public sealed record LegacyImportOptions(
     IReadOnlyList<string> InputDirectories,
     string TenantCode,
     bool Apply,
-    string ImportVersion)
+    string ImportVersion,
+    IReadOnlyDictionary<string, string>? StoreMappings = null)
 {
     public static LegacyImportOptions Parse(string[] args)
     {
@@ -77,6 +78,7 @@ public sealed record LegacyImportOptions(
         string? tenant = null;
         var apply = false;
         var version = "legacy-import-v1";
+        var storeMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (var index = 1; index < args.Length; index++)
         {
             switch (args[index])
@@ -84,6 +86,16 @@ public sealed record LegacyImportOptions(
                 case "--input": inputs.Add(Next(args, ref index)); break;
                 case "--tenant": tenant = Next(args, ref index).ToUpperInvariant(); break;
                 case "--version": version = Next(args, ref index); break;
+                case "--store-map":
+                {
+                    var mapping = Next(args, ref index).Split('=', 2, StringSplitOptions.TrimEntries);
+                    if (mapping.Length != 2 || mapping[0].Length is < 1 or > 160 ||
+                        mapping[1].Length is < 1 or > 32 || mapping[0].Any(char.IsControl) ||
+                        mapping[1].Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_')) ||
+                        !storeMappings.TryAdd(mapping[0], mapping[1].ToUpperInvariant()))
+                        throw new LegacyMigrationException("门店映射必须使用唯一的 来源门店ID=目标门店编码。");
+                    break;
+                }
                 case "--apply": apply = true; break;
                 default: throw new LegacyMigrationException($"不支持的导入参数：{args[index]}");
             }
@@ -99,7 +111,7 @@ public sealed record LegacyImportOptions(
         }).Distinct(StringComparer.Ordinal).ToArray();
         if (version.Length is < 3 or > 40 || version.Any(char.IsControl))
             throw new LegacyMigrationException("导入版本格式无效。");
-        return new LegacyImportOptions(fullInputs, tenant, apply, version);
+        return new LegacyImportOptions(fullInputs, tenant, apply, version, storeMappings);
     }
 
     private static string Next(string[] args, ref int index)
@@ -183,9 +195,13 @@ public sealed class LegacyImportDatasetLoader(EncryptedPayloadStore payloadStore
 
             ValidatePhotoRelationships(rows, photos, carePhotos);
             var fingerprint = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(
-                string.Join('\n', fingerprintParts.Order(StringComparer.Ordinal)))));
+                string.Join('\n', fingerprintParts
+                    .Concat((options.StoreMappings ?? new Dictionary<string, string>())
+                        .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+                        .Select(item => $"store-map:{item.Key}:{item.Value}"))
+                    .Order(StringComparer.Ordinal)))));
             return new LegacyImportDataset(options.TenantCode, "siweicloud-swshop", fingerprint,
-                options.ImportVersion, rows, photos, carePhotos);
+                options.ImportVersion, rows, photos, carePhotos, options.StoreMappings);
         }
         catch
         {

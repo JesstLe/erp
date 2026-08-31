@@ -27,7 +27,8 @@ public sealed record LegacyImportDataset(
     string ImportVersion,
     IReadOnlyList<LegacySourceRow> Rows,
     IReadOnlyList<LegacySourcePhoto> Photos,
-    IReadOnlyList<LegacySourceCarePhoto>? CarePhotos = null);
+    IReadOnlyList<LegacySourceCarePhoto>? CarePhotos = null,
+    IReadOnlyDictionary<string, string>? StoreSourceToTargetCodes = null);
 
 public sealed record LegacyImportCommand(LegacyImportDataset Dataset, bool DryRun);
 

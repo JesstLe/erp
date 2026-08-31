@@ -103,6 +103,28 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task LegacyImportDryRunMapsSourceStoreToExistingCanonicalStore()
+    {
+        static LegacySourceRow Row(string entity, string id, params (string Key, string? Value)[] fields) =>
+            new(entity, id, new string('f', 64),
+                fields.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal));
+        var dataset = new LegacyImportDataset(
+            "B01", "integration-legacy-store-map", new string('1', 64), "integration-v1",
+            [
+                Row("stores", "901", ("shop_code", "901"), ("shop_name", "旧系统总店")),
+                Row("customers", "906", ("member_name", "旧系统映射顾客"),
+                    ("member_hand", "13900001113"), ("member_shop", "旧系统总店")),
+            ], [], StoreSourceToTargetCodes: new Dictionary<string, string> { ["901"] = "S01" });
+
+        var result = await fixture.RunLegacyImportAsync(new LegacyImportCommand(dataset, DryRun: true));
+
+        Assert.Equal(1, result.Created["store-mappings"]);
+        Assert.Equal(1, result.Created["customers"]);
+        Assert.False(result.Created.ContainsKey("stores"));
+        Assert.Equal(0, await fixture.CountLegacyRunsAsync("integration-legacy-store-map"));
+    }
+
+    [Fact]
     public async Task CoreStoreFlowRunsThroughRealHttpApiAndPostgreSql()
     {
         var client = fixture.Client;

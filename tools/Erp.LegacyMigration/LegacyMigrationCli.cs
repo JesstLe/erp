@@ -24,6 +24,11 @@ public static class LegacyMigrationCli
             return await LegacyImportCli.RunAsync(args, output, cancellationToken);
         }
 
+        if (args.Length > 0 && string.Equals(args[0], "store-plan", StringComparison.Ordinal))
+        {
+            return await LegacyStoreAttributionPlanCli.RunAsync(args, output, cancellationToken);
+        }
+
         try
         {
             var options = LegacyCliOptions.Parse(args);
