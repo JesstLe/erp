@@ -70,6 +70,17 @@ public sealed class Customer : Entity
         Touch();
     }
 
+    public void ChangeHomeStore(Guid homeStoreId)
+    {
+        if (Status == CustomerStatus.Merged)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "已合并顾客档案不能再修改归属门店");
+        if (homeStoreId == Guid.Empty)
+            throw new DomainRuleException("VALIDATION_FAILED", "顾客归属门店无效");
+        if (HomeStoreId == homeStoreId) return;
+        HomeStoreId = homeStoreId;
+        Touch();
+    }
+
     public void Disable()
     {
         if (Status != CustomerStatus.Active)

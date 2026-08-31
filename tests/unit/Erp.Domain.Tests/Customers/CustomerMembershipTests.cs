@@ -5,6 +5,20 @@ namespace Erp.Domain.Tests.Customers;
 
 public sealed class CustomerMembershipTests
 {
+    [Fact]
+    public void CustomerHomeStoreCanBeCorrectedWithoutChangingIdentity()
+    {
+        var originalStoreId = Guid.CreateVersion7();
+        var correctedStoreId = Guid.CreateVersion7();
+        var customer = new Customer(TenantId, originalStoreId, "测试顾客", "ciphertext",
+            new byte[32], "8000", CustomerGender.Unknown, null, null, false, false,
+            new DateOnly(2026, 8, 31));
+
+        customer.ChangeHomeStore(correctedStoreId);
+
+        Assert.Equal(correctedStoreId, customer.HomeStoreId);
+    }
+
     private static readonly Guid TenantId = Guid.CreateVersion7();
     private static readonly Guid StoreId = Guid.CreateVersion7();
 
