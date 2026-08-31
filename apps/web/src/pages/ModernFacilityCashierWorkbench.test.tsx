@@ -4,7 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildManualPaymentReference, ModernFacilityCashierWorkbench } from './ModernFacilityCashierWorkbench'
+import { ModernFacilityCashierWorkbench } from './ModernFacilityCashierWorkbench'
+import { buildManualPaymentReference } from './modernFacilityCashierPayments'
 
 const apiRequestMock = vi.hoisted(() => vi.fn())
 vi.mock('../api/client', () => ({

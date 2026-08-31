@@ -45,6 +45,7 @@ import {
   type ClassicCashierDraftLine,
 } from '../classic/classicCashierRules'
 import { createSerialTaskQueue, retryVersionConflictOnce } from './modernFacilityCashierConcurrency'
+import { buildManualPaymentReference } from './modernFacilityCashierPayments'
 
 type WorkbenchTab = 'main' | 'member' | 'service' | 'product'
 interface DiscountValues { percent: number; reason: string }
@@ -79,12 +80,6 @@ function duration(seconds: number) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
 }
 function requestError(error: unknown) { return error instanceof ApiError ? error.message : error instanceof Error ? error.message : '操作失败，请稍后重试' }
-export function buildManualPaymentReference(methodCode: string, reference?: string, groupBuyPlatform?: string) {
-  const normalizedReference = reference?.trim() ?? ''
-  return methodCode === 'GROUP_BUY_MANUAL'
-    ? `${groupBuyPlatform?.trim() ?? ''}:${normalizedReference}`
-    : normalizedReference
-}
 
 function fromOrder(order: ServiceOrder): ClassicCashierDraftLine[] {
   return order.lines.map((line) => ({
