@@ -245,8 +245,14 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
         catch (DbUpdateException exception) when (IsUniqueViolation(exception)) { return ResultFactory.Failure<FacilityConfigurationItemDto>("DUPLICATE_FACILITY_CODE", "同一门店的服务位编号不能重复"); }
     }
 
-    public Task<Result<FacilityBoardItemDto>> StartAsync(Guid tenantId, StartFacilitySessionCommand command, CancellationToken cancellationToken) =>
-        ExecuteAsync(tenantId, command.StoreId, command.CommandId, command.OperatorId,
+    public Task<Result<FacilityBoardItemDto>> StartAsync(Guid tenantId, StartFacilitySessionCommand command,
+        CancellationToken cancellationToken)
+    {
+        if (command.ExpectedDurationMinutes is <= 0 or > 1440)
+            return Task.FromResult(ResultFactory.Failure<FacilityBoardItemDto>("VALIDATION_FAILED",
+                "预计时长必须为1至1440分钟"));
+
+        return ExecuteAsync(tenantId, command.StoreId, command.CommandId, command.OperatorId,
             $"START|{command.StoreId}|{command.FacilityId}|{command.CustomerId}|{command.PlannedServiceItemId}|{command.ExpectedDurationMinutes}|{command.Note}", command.FacilityId,
             async now =>
             {
@@ -288,6 +294,7 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
                     JsonSerializer.Serialize(new { VisitId = visit.Id, visit.CustomerId, visit.PlannedServiceItemId }));
                 return ResultFactory.Success(facility.Id);
             }, cancellationToken);
+    }
 
     public Task<Result<FacilityBoardItemDto>> PauseAsync(Guid tenantId, OperateFacilitySessionCommand command, CancellationToken cancellationToken) =>
         OperateSessionAsync(tenantId, command, "PAUSE", "facility.session.pause", (session, now) => session.Pause(now, command.OperatorId, command.CommandId), cancellationToken);
@@ -410,6 +417,11 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return await GetItemAsync(tenantId, storeId, facilityId, cancellationToken);
+        }
+        catch (DomainRuleException exception)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<FacilityBoardItemDto>(exception.Code, exception.Message);
         }
         catch (DbUpdateConcurrencyException)
         {
