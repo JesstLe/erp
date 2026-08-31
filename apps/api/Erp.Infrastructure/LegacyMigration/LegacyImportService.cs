@@ -334,6 +334,11 @@ internal sealed partial class LegacyImportService(
                 if (reconcilesExistingCustomer)
                 {
                     customer = existingCustomer!;
+                    customer.ChangeHomeStore(homeStoreId);
+                    customer.UpdateProfile(name, protectedMobile.Ciphertext, protectedMobile.LookupHash,
+                        protectedMobile.LastFour, ParseGender(Field(row, "member_sex")), birthDate,
+                        CleanCode(Field(row, "member_source"), 40), false, false,
+                        DateOnly.FromDateTime(DateTime.UtcNow));
                     await AddMapAsync(runId, tenant.Id, row, "customers", customer.Id, maps, cancellationToken);
                     Increment(created, "customer-mappings");
                 }
