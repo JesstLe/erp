@@ -9,6 +9,8 @@ import type { NotificationInbox } from '../api/types'
 import { Permission, type PermissionCode } from '../security/permissions'
 import { useAuthorization } from '../security/useAuthorization'
 import { BrandLogo } from '../components/BrandLogo'
+import { defaultNavigationLabels, resolveNavigationLabel } from '../navigationLabels'
+import type { NavigationLabels } from '../api/types'
 
 const { Header, Sider, Content } = Layout
 const appVersion = import.meta.env.VITE_APP_VERSION?.trim() || '0.0.0-local'
@@ -16,40 +18,42 @@ const deploymentEnvironment = import.meta.env.VITE_APP_ENVIRONMENT?.trim() || 'L
 const environmentLabel = deploymentEnvironment.toLowerCase() === 'production' ? '生产' : deploymentEnvironment.toLowerCase() === 'staging' ? '预发布' : '本地开发'
 interface AuthorizedMenuItem { key: string; icon: ReactNode; label: string; permission: PermissionCode }
 const operationMenuItems: AuthorizedMenuItem[] = [
-  { key: '/', icon: <AppstoreOutlined />, label: '经营工作台', permission: Permission.DashboardRead },
-  { key: '/facilities', icon: <ClockCircleOutlined />, label: '设施接待', permission: Permission.FacilityOperate },
-  { key: '/scheduling', icon: <CalendarOutlined />, label: '预约与排班', permission: Permission.SchedulingOperate },
-  { key: '/customers', icon: <TeamOutlined />, label: '顾客与会员', permission: Permission.CustomerRead },
-  { key: '/cashier', icon: <PayCircleOutlined />, label: '服务录单与收银', permission: Permission.CashierCheckout },
-  { key: '/inventory', icon: <InboxOutlined />, label: '商品库存', permission: Permission.InventoryRead },
-  { key: '/supply-chain', icon: <TruckOutlined />, label: '采购与供应链', permission: Permission.SupplyChainRead },
+  { key: '/', icon: <AppstoreOutlined />, label: defaultNavigationLabels['/'], permission: Permission.DashboardRead },
+  { key: '/facilities', icon: <ClockCircleOutlined />, label: defaultNavigationLabels['/facilities'], permission: Permission.FacilityOperate },
+  { key: '/scheduling', icon: <CalendarOutlined />, label: defaultNavigationLabels['/scheduling'], permission: Permission.SchedulingOperate },
+  { key: '/customers', icon: <TeamOutlined />, label: defaultNavigationLabels['/customers'], permission: Permission.CustomerRead },
+  { key: '/cashier', icon: <PayCircleOutlined />, label: defaultNavigationLabels['/cashier'], permission: Permission.CashierCheckout },
+  { key: '/inventory', icon: <InboxOutlined />, label: defaultNavigationLabels['/inventory'], permission: Permission.InventoryRead },
+  { key: '/supply-chain', icon: <TruckOutlined />, label: defaultNavigationLabels['/supply-chain'], permission: Permission.SupplyChainRead },
 ]
 const managementMenuItems: AuthorizedMenuItem[] = [
-  { key: '/catalog/items', icon: <ProfileOutlined />, label: '服务项目', permission: Permission.CatalogRead },
-  { key: '/catalog/products', icon: <ShoppingOutlined />, label: '产品目录', permission: Permission.CatalogRead },
-  { key: '/catalog/prices', icon: <TagsOutlined />, label: '价格管理', permission: Permission.CatalogRead },
-  { key: '/reports', icon: <BarChartOutlined />, label: '经营报表', permission: Permission.ReportRead },
-  { key: '/audit', icon: <AuditOutlined />, label: '审计记录', permission: Permission.AuditRead },
+  { key: '/catalog/items', icon: <ProfileOutlined />, label: defaultNavigationLabels['/catalog/items'], permission: Permission.CatalogRead },
+  { key: '/catalog/products', icon: <ShoppingOutlined />, label: defaultNavigationLabels['/catalog/products'], permission: Permission.CatalogRead },
+  { key: '/catalog/prices', icon: <TagsOutlined />, label: defaultNavigationLabels['/catalog/prices'], permission: Permission.CatalogRead },
+  { key: '/reports', icon: <BarChartOutlined />, label: defaultNavigationLabels['/reports'], permission: Permission.ReportRead },
+  { key: '/audit', icon: <AuditOutlined />, label: defaultNavigationLabels['/audit'], permission: Permission.AuditRead },
 ]
 
 export function AppLayout() {
   const [collapsed, setCollapsed] = useState(false)
   const auth = useAuth(); const navigate = useNavigate(); const location = useLocation()
   const { can } = useAuthorization()
+  const navigationLabels = useQuery({ queryKey: ['navigation-labels'], queryFn: () => apiRequest<NavigationLabels>('/api/v1/navigation/labels'), staleTime: 60_000 })
+  const named = (item: Omit<AuthorizedMenuItem, 'permission'>) => ({ ...item, label: resolveNavigationLabel(item.key, navigationLabels.data?.labels) })
   const visibleOperationItems = operationMenuItems.filter((item) => can(item.permission))
   const visibleManagementItems = managementMenuItems.filter((item) => can(item.permission))
   const visibleBaseItems: NonNullable<MenuProps['items']> = [
-    ...visibleOperationItems.map(({ permission: _, ...item }) => item),
+    ...visibleOperationItems.map(({ permission: _, ...item }) => named(item)),
     ...(visibleOperationItems.length && visibleManagementItems.length ? [{ type: 'divider' as const }] : []),
-    ...visibleManagementItems.map(({ permission: _, ...item }) => item),
+    ...visibleManagementItems.map(({ permission: _, ...item }) => named(item)),
   ]
   const notifications = useQuery({ queryKey: ['notifications', auth.store?.id], enabled: Boolean(auth.store?.id), queryFn: () => apiRequest<NotificationInbox>(`/api/v1/notifications?storeId=${auth.store?.id}`), refetchInterval: 30_000 })
   const menuItems: MenuProps['items'] = [
     ...visibleBaseItems,
-    ...(can(Permission.FacilityConfigure) ? [{ key: '/settings/facilities', icon: <ControlOutlined />, label: '门店设施配置' }] : []),
-    ...(can(Permission.OrganizationManage) ? [{ key: '/settings/organization', icon: <BankOutlined />, label: '品牌与门店' }] : []),
-    ...(can(Permission.EmployeeManage) ? [{ key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: '员工与权限' }] : []),
-    ...(can(Permission.PaymentChannelManage) ? [{ key: '/settings/payment-channels', icon: <CreditCardOutlined />, label: '支付渠道配置' }] : []),
+    ...(can(Permission.FacilityConfigure) ? [named({ key: '/settings/facilities', icon: <ControlOutlined />, label: defaultNavigationLabels['/settings/facilities'] })] : []),
+    ...(can(Permission.OrganizationManage) ? [named({ key: '/settings/organization', icon: <BankOutlined />, label: defaultNavigationLabels['/settings/organization'] })] : []),
+    ...(can(Permission.EmployeeManage) ? [named({ key: '/settings/employees', icon: <SafetyCertificateOutlined />, label: defaultNavigationLabels['/settings/employees'] })] : []),
+    ...(can(Permission.PaymentChannelManage) ? [named({ key: '/settings/payment-channels', icon: <CreditCardOutlined />, label: defaultNavigationLabels['/settings/payment-channels'] })] : []),
   ]
   const settingsItems: MenuProps['items'] = [
     ...(can(Permission.FacilityConfigure) ? [{ key: '/settings/facilities', icon: <ControlOutlined />, label: '门店设施配置' }] : []),

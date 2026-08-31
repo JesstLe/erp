@@ -21,6 +21,8 @@ public sealed class Tenant : Entity
 
     public string Name { get; private set; } = string.Empty;
 
+    public string NavigationLabelsJson { get; private set; } = "{}";
+
     public TenantStatus Status { get; private set; }
 
     public void UpdateProfile(string code, string name)
@@ -38,6 +40,12 @@ public sealed class Tenant : Entity
     public void ChangeStatus(bool enable)
     {
         Status = enable ? TenantStatus.Enabled : TenantStatus.Disabled;
+        Touch();
+    }
+
+    public void UpdateNavigationLabels(string navigationLabelsJson)
+    {
+        NavigationLabelsJson = Require(navigationLabelsJson, 4000, nameof(navigationLabelsJson));
         Touch();
     }
 

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ModernFacilityCashierWorkbench } from './ModernFacilityCashierWorkbench'
+import { buildManualPaymentReference, ModernFacilityCashierWorkbench } from './ModernFacilityCashierWorkbench'
 
 const apiRequestMock = vi.hoisted(() => vi.fn())
 vi.mock('../api/client', () => ({
@@ -58,5 +58,10 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     fireEvent.click(await screen.findByRole('button', { name: /护理用品/ }))
     expect(await screen.findByText('添加人（可选）')).toBeTruthy()
     expect(screen.getByText(/用于记录是谁将该产品加入本次消费/)).toBeTruthy()
+  })
+
+  it('keeps an auditable external reference for manual and group-buy settlement', () => {
+    expect(buildManualPaymentReference('BANK_CARD_MANUAL', '  BANK-2026-0001  ')).toBe('BANK-2026-0001')
+    expect(buildManualPaymentReference('GROUP_BUY_MANUAL', ' DY-889900 ', '抖音')).toBe('抖音:DY-889900')
   })
 })

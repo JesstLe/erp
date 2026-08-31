@@ -151,7 +151,9 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
             dbContext.PaymentMethods.AddRange(
                 new PaymentMethod(tenant.Id, "CASH", "现金", PaymentMethodCategory.Cash, true),
                 new PaymentMethod(tenant.Id, "WECHAT_MANUAL", "微信人工登记", PaymentMethodCategory.ManualExternal, true),
-                new PaymentMethod(tenant.Id, "ALIPAY_MANUAL", "支付宝人工登记", PaymentMethodCategory.ManualExternal, true));
+                new PaymentMethod(tenant.Id, "ALIPAY_MANUAL", "支付宝人工登记", PaymentMethodCategory.ManualExternal, true),
+                new PaymentMethod(tenant.Id, "BANK_CARD_MANUAL", "银行卡人工登记", PaymentMethodCategory.ManualExternal, true),
+                new PaymentMethod(tenant.Id, "GROUP_BUY_MANUAL", "团购平台核销", PaymentMethodCategory.ManualExternal, true));
         }
 
         if (!await dbContext.PaymentMethods.AnyAsync(x => x.TenantId == tenant.Id &&

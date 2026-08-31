@@ -9,6 +9,7 @@ public sealed record StoreProfileDto(Guid Id, string Code, string Name, string T
     int EnabledFacilityCount, uint Version);
 
 public sealed record OrganizationSettingsDto(BrandProfileDto Brand, IReadOnlyList<StoreProfileDto> Stores);
+public sealed record NavigationLabelsDto(IReadOnlyDictionary<string, string> Labels, uint Version);
 
 public sealed record UpdateBrandProfileCommand(string Code, string Name, uint ExpectedVersion, Guid OperatorId);
 public sealed record CreateStoreCommand(string Name, string TimeZoneId, Guid OperatorId);
@@ -16,6 +17,8 @@ public sealed record UpdateStoreCommand(Guid StoreId, string Code, string Name, 
     uint ExpectedVersion, Guid OperatorId);
 public sealed record ChangeStoreStatusCommand(Guid StoreId, bool Enable, string Reason, uint ExpectedVersion,
     Guid OperatorId);
+public sealed record UpdateNavigationLabelsCommand(IReadOnlyDictionary<string, string> Labels,
+    uint ExpectedVersion, Guid OperatorId);
 
 public interface IOrganizationService
 {
@@ -28,4 +31,7 @@ public interface IOrganizationService
         CancellationToken cancellationToken);
     Task<Result<StoreProfileDto>> ChangeStoreStatusAsync(Guid tenantId, ChangeStoreStatusCommand command,
         CancellationToken cancellationToken);
+    Task<NavigationLabelsDto?> GetNavigationLabelsAsync(Guid tenantId, CancellationToken cancellationToken);
+    Task<Result<NavigationLabelsDto>> UpdateNavigationLabelsAsync(Guid tenantId,
+        UpdateNavigationLabelsCommand command, CancellationToken cancellationToken);
 }

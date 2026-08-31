@@ -151,6 +151,8 @@ public sealed partial class ProductionBootstrapper(ErpDbContext db, UserManager<
             new PaymentMethod(tenantId, "CASH", "现金", PaymentMethodCategory.Cash, true),
             new PaymentMethod(tenantId, "WECHAT_MANUAL", "微信人工登记", PaymentMethodCategory.ManualExternal, true),
             new PaymentMethod(tenantId, "ALIPAY_MANUAL", "支付宝人工登记", PaymentMethodCategory.ManualExternal, true),
+            new PaymentMethod(tenantId, "BANK_CARD_MANUAL", "银行卡人工登记", PaymentMethodCategory.ManualExternal, true),
+            new PaymentMethod(tenantId, "GROUP_BUY_MANUAL", "团购平台核销", PaymentMethodCategory.ManualExternal, true),
             new PaymentMethod(tenantId, "MEMBER_PRINCIPAL", "会员储值本金",
                 PaymentMethodCategory.InternalAccount, false, MemberAccountType.Principal),
             new PaymentMethod(tenantId, "MEMBER_BONUS", "会员奖励金",

@@ -213,6 +213,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
 .modern-prebill h2 { text-align: center; }
 .modern-prebill > div { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px dashed #cfd9dc; }
 .modern-prebill footer { display: flex; justify-content: flex-end; gap: 18px; padding-top: 18px; font-size: 17px; }
+.payment-more-button { margin: -10px 0 18px; }
+.modern-settlement-result { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+.modern-settlement-result span { display: flex; flex-direction: column; gap: 5px; padding: 12px; border-radius: 10px; background: #f6f9f9; color: #74818b; font-size: 12px; }
+.modern-settlement-result strong { color: #1f2f3d; font-size: 15px; }
+.navigation-label-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0 18px; max-height: 58vh; overflow-y: auto; padding-right: 6px; }
 .customer-search { width: min(680px, 100%); }
 .customer-avatar { width: 32px; height: 32px; border-radius: 10px; display: inline-grid; place-items: center; color: #2563eb; background: #eff6ff; }
 .clickable-row { cursor: pointer; }
@@ -303,7 +308,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
   .page-heading, .welcome-strip { align-items: flex-start; flex-direction: column; }
   .cashier-metrics, .flow-steps { grid-template-columns: 1fr; }
   .shift-strip > .ant-card-body > div, .refund-review-row { align-items: flex-start; flex-wrap: wrap; }
-  .order-line-fields, .payment-line-fields, .employee-form-grid { grid-template-columns: 1fr; }
+  .order-line-fields, .payment-line-fields, .employee-form-grid, .navigation-label-form { grid-template-columns: 1fr; }
   .account-grid { grid-template-columns: 1fr; }
   .login-shell { grid-template-columns: 1fr; overflow: auto; }
   .login-art-panel { display: none; }
