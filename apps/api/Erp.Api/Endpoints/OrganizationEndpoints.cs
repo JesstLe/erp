@@ -57,7 +57,7 @@ public static class OrganizationEndpoints
             var current = await identity.GetCurrentAsync(cancellationToken);
             return current is null ? Results.Unauthorized() : EndpointResults.From(await organization.CreateStoreAsync(
                 current.TenantId, new CreateStoreCommand(request.Name ?? string.Empty,
-                    request.TimeZoneId ?? string.Empty, current.Id), cancellationToken));
+                    request.TimeZoneId ?? string.Empty, request.Address, current.Id), cancellationToken));
         });
 
         group.MapPut("/stores/{storeId:guid}", async (Guid storeId, StoreProfileRequest request,
@@ -66,7 +66,8 @@ public static class OrganizationEndpoints
             var current = await identity.GetCurrentAsync(cancellationToken);
             return current is null ? Results.Unauthorized() : EndpointResults.From(await organization.UpdateStoreAsync(
                 current.TenantId, new UpdateStoreCommand(storeId, request.Code ?? string.Empty,
-                    request.Name ?? string.Empty, request.TimeZoneId ?? string.Empty, request.ExpectedVersion,
+                    request.Name ?? string.Empty, request.TimeZoneId ?? string.Empty, request.Address,
+                    request.ExpectedVersion,
                     current.Id), cancellationToken));
         });
 
@@ -84,7 +85,8 @@ public static class OrganizationEndpoints
     }
 
     private sealed record UpdateBrandRequest(string? Code, string? Name, uint ExpectedVersion);
-    private sealed record StoreProfileRequest(string? Code, string? Name, string? TimeZoneId, uint ExpectedVersion);
+    private sealed record StoreProfileRequest(string? Code, string? Name, string? TimeZoneId, string? Address,
+        uint ExpectedVersion);
     private sealed record ChangeStoreStatusRequest(bool Enable, string? Reason, uint ExpectedVersion);
     private sealed record NavigationLabelsRequest(Dictionary<string, string>? Labels, uint ExpectedVersion);
 }

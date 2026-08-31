@@ -31,10 +31,10 @@ public sealed class DevelopmentSeeder(ErpDbContext dbContext, UserManager<Applic
             await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        var store = await dbContext.Stores.SingleOrDefaultAsync(x => x.TenantId == tenant.Id && x.Code == "S01", cancellationToken);
+        var store = await dbContext.Stores.SingleOrDefaultAsync(x => x.TenantId == tenant.Id && x.Code == "S001", cancellationToken);
         if (store is null)
         {
-            store = new Store(tenant.Id, "S01", "演示门店");
+            store = new Store(tenant.Id, "S001", "演示门店");
             dbContext.Stores.Add(store);
         }
 

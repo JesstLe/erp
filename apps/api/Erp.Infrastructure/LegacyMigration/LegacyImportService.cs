@@ -94,6 +94,10 @@ internal sealed partial class LegacyImportService(
                     if (!existingStoresByCode.TryGetValue(targetCode, out var targetStore))
                         throw new InvalidOperationException(
                             $"旧系统门店 {row.SourceId} 指定的目标门店编码不存在；已停止迁移");
+                    var legacyAddress = CleanText(Field(row, "shop_addr"), 300);
+                    if (targetStore.Address is null && legacyAddress is not null)
+                        targetStore.UpdateProfile(targetStore.Code, targetStore.Name, targetStore.TimeZoneId,
+                            legacyAddress);
                     storesBySource[row.SourceId] = targetStore.Id;
                     var overrideLegacyCode = Field(row, "shop_code");
                     if (!string.IsNullOrWhiteSpace(overrideLegacyCode))
@@ -117,7 +121,7 @@ internal sealed partial class LegacyImportService(
                 }
 
                 var code = await codeGenerator.NextStoreCodeAsync(tenant.Id, cancellationToken);
-                var store = new Store(tenant.Id, code, name);
+                var store = new Store(tenant.Id, code, name, address: CleanText(Field(row, "shop_addr"), 300));
                 if (LooksDisabled(Field(row, "shop_stop"))) store.Disable();
                 db.Stores.Add(store);
                 storesBySource[row.SourceId] = store.Id;

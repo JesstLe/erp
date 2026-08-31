@@ -17,11 +17,13 @@ public sealed record CashierShiftDto(Guid Id, string ShiftNo, Guid OperatorId, s
     string? HandoverNote, DateTimeOffset OpenedAtUtc, DateTimeOffset? SubmittedAtUtc, Guid? ReviewedBy,
     string? ReviewReason, DateTimeOffset? ClosedAtUtc, uint Version);
 public sealed record CashierShiftReviewDto(CashierShiftDto Shift, string OperatorDisplayName);
-public sealed record PaymentReceiptLineDto(string ItemName, string? UnitName, int Quantity,
-    long UnitPriceMinor, long AmountMinor, string? EmployeeName);
+public sealed record PaymentReceiptLineDto(string LineType, string ItemCode, string ItemName, string? UnitName,
+    int Quantity, long UnitPriceMinor, long AmountMinor, string? EmployeeName);
 public sealed record PaymentReceiptDto(Guid PaymentId, string PaymentNo, string OrderNo, string StoreName,
-    string CustomerName, string OperatorName, DateTimeOffset PaidAtUtc, DateTimeOffset PrintedAtUtc,
-    int PrintSequence, string PrintLabel, long ReceivableMinor, long? CashTenderedMinor, long? CashChangeMinor,
+    string? StoreAddress, IReadOnlyList<string> FacilityNumbers, string CustomerName, string CustomerMobile,
+    string OperatorName, DateTimeOffset PaidAtUtc, DateTimeOffset PrintedAtUtc,
+    int PrintSequence, string PrintLabel, long ReferenceAmountMinor, long DiscountMinor, long ReceivableMinor,
+    long GroupBuyAmountMinor, string? GroupBuyPlatform, long? CashTenderedMinor, long? CashChangeMinor,
     IReadOnlyList<PaymentReceiptLineDto> Lines, IReadOnlyList<PaymentAllocationDto> Allocations);
 public sealed record SettleAllocationCommand(Guid MethodId, long AmountMinor, string? ExternalReference,
     Guid? MemberAccountId = null);

@@ -111,22 +111,40 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                 await db.SaveChangesAsync(cancellationToken);
             }
 
-            var storeName = await db.Stores.AsNoTracking().Where(x => x.Id == command.StoreId &&
-                    x.TenantId == tenantId).Select(x => x.Name).SingleAsync(cancellationToken);
-            var customerName = order.CustomerId.HasValue
+            var store = await db.Stores.AsNoTracking().Where(x => x.Id == command.StoreId &&
+                    x.TenantId == tenantId).Select(x => new { x.Name, x.Address }).SingleAsync(cancellationToken);
+            var customer = order.CustomerId.HasValue
                 ? await db.Customers.AsNoTracking().Where(x => x.Id == order.CustomerId.Value &&
-                        x.TenantId == tenantId).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken)
-                    ?? "顾客档案已停用"
-                : "散客";
+                        x.TenantId == tenantId).Select(x => new { x.Name, x.MobileCiphertext })
+                    .SingleOrDefaultAsync(cancellationToken)
+                : null;
+            var customerName = order.CustomerId.HasValue ? customer?.Name ?? "顾客档案已停用" : "散客";
+            var customerMobile = customer is null ? "—" : privacy.MaskProtectedMobile(customer.MobileCiphertext);
+            var visitIds = await db.ServiceOrderVisitLinks.AsNoTracking().Where(x => x.OrderId == order.Id &&
+                    x.TenantId == tenantId).Select(x => x.VisitId).ToListAsync(cancellationToken);
+            if (!visitIds.Contains(order.VisitId)) visitIds.Add(order.VisitId);
+            var facilityNumbers = await (from session in db.FacilitySessions.AsNoTracking()
+                    join facility in db.Facilities.AsNoTracking() on session.FacilityId equals facility.Id
+                    where session.TenantId == tenantId && visitIds.Contains(session.VisitId)
+                    orderby session.StartedAtUtc
+                    select facility.Code).Distinct().ToListAsync(cancellationToken);
             var operatorName = await db.Users.AsNoTracking().Where(x => x.Id == command.OperatorId &&
                     x.TenantId == tenantId).Select(x => x.DisplayName).SingleOrDefaultAsync(cancellationToken)
                 ?? "当前操作员";
-            var result = new PaymentReceiptDto(payment.Id, payment.PaymentNo, order.OrderNo, storeName,
-                customerName, operatorName, payment.PaidAtUtc!.Value, printedAt, sequence,
-                sequence == 1 ? "顾客联" : $"补打联 #{sequence}", payment.ReceivableMinor,
+            var groupBuyAllocation = payment.Allocations.FirstOrDefault(x =>
+                x.MethodCodeSnapshot == "GROUP_BUY_MANUAL");
+            var groupBuyPlatform = groupBuyAllocation?.ExternalReference?.Split(':', 2,
+                StringSplitOptions.TrimEntries)[0];
+            var result = new PaymentReceiptDto(payment.Id, payment.PaymentNo, order.OrderNo, store.Name,
+                store.Address, facilityNumbers, customerName, customerMobile, operatorName,
+                payment.PaidAtUtc!.Value, printedAt, sequence,
+                sequence == 1 ? "顾客联" : $"补打联 #{sequence}", order.ReferenceAmountMinor,
+                order.TotalDiscountMinor, payment.ReceivableMinor, groupBuyAllocation?.AmountMinor ?? 0,
+                string.IsNullOrWhiteSpace(groupBuyPlatform) ? null : groupBuyPlatform,
                 payment.CashTenderedMinor, payment.CashChangeMinor,
                 order.Lines.OrderBy(x => x.CreatedAtUtc).Select(x => new PaymentReceiptLineDto(
-                    x.ItemNameSnapshot, x.UnitNameSnapshot, x.Quantity, x.EnteredPriceMinor,
+                    x.LineType.ToString(), x.ItemCodeSnapshot, x.ItemNameSnapshot, x.UnitNameSnapshot,
+                    x.Quantity, x.EnteredPriceMinor,
                     x.LineAmountMinor, x.EmployeeNameSnapshot)).ToList(),
                 payment.Allocations.OrderBy(x => x.CreatedAtUtc).Select(ToAllocationDto).ToList());
             await transaction.CommitAsync(cancellationToken);

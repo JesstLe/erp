@@ -98,11 +98,17 @@ dotnet Erp.LegacyMigration.dll import \
   --input /安全目录/legacy-customers \
   --input /安全目录/legacy-base-master \
   --input /安全目录/legacy-extras \
-  --store-map 1=S01 \
+  --store-map 1=S001 \
+  --store-map 2=S002 \
+  --store-map 3=S003 \
+  --store-map 4=S004 \
+  --store-map 5=S005 \
   --apply
 ```
 
 `--store-map 来源门店ID=目标门店编码`用于把旧系统总店映射到新品牌已经存在的总店，避免重复创建门店。映射会参与来源指纹；目标编码不存在、来源ID不存在或重复声明时，整笔迁移失败。未显式映射的其他旧门店仍使用自动门店编码创建。
+
+本项目的已核对门店迁移表是 [`docs/legacy-store-mapping.csv`](../../docs/legacy-store-mapping.csv)。测试品牌与未来正式品牌都必须先建立 `S001` 至 `S005` 五家目标门店，再按该表逐行传入全部五个 `--store-map`；不得依赖来源行顺序自动生成编码。导入前应核对目标门店编码、名称一一对应且无额外门店，任一项不一致即停止，不做模糊匹配。
 
 导入按来源实体、来源主键和SHA-256建立幂等映射。旧门店使用新系统自动门店编码，并同时登记旧主键、代码和名称别名；员工不自动创建登录账号；服务、产品和会员卡类使用`LEGACY-*`技术编码但保留显示名称；顾客手机号使用生产环境原有Data Protection和查询HMAC加密。顾客备注/照片与护理文字记录分别形成明确标记为旧系统迁移的服务档案；护理图片是否导入取决于当次清单，当前迁移范围明确排除。护理记录按`bill_member`关联顾客、按`bill_shop`唯一映射门店，无法映射的非空门店值会中止事务，不再回退第一家门店。
 

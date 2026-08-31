@@ -89,7 +89,7 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     expect(screen.getByDisplayValue('现场调整成交价')).toBeTruthy()
   })
 
-  it('shows group-buy without a more-payment toggle and expands Meituan or Douyin after selection', async () => {
+  it('shows group-buy, Meituan and Douyin directly in the settlement split panel', async () => {
     apiRequestMock.mockImplementation((path: string) => {
       if (path === '/api/v1/catalog/price-books') return Promise.resolve([])
       if (path === '/api/v1/catalog/service-items') return Promise.resolve([])
@@ -115,10 +115,8 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     fireEvent.click(screen.getByRole('button', { name: '结算' }))
     expect(await screen.findByText('收银结算')).toBeTruthy()
     expect(screen.queryByText(/显示团购|更多支付/)).toBeNull()
-    const paymentSelect = screen.getByRole('combobox', { name: /支付方式/ })
-    fireEvent.mouseDown(paymentSelect)
-    fireEvent.click(await screen.findByText('团购平台核销（美团/抖音）'))
-    expect(await screen.findByRole('combobox', { name: /团购平台/ })).toBeTruthy()
+    expect(screen.getByText('团购支付')).toBeTruthy()
+    expect(screen.getByText('美团')).toBeTruthy()
   })
 
 })

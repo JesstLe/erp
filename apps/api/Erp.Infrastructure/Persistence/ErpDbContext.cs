@@ -241,6 +241,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(32);
             entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(100);
             entity.Property(x => x.TimeZoneId).HasColumnName("time_zone_id").HasMaxLength(64);
+            entity.Property(x => x.Address).HasColumnName("address").HasMaxLength(300);
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
             entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         });

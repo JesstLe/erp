@@ -114,7 +114,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
                 Row("stores", "901", ("shop_code", "901"), ("shop_name", "旧系统总店")),
                 Row("customers", "906", ("member_name", "旧系统映射顾客"),
                     ("member_hand", "13900001113"), ("member_shop", "旧系统总店")),
-            ], [], StoreSourceToTargetCodes: new Dictionary<string, string> { ["901"] = "S01" });
+            ], [], StoreSourceToTargetCodes: new Dictionary<string, string> { ["901"] = "S001" });
 
         var result = await fixture.RunLegacyImportAsync(new LegacyImportCommand(dataset, DryRun: true));
 
@@ -130,7 +130,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202608310039", ready?.SchemaVersion);
+        Assert.Equal("202608310040", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {
@@ -1474,7 +1474,7 @@ internal sealed class ErpTestApplicationFactory(string connectionString, string 
                 ["ERP_BOOTSTRAP_CONFIRM"] = ProductionBootstrapper.RequiredConfirmation,
                 ["ERP_BOOTSTRAP_TENANT_CODE"] = "B01",
                 ["ERP_BOOTSTRAP_TENANT_NAME"] = "集成测试品牌",
-                ["ERP_BOOTSTRAP_STORE_CODE"] = "S01",
+                ["ERP_BOOTSTRAP_STORE_CODE"] = "S001",
                 ["ERP_BOOTSTRAP_STORE_NAME"] = "集成测试门店",
                 ["ERP_BOOTSTRAP_OWNER_ACCOUNT"] = "owner01",
                 ["ERP_BOOTSTRAP_OWNER_DISPLAY_NAME"] = "集成测试负责人",

@@ -10,10 +10,10 @@ public sealed class LegacyStoreAttributionPlanTests
     {
         var options = LegacyImportOptions.Parse(
         [
-            "import", "--input", Path.GetTempPath(), "--tenant", "B01", "--store-map", "1=S01"
+            "import", "--input", Path.GetTempPath(), "--tenant", "B01", "--store-map", "1=S001"
         ]);
 
-        Assert.Equal("S01", Assert.Single(options.StoreMappings!).Value);
+        Assert.Equal("S001", Assert.Single(options.StoreMappings!).Value);
     }
 
     [Fact]
