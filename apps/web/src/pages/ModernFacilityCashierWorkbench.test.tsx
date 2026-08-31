@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ModernFacilityCashierWorkbench } from './ModernFacilityCashierWorkbench'
+import { ModernFacilityCashierWorkbench, normalizeExpectedDurationMinutes } from './ModernFacilityCashierWorkbench'
 import { buildManualPaymentReference } from './modernFacilityCashierPayments'
 
 const apiRequestMock = vi.hoisted(() => vi.fn())
@@ -64,5 +64,13 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
   it('keeps an auditable external reference for manual and group-buy settlement', () => {
     expect(buildManualPaymentReference('BANK_CARD_MANUAL', '  BANK-2026-0001  ')).toBe('BANK-2026-0001')
     expect(buildManualPaymentReference('GROUP_BUY_MANUAL', ' DY-889900 ', '抖音')).toBe('抖音:DY-889900')
+  })
+
+  it('omits a zero or invalid expected duration when starting facility timing', () => {
+    expect(normalizeExpectedDurationMinutes(0)).toBeNull()
+    expect(normalizeExpectedDurationMinutes(-1)).toBeNull()
+    expect(normalizeExpectedDurationMinutes(1441)).toBeNull()
+    expect(normalizeExpectedDurationMinutes(undefined)).toBeNull()
+    expect(normalizeExpectedDurationMinutes(30)).toBe(30)
   })
 })

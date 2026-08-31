@@ -108,7 +108,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202608300038", ready?.SchemaVersion);
+        Assert.Equal("202608310039", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {
@@ -555,6 +555,19 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             storeId, reason = "自动回归班次取消", expectedVersion = shift.Version, commandId = Guid.NewGuid(),
         });
         Assert.Equal("Cancelled", shift.Status);
+
+        using (var invalidStart = await SendAsync(client, HttpMethod.Post,
+                   "/api/v1/facilities/sessions/start", new
+                   {
+                       storeId, facilityId = facility.Id, customerId = customer.Id,
+                       plannedServiceItemId = service.Id, expectedDurationMinutes = 0,
+                       note = "自动回归无效预计时长", commandId = Guid.NewGuid(),
+                   }))
+        {
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, invalidStart.StatusCode);
+            using var body = await JsonDocument.ParseAsync(await invalidStart.Content.ReadAsStreamAsync());
+            Assert.Equal("VALIDATION_FAILED", body.RootElement.GetProperty("error").GetProperty("code").GetString());
+        }
 
         var started = await PostAsync<FacilityBoardItemDto>(client, "/api/v1/facilities/sessions/start", new
         {

@@ -81,6 +81,11 @@ function duration(seconds: number) {
 }
 function requestError(error: unknown) { return error instanceof ApiError ? error.message : error instanceof Error ? error.message : '操作失败，请稍后重试' }
 
+export function normalizeExpectedDurationMinutes(minutes?: number): number | null {
+  if (minutes === undefined || !Number.isInteger(minutes)) return null
+  return minutes >= 1 && minutes <= 1440 ? minutes : null
+}
+
 function fromOrder(order: ServiceOrder): ClassicCashierDraftLine[] {
   return order.lines.map((line) => ({
     key: line.id,
@@ -233,7 +238,7 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
         started = await apiRequest<FacilityBoardItem>('/api/v1/facilities/sessions/start', { method: 'POST', body: JSON.stringify({
           storeId, facilityId: facility.id, customerId: customerId ?? null,
           plannedServiceItemId: plannedService?.itemId ?? null,
-          expectedDurationMinutes: plannedService?.actualMinutes ?? null,
+          expectedDurationMinutes: normalizeExpectedDurationMinutes(plannedService?.actualMinutes),
           note: note || null, commandId: commandId(),
         }) })
         if (!started.visitId) throw new Error('设施已开始，但接待编号生成失败')
