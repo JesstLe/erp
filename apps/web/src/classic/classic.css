@@ -248,6 +248,8 @@
 .classic-line-edit label { display: flex; align-items: center; gap: 4px; color: #666; font-size: 11px; }
 .classic-line-edit .ant-input-number { width: 88px; }
 .classic-line-edit .ant-select { width: 118px; }
+.classic-price-override-reason { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 6px; margin-top: 7px; color: #8a5200; font-size: 11px; }
+.classic-price-override-reason .ant-input { border-color: #e8b86d; background: #fffaf0; }
 .classic-catalog-pane { min-width: 0; display: flex; flex-direction: column; background: #fff; }
 .classic-catalog-search { min-height: 44px; display: grid; grid-template-columns: 145px minmax(220px, 1fr); gap: 6px; padding: 6px; border-bottom: 1px solid #ddd; }
 .classic-member-search .classic-catalog-search { grid-template-columns: 1fr; }

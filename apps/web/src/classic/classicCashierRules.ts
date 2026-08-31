@@ -8,6 +8,7 @@ export interface ClassicCashierDraftLine {
   quantity: number
   actualMinutes?: number
   referencePriceMinor: number
+  referencePriceDefined?: boolean
   enteredPriceMinor: number
   employeeId?: string
   employeeName?: string

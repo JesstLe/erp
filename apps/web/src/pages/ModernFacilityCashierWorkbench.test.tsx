@@ -35,7 +35,7 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
   beforeEach(() => {
     apiRequestMock.mockReset().mockImplementation((path: string) => {
       if (path === '/api/v1/catalog/price-books') return Promise.resolve([{ id: 'book-1', name: '当前价目', status: 'PUBLISHED', effectiveFrom: '2026-01-01', version: 1, lines: [{ serviceItemId: 'service-1', serviceItemName: '基础服务', unitPriceMinor: 10_000 }], productLines: [{ productItemId: 'product-1', productItemName: '护理用品', unitName: '件', unitPriceMinor: 5_000 }] }])
-      if (path === '/api/v1/catalog/service-items') return Promise.resolve([{ id: 'service-1', code: 'S001', name: '基础服务', standardDurationMinutes: 30, status: 'ENABLED', version: 1 }])
+      if (path === '/api/v1/catalog/service-items') return Promise.resolve([{ id: 'service-1', code: 'S001', name: '基础服务', standardDurationMinutes: 30, status: 'ENABLED', version: 1 }, { id: 'service-2', code: 'LEGACY-SVC-2', name: '迁移未定价服务', standardDurationMinutes: 0, status: 'ENABLED', version: 1 }])
       if (path === '/api/v1/catalog/products') return Promise.resolve([{ id: 'product-1', code: 'P001', name: '护理用品', unitName: '件', trackInventory: true, status: 'ENABLED', version: 1 }])
       if (path.startsWith('/api/v1/inventory/balances')) return Promise.resolve([{ productItemId: 'product-1', availableQuantity: 8 }])
       if (path.startsWith('/api/v1/cashier/service-employees')) return Promise.resolve([{ id: 'employee-1', employeeNo: 'E001', displayName: '李店员', positionCode: 'STAFF', positionName: '员工' }])
@@ -73,6 +73,20 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     expect(groupBuyPlatforms).toEqual(['美团', '抖音'])
     expect(buildManualPaymentReference('BANK_CARD_MANUAL', '  BANK-2026-0001  ')).toBe('BANK-2026-0001')
     expect(buildManualPaymentReference('GROUP_BUY_MANUAL', ' DY-889900 ', '抖音')).toBe('抖音:DY-889900')
+  })
+
+  it('loads enabled migrated catalog items even when the active price book has no matching line', async () => {
+    render(<MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ModernFacilityCashierWorkbench facility={facility} availableFacilities={[]} onFacilityChanged={vi.fn()} onExit={vi.fn()} onCompleted={vi.fn()} /></QueryClientProvider></MemoryRouter>)
+
+    const unpricedService = await screen.findByRole('button', { name: /迁移未定价服务.*未设置目录价/s })
+    fireEvent.click(unpricedService)
+    expect(await screen.findByText(/1\. 迁移未定价服务/)).toBeTruthy()
+    expect(screen.getByText('请填写成交价')).toBeTruthy()
+    const priceInput = screen.getByRole('spinbutton', { name: /本次成交价/ })
+    fireEvent.change(priceInput, { target: { value: '68' } })
+    expect(await screen.findByText('已改价')).toBeTruthy()
+    expect(screen.getByText('合计 ¥68.00')).toBeTruthy()
+    expect(screen.getByDisplayValue('现场调整成交价')).toBeTruthy()
   })
 
   it('shows group-buy without a more-payment toggle and expands Meituan or Douyin after selection', async () => {

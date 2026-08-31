@@ -396,6 +396,11 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         }, HttpStatusCode.Created);
         Assert.Matches("^PD[0-9]{6}$", product.Code);
 
+        var unpricedService = await PostAsync<ServiceItemDto>(client, "/api/v1/catalog/service-items", new
+        {
+            code = "SVC-UNPRICED", name = "未定价测试服务", standardDurationMinutes = 20,
+            commissionMode = "NONE",
+        }, HttpStatusCode.Created);
         var opening = await PostAsync<InventoryDocumentDto>(client, "/api/v1/inventory/documents", new
         {
             storeId, documentType = "OPENING", reason = "自动回归期初",
@@ -430,6 +435,24 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal(published.ProductLines.Count, copiedPriceBook.ProductLines.Count);
         copiedPriceBook = await PostAsync<PriceBookDto>(client,
             $"/api/v1/catalog/price-books/{copiedPriceBook.Id}/publish", new { });
+        var unpricedOrder = await PostAsync<ServiceOrderDto>(client, "/api/v1/cashier/orders", new
+        {
+            storeId, customerId = customer.Id, note = "自动回归未定价目录项目",
+            lines = new[]
+            {
+                new
+                {
+                    lineType = "Service", serviceItemId = unpricedService.Id,
+                    quantity = 1, actualSeconds = 1_200, enteredPriceMinor = 6_800L,
+                    priceOverrideReason = "现场确认未定价项目成交价",
+                },
+            },
+            commandId = Guid.NewGuid(),
+        }, HttpStatusCode.OK);
+        var unpricedLine = Assert.Single(unpricedOrder.Lines);
+        Assert.Equal(0, unpricedLine.ReferencePriceMinor);
+        Assert.Equal(6_800, unpricedLine.EnteredPriceMinor);
+        Assert.Equal("DirectAuthorized", unpricedOrder.PriceAuthorizationStatus);
         var detailPriceBook = await client.GetFromJsonAsync<PriceBookDto>(
             $"/api/v1/catalog/price-books/{copiedPriceBook.Id}");
         Assert.Equal(copiedPriceBook.Id, detailPriceBook!.Id);
@@ -936,7 +959,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
 
         var orderPage = await client.GetFromJsonAsync<PageResponse<ServiceOrderDto>>(
             $"/api/v1/cashier/orders?storeId={storeId}&page=1&pageSize=1");
-        Assert.Equal(2, orderPage!.Total);
+        Assert.Equal(3, orderPage!.Total);
         Assert.Single(orderPage.Items);
         var filteredOrders = await client.GetFromJsonAsync<PageResponse<ServiceOrderDto>>(
             $"/api/v1/cashier/orders?storeId={storeId}&query=%E6%B5%8B%E8%AF%95%E6%9C%8D%E5%8A%A1" +

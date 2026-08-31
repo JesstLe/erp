@@ -35,6 +35,7 @@ import type {
 } from '../api/types'
 import { useAuth } from '../auth/useAuth'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { buildCashierProductCatalog, buildCashierServiceCatalog } from '../pages/cashierCatalog'
 import {
   applyClassicOrderDiscount,
   classicCashierLineAmount,
@@ -91,14 +92,8 @@ export function ClassicCashierFacilitiesPage() {
   const facilities = board.data?.groups.flatMap((group) => group.facilities) ?? []
   const availableFacilities = facilities.filter((item) => item.status === 'AVAILABLE')
   const filteredFacilities = statusFilter ? facilities.filter((item) => item.status === statusFilter) : facilities
-  const serviceCatalog = useMemo(() => (currentPriceBook?.lines ?? []).map((price) => {
-    const item = serviceItems.data?.find((entry) => entry.id === price.serviceItemId)
-    return { id: price.serviceItemId, code: item?.code ?? '', name: price.serviceItemName, duration: item?.standardDurationMinutes, priceMinor: price.unitPriceMinor }
-  }).filter((item) => matchesClassicCatalogSearch(item.code, item.name, catalogSearch)), [catalogSearch, currentPriceBook, serviceItems.data])
-  const productCatalog = useMemo(() => (currentPriceBook?.productLines ?? []).map((price) => {
-    const item = products.data?.find((entry) => entry.id === price.productItemId); const stock = inventory.data?.find((entry) => entry.productItemId === price.productItemId)
-    return { id: price.productItemId, code: item?.code ?? '', name: price.productItemName, unitName: price.unitName, priceMinor: price.unitPriceMinor, stock: stock?.availableQuantity }
-  }).filter((item) => matchesClassicCatalogSearch(item.code, item.name, catalogSearch)), [catalogSearch, currentPriceBook, inventory.data, products.data])
+  const serviceCatalog = useMemo(() => buildCashierServiceCatalog(serviceItems.data, currentPriceBook).filter((item) => matchesClassicCatalogSearch(item.code, item.name, catalogSearch)), [catalogSearch, currentPriceBook, serviceItems.data])
+  const productCatalog = useMemo(() => buildCashierProductCatalog(products.data, inventory.data, currentPriceBook).filter((item) => matchesClassicCatalogSearch(item.code, item.name, catalogSearch)), [catalogSearch, currentPriceBook, inventory.data, products.data])
   const totalMinor = classicCashierTotal(lines)
   const selectedCustomer = customers.data?.find((item) => item.id === customerId)
   const memberAccounts = customerDetail.data?.cards.flatMap((card) => card.accounts.filter((account) => account.status === 'Active' || account.status === 'ACTIVE').map((account) => ({ ...account, label: `${card.cardTypeName} · ${account.accountType} · ${money(account.balanceUnits)}` }))) ?? []
@@ -130,12 +125,16 @@ export function ClassicCashierFacilitiesPage() {
   }
 
   const addService = (item: typeof serviceCatalog[number]) => {
-    setLines((current) => [...current, { key: commandId(), lineType: 'Service', itemId: item.id, code: item.code, name: item.name, quantity: 1, actualMinutes: item.duration, referencePriceMinor: item.priceMinor, enteredPriceMinor: item.priceMinor }])
+    setLines((current) => [...current, { key: commandId(), lineType: 'Service', itemId: item.id, code: item.code, name: item.name, quantity: 1, actualMinutes: item.duration, referencePriceMinor: item.priceMinor, referencePriceDefined: item.hasPublishedPrice, enteredPriceMinor: item.priceMinor }])
   }
   const addProduct = (item: typeof productCatalog[number]) => {
-    setLines((current) => [...current, { key: commandId(), lineType: 'Product', itemId: item.id, code: item.code, name: item.name, unitName: item.unitName, quantity: 1, referencePriceMinor: item.priceMinor, enteredPriceMinor: item.priceMinor }])
+    setLines((current) => [...current, { key: commandId(), lineType: 'Product', itemId: item.id, code: item.code, name: item.name, unitName: item.unitName, quantity: 1, referencePriceMinor: item.priceMinor, referencePriceDefined: item.hasPublishedPrice, enteredPriceMinor: item.priceMinor }])
   }
   const updateLine = (key: string, patch: Partial<ClassicCashierDraftLine>) => setLines((current) => current.map((line) => line.key === key ? { ...line, ...patch } : line))
+  const updateLinePrice = (line: ClassicCashierDraftLine, yuan: number | null) => {
+    const enteredPriceMinor = Math.round(Number(yuan ?? 0) * 100)
+    updateLine(line.key, { enteredPriceMinor, priceOverrideReason: enteredPriceMinor === line.referencePriceMinor ? undefined : line.priceOverrideReason?.trim() || '现场调整成交价' })
+  }
   const assignEmployee = (employeeId: string) => {
     const employee = employees.data?.find((item) => item.id === employeeId)
     setLines((current) => current.map((line) => line.lineType === 'Service' ? { ...line, employeeId, employeeName: employee?.displayName } : line)); setEmployeeOpen(false)
@@ -147,6 +146,7 @@ export function ClassicCashierFacilitiesPage() {
     mutationFn: async (values: SettleValues) => {
       if (!storeId || !selected) throw new Error('当前没有服务位')
       if (!lines.length) throw new Error('请至少选择一个项目或产品')
+      if (lines.some((line) => line.referencePriceDefined === false && line.enteredPriceMinor <= 0)) throw new Error('请先为未设置目录价的项目或产品输入本次成交价')
       if (lines.some((line) => line.lineType === 'Service' && !line.employeeId)) throw new Error('请为每个服务项目选择实际服务员工')
       let order = await apiRequest<ServiceOrder>('/api/v1/cashier/orders', { method: 'POST', body: JSON.stringify({
         storeId, visitId: selected.visitId ?? null, customerId: customerId ?? null, note, commandId: commandId(),
@@ -179,6 +179,7 @@ export function ClassicCashierFacilitiesPage() {
 
   const openSettlement = () => {
     if (!lines.length) { message.warning('请先选择项目或产品'); return }
+    if (lines.some((line) => line.referencePriceDefined === false && line.enteredPriceMinor <= 0)) { message.warning('请先为未设置目录价的项目或产品输入本次成交价'); return }
     if (lines.some((line) => line.lineType === 'Service' && !line.employeeId)) { message.warning('请先通过“整单员工”或明细选择服务员工'); return }
     const method = paymentMethods.data?.find((item) => !item.channelProvider) ?? paymentMethods.data?.[0]
     settleForm.setFieldsValue({ methodId: method?.id, amountYuan: totalMinor / 100, cashTenderedYuan: totalMinor / 100 }); setSettleOpen(true)
@@ -226,14 +227,15 @@ export function ClassicCashierFacilitiesPage() {
         <div className="classic-bill-summary"><span>{selectedCustomer ? `会员：${selectedCustomer.displayName}` : '散客/暂未关联会员'}</span><b>合计 {money(totalMinor)}</b></div>
         {!lines.length ? <div className="classic-bill-empty">当前没有选择消费的任何项目或产品</div> : <div className="classic-bill-lines">{lines.map((line, index) => <article key={line.key}>
           <header><b>{index + 1}. {line.name}</b><Tag>{line.lineType === 'Service' ? '项目' : '产品'}</Tag><button type="button" onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}><DeleteOutlined /></button></header>
-          <div><span>编号 {line.code}</span><span>单价 {money(line.enteredPriceMinor)}</span><span>小计 {money(classicCashierLineAmount(line))}</span></div>
-          <div className="classic-line-edit"><label>数量<InputNumber size="small" min={1} max={999} value={line.quantity} onChange={(value) => updateLine(line.key, { quantity: Number(value ?? 1) })} /></label>{line.lineType === 'Service' && <><label>时长<InputNumber size="small" min={0} max={1440} value={line.actualMinutes} onChange={(value) => updateLine(line.key, { actualMinutes: value === null ? undefined : Number(value) })} addonAfter="分" /></label><label>员工<Select size="small" value={line.employeeId} placeholder="请选择" options={employees.data?.map((employee) => ({ value: employee.id, label: employee.displayName }))} onChange={(value) => updateLine(line.key, { employeeId: value, employeeName: employees.data?.find((employee) => employee.id === value)?.displayName })} /></label></>}</div>
+          <div><span>编号 {line.code}</span><span>{line.referencePriceDefined === false ? '未设置目录价' : `目录价 ${money(line.referencePriceMinor)}`}</span><span>小计 {money(classicCashierLineAmount(line))}</span></div>
+          <div className="classic-line-edit"><label>数量<InputNumber size="small" min={1} max={999} value={line.quantity} onChange={(value) => updateLine(line.key, { quantity: Number(value ?? 1) })} /></label><label>成交价<InputNumber size="small" min={0} max={100_000_000} precision={2} prefix="¥" value={line.enteredPriceMinor / 100} onChange={(value) => updateLinePrice(line, value)} /></label>{line.lineType === 'Service' && <><label>时长<InputNumber size="small" min={0} max={1440} value={line.actualMinutes} onChange={(value) => updateLine(line.key, { actualMinutes: value === null ? undefined : Number(value) })} addonAfter="分" /></label><label>员工<Select size="small" value={line.employeeId} placeholder="请选择" options={employees.data?.map((employee) => ({ value: employee.id, label: employee.displayName }))} onChange={(value) => updateLine(line.key, { employeeId: value, employeeName: employees.data?.find((employee) => employee.id === value)?.displayName })} /></label></>} </div>
+          {line.enteredPriceMinor !== line.referencePriceMinor && <label className="classic-price-override-reason">改价原因<Input size="small" value={line.priceOverrideReason ?? ''} maxLength={500} onChange={(event) => updateLine(line.key, { priceOverrideReason: event.target.value })} /></label>}
         </article>)}</div>}
       </section>
       <section className="classic-catalog-pane">
         {tab === 'main' && <div className="classic-main-order"><h2>主单信息</h2><label>关联顾客<Select allowClear showSearch optionFilterProp="label" value={customerId} placeholder="可暂不识别顾客" options={customers.data?.map((item) => ({ value: item.id, label: `${item.displayName} · ${item.maskedMobile}` }))} onChange={setCustomerId} /></label><label>接待备注<Input.TextArea rows={4} value={note} maxLength={500} onChange={(event) => setNote(event.target.value)} /></label><Alert type="info" showIcon title="老版的男/女客人数、年龄和来源渠道字段尚无新系统主单存储字段，位置已记录到后端缺口文档。" /></div>}
         {tab === 'member' && <div className="classic-member-search"><div className="classic-catalog-search"><Input prefix={<SearchOutlined />} value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} placeholder="输入姓名、完整手机号或卡号自动查询" allowClear /></div><div className="classic-member-results">{customers.isFetching && <Spin size="small" />}{customers.data?.map((customer) => <button type="button" key={customer.id} className={customer.id === customerId ? 'active' : ''} onClick={() => { setCustomerId(customer.id); setTab('service') }}><UserOutlined /><b>{customer.displayName}</b><span>{customer.maskedMobile}</span><small>{customer.homeStoreName} · {customer.activeCardCount} 张有效卡</small></button>)}</div></div>}
-        {(tab === 'service' || tab === 'product') && <><div className="classic-catalog-search"><Select value="all" options={[{ value: 'all', label: '全部分类' }]} /><Input prefix={<SearchOutlined />} value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="输入编号或名称自动查询" allowClear /></div><div className="classic-catalog-grid">{tab === 'service' ? serviceCatalog.map((item) => <button type="button" key={item.id} onClick={() => addService(item)}><small>No.{item.code}</small><b>{item.name}</b><span>{money(item.priceMinor)} / {item.duration ?? '-'} 分钟</span></button>) : productCatalog.map((item) => <button type="button" key={item.id} onClick={() => addProduct(item)}><small>No.{item.code}</small><b>{item.name}</b><span>{money(item.priceMinor)} / 库存 {item.stock ?? '-'} {item.unitName}</span></button>)}</div></>}
+        {(tab === 'service' || tab === 'product') && <><div className="classic-catalog-search"><Select value="all" options={[{ value: 'all', label: '全部分类' }]} /><Input prefix={<SearchOutlined />} value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="输入编号或名称自动查询" allowClear /></div><div className="classic-catalog-grid">{tab === 'service' ? serviceCatalog.map((item) => <button type="button" key={item.id} onClick={() => addService(item)}><small>No.{item.code}</small><b>{item.name}</b><span>{item.hasPublishedPrice ? money(item.priceMinor) : '未设置目录价'} / {item.duration ?? '-'} 分钟</span></button>) : productCatalog.map((item) => <button type="button" key={item.id} onClick={() => addProduct(item)}><small>No.{item.code}</small><b>{item.name}</b><span>{item.hasPublishedPrice ? money(item.priceMinor) : '未设置目录价'} / 库存 {item.stock ?? '-'} {item.unitName}</span></button>)}</div></>}
       </section>
     </div>
     <footer className="classic-sell-actions">

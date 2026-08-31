@@ -234,10 +234,14 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                     "所选员工不存在、已停用或不属于当前门店", cancellationToken);
             var prices = priceBook.Lines.ToDictionary(x => x.ServiceItemId, x => x.UnitPriceMinor);
             var productPrices = priceBook.ProductLines.ToDictionary(x => x.ProductItemId, x => x.UnitPriceMinor);
-            if (serviceIds.Any(id => !prices.ContainsKey(id)))
-                return await FailureAndRollback(transaction, "VALIDATION_FAILED", "已发布价格版本缺少所选项目价格", cancellationToken);
-            if (productIds.Any(id => !productPrices.ContainsKey(id)))
-                return await FailureAndRollback(transaction, "VALIDATION_FAILED", "已发布价格版本缺少所选产品价格", cancellationToken);
+            if (command.Lines.Any(line => line.ServiceItemId.HasValue &&
+                    !prices.ContainsKey(line.ServiceItemId.Value) && line.EnteredPriceMinor <= 0))
+                return await FailureAndRollback(transaction, "VALIDATION_FAILED",
+                    "未设置标准价的服务项目必须输入本次成交价", cancellationToken);
+            if (command.Lines.Any(line => line.ProductItemId.HasValue &&
+                    !productPrices.ContainsKey(line.ProductItemId.Value) && line.EnteredPriceMinor <= 0))
+                return await FailureAndRollback(transaction, "VALIDATION_FAILED",
+                    "未设置标准价的产品必须输入本次成交价", cancellationToken);
 
             Customer? customer = null;
             if (command.CustomerId is not null)
@@ -284,7 +288,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                     if (item.CommissionMode != CommissionMode.None && employee is null)
                         throw new DomainRuleException("SERVICE_EMPLOYEE_REQUIRED", "已设置提成的服务项目必须选择服务员工");
                     return new ServiceOrderLineDraft(id, items[id].Code, items[id].Name, line.Quantity,
-                        line.ActualSeconds, prices[id], line.EnteredPriceMinor, line.PriceOverrideReason,
+                        line.ActualSeconds, prices.GetValueOrDefault(id), line.EnteredPriceMinor, line.PriceOverrideReason,
                         employee?.Id, employee?.EmployeeNo, employee?.DisplayName, item.CommissionMode,
                         item.CommissionRateBasisPoints, item.CommissionFixedMinor);
                 }
@@ -294,7 +298,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                     ? employees[line.ServiceEmployeeId.Value]
                     : null;
                 return ServiceOrderLineDraft.Product(productId, product.Code, product.Name, product.UnitName,
-                    line.Quantity, productPrices[productId], line.EnteredPriceMinor, line.PriceOverrideReason,
+                    line.Quantity, productPrices.GetValueOrDefault(productId), line.EnteredPriceMinor, line.PriceOverrideReason,
                     addedByEmployee?.Id, addedByEmployee?.EmployeeNo, addedByEmployee?.DisplayName);
             }).ToList();
             var consultant = command.ConsultantEmployeeId.HasValue
@@ -976,10 +980,12 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             throw new DomainRuleException("VALIDATION_FAILED", "产品不存在或已停用");
         var prices = priceBook.Lines.ToDictionary(x => x.ServiceItemId, x => x.UnitPriceMinor);
         var productPrices = priceBook.ProductLines.ToDictionary(x => x.ProductItemId, x => x.UnitPriceMinor);
-        if (serviceIds.Any(id => !prices.ContainsKey(id)))
-            throw new DomainRuleException("VALIDATION_FAILED", "当前价格版本缺少所选项目价格");
-        if (productIds.Any(id => !productPrices.ContainsKey(id)))
-            throw new DomainRuleException("VALIDATION_FAILED", "当前价格版本缺少所选产品价格");
+        if (commands.Any(line => line.ServiceItemId.HasValue &&
+                !prices.ContainsKey(line.ServiceItemId.Value) && line.EnteredPriceMinor <= 0))
+            throw new DomainRuleException("VALIDATION_FAILED", "未设置标准价的服务项目必须输入本次成交价");
+        if (commands.Any(line => line.ProductItemId.HasValue &&
+                !productPrices.ContainsKey(line.ProductItemId.Value) && line.EnteredPriceMinor <= 0))
+            throw new DomainRuleException("VALIDATION_FAILED", "未设置标准价的产品必须输入本次成交价");
 
         var employeeIds = commands.Where(x => x.ServiceEmployeeId.HasValue)
             .Select(x => x.ServiceEmployeeId!.Value)
@@ -1008,7 +1014,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                     throw new DomainRuleException("SERVICE_EMPLOYEE_REQUIRED",
                         "已设置提成的服务项目必须选择服务员工");
                 return new ServiceOrderLineDraft(id, item.Code, item.Name, line.Quantity,
-                    line.ActualSeconds, prices[id], line.EnteredPriceMinor, line.PriceOverrideReason,
+                    line.ActualSeconds, prices.GetValueOrDefault(id), line.EnteredPriceMinor, line.PriceOverrideReason,
                     employee?.Id, employee?.EmployeeNo, employee?.DisplayName, item.CommissionMode,
                     item.CommissionRateBasisPoints, item.CommissionFixedMinor);
             }
@@ -1018,7 +1024,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                 ? employees[line.ServiceEmployeeId.Value]
                 : null;
             return ServiceOrderLineDraft.Product(productId, product.Code, product.Name, product.UnitName,
-                line.Quantity, productPrices[productId], line.EnteredPriceMinor, line.PriceOverrideReason,
+                line.Quantity, productPrices.GetValueOrDefault(productId), line.EnteredPriceMinor, line.PriceOverrideReason,
                 addedByEmployee?.Id, addedByEmployee?.EmployeeNo, addedByEmployee?.DisplayName);
         }).ToList();
         return new PreparedDraft(priceBook.Id, lines, consultantEmployeeId.HasValue
