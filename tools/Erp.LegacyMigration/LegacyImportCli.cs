@@ -31,7 +31,12 @@ public static class LegacyImportCli
             await using var provider = builder.Services.BuildServiceProvider();
             await using var scope = provider.CreateAsyncScope();
             var service = scope.ServiceProvider.GetRequiredService<ILegacyImportService>();
-            var result = await service.ImportAsync(new LegacyImportCommand(dataset, !options.Apply), cancellationToken);
+            var result = await service.ImportAsync(new LegacyImportCommand(
+                dataset,
+                !options.Apply,
+                options.ConfirmedTargetTenantCode,
+                options.SyncMappedStores,
+                options.ReconcileExistingCustomers), cancellationToken);
             await output.WriteLineAsync($"迁移运行：{result.RunId}，已完成={result.AlreadyCompleted}，模式={(result.DryRun ? "干跑" : "执行")}。");
             foreach (var item in result.Created.OrderBy(x => x.Key, StringComparer.Ordinal))
                 await output.WriteLineAsync($"创建 {item.Key}: {item.Value}");
@@ -68,16 +73,22 @@ public sealed record LegacyImportOptions(
     string TenantCode,
     bool Apply,
     string ImportVersion,
-    IReadOnlyDictionary<string, string>? StoreMappings = null)
+    IReadOnlyDictionary<string, string>? StoreMappings = null,
+    string? ConfirmedTargetTenantCode = null,
+    bool SyncMappedStores = false,
+    bool ReconcileExistingCustomers = false)
 {
     public static LegacyImportOptions Parse(string[] args)
     {
         if (args.Length == 0 || args[0] != "import")
-            throw new LegacyMigrationException("用法：import --input 导出目录 [--input 导出目录] --tenant B01 [--apply]");
+            throw new LegacyMigrationException("用法：import --input 导出目录 [--input 导出目录] --tenant 品牌编码 [--confirm-target 品牌编码] [--apply]");
         var inputs = new List<string>();
         string? tenant = null;
         var apply = false;
         var version = "legacy-import-v1";
+        string? confirmedTarget = null;
+        var syncMappedStores = false;
+        var reconcileExistingCustomers = false;
         var storeMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (var index = 1; index < args.Length; index++)
         {
@@ -85,6 +96,7 @@ public sealed record LegacyImportOptions(
             {
                 case "--input": inputs.Add(Next(args, ref index)); break;
                 case "--tenant": tenant = Next(args, ref index).ToUpperInvariant(); break;
+                case "--confirm-target": confirmedTarget = Next(args, ref index).ToUpperInvariant(); break;
                 case "--version": version = Next(args, ref index); break;
                 case "--store-map":
                 {
@@ -92,16 +104,26 @@ public sealed record LegacyImportOptions(
                     if (mapping.Length != 2 || mapping[0].Length is < 1 or > 160 ||
                         mapping[1].Length is < 1 or > 32 || mapping[0].Any(char.IsControl) ||
                         mapping[1].Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_')) ||
-                        !storeMappings.TryAdd(mapping[0], mapping[1].ToUpperInvariant()))
+                        !storeMappings.TryAdd(mapping[0], mapping[1].ToUpperInvariant()) ||
+                        storeMappings.Values.Distinct(StringComparer.OrdinalIgnoreCase).Count() != storeMappings.Count)
                         throw new LegacyMigrationException("门店映射必须使用唯一的 来源门店ID=目标门店编码。");
                     break;
                 }
+                case "--sync-mapped-stores": syncMappedStores = true; break;
+                case "--reconcile-existing-customers": reconcileExistingCustomers = true; break;
                 case "--apply": apply = true; break;
                 default: throw new LegacyMigrationException($"不支持的导入参数：{args[index]}");
             }
         }
-        if (tenant != "B01") throw new LegacyMigrationException("当前受控迁移只允许目标品牌 B01。");
-        if (inputs.Count is 0 or > 10) throw new LegacyMigrationException("导入必须提供1到10个来源目录。");
+        if (tenant is null || tenant.Length is < 3 or > 32 ||
+            tenant.Any(character => !(char.IsAsciiLetterOrDigit(character) || character is '-' or '_')))
+            throw new LegacyMigrationException("目标品牌编码格式无效。");
+        if (!string.Equals(tenant, "B01", StringComparison.Ordinal) &&
+            !string.Equals(confirmedTarget, tenant, StringComparison.Ordinal))
+            throw new LegacyMigrationException("非测试品牌必须使用 --confirm-target 重复确认精确的目标品牌编码。");
+        if (syncMappedStores && storeMappings.Count == 0)
+            throw new LegacyMigrationException("同步映射门店时必须提供门店映射。");
+        if (inputs.Count is 0 or > 20) throw new LegacyMigrationException("导入必须提供1到20个来源目录。");
         var fullInputs = inputs.Select(path =>
         {
             if (!Path.IsPathFullyQualified(path)) throw new LegacyMigrationException("导入目录必须使用绝对路径。");
@@ -111,7 +133,8 @@ public sealed record LegacyImportOptions(
         }).Distinct(StringComparer.Ordinal).ToArray();
         if (version.Length is < 3 or > 40 || version.Any(char.IsControl))
             throw new LegacyMigrationException("导入版本格式无效。");
-        return new LegacyImportOptions(fullInputs, tenant, apply, version, storeMappings);
+        return new LegacyImportOptions(fullInputs, tenant, apply, version, storeMappings,
+            confirmedTarget, syncMappedStores, reconcileExistingCustomers);
     }
 
     private static string Next(string[] args, ref int index)
