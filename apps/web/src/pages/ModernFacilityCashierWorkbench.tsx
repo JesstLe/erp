@@ -46,6 +46,7 @@ import {
 } from '../classic/classicCashierRules'
 import { createSerialTaskQueue, retryVersionConflictOnce } from './modernFacilityCashierConcurrency'
 import { buildManualPaymentReference } from './modernFacilityCashierPayments'
+import { normalizeExpectedDurationMinutes } from './modernFacilityReception'
 
 type WorkbenchTab = 'main' | 'member' | 'service' | 'product'
 interface DiscountValues { percent: number; reason: string }
@@ -80,11 +81,6 @@ function duration(seconds: number) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
 }
 function requestError(error: unknown) { return error instanceof ApiError ? error.message : error instanceof Error ? error.message : '操作失败，请稍后重试' }
-
-export function normalizeExpectedDurationMinutes(minutes?: number): number | null {
-  if (minutes === undefined || !Number.isInteger(minutes)) return null
-  return minutes >= 1 && minutes <= 1440 ? minutes : null
-}
 
 function fromOrder(order: ServiceOrder): ClassicCashierDraftLine[] {
   return order.lines.map((line) => ({
