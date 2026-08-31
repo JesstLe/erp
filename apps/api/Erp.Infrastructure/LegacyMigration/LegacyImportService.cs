@@ -70,6 +70,9 @@ internal sealed partial class LegacyImportService(
                     StringComparer.Ordinal);
 
             var storeRows = Rows(rows, "stores");
+            var storeOverrides = dataset.StoreSourceToTargetCodes ?? new Dictionary<string, string>();
+            var existingStoresByCode = await db.Stores.Where(x => x.TenantId == tenant.Id)
+                .ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, cancellationToken);
             var storesBySource = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
             var storesByLegacyCode = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
             var storesByLegacyName = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
@@ -83,6 +86,24 @@ internal sealed partial class LegacyImportService(
                     var legacyName = CleanText(Field(row, "shop_name"), 100);
                     if (legacyName is not null) AddStoreAlias(storesByLegacyName, legacyName, mappedStoreId);
                     Increment(skipped, "stores");
+                    continue;
+                }
+
+                if (storeOverrides.TryGetValue(row.SourceId, out var targetCode))
+                {
+                    if (!existingStoresByCode.TryGetValue(targetCode, out var targetStore))
+                        throw new InvalidOperationException(
+                            $"旧系统门店 {row.SourceId} 指定的目标门店编码不存在；已停止迁移");
+                    storesBySource[row.SourceId] = targetStore.Id;
+                    var overrideLegacyCode = Field(row, "shop_code");
+                    if (!string.IsNullOrWhiteSpace(overrideLegacyCode))
+                        storesByLegacyCode[overrideLegacyCode] = targetStore.Id;
+                    var overrideLegacyName = CleanText(Field(row, "shop_name"), 100);
+                    if (overrideLegacyName is not null)
+                        AddStoreAlias(storesByLegacyName, overrideLegacyName, targetStore.Id);
+                    await AddMapAsync(runId, tenant.Id, row, "organization_stores", targetStore.Id, maps,
+                        cancellationToken);
+                    Increment(created, "store-mappings");
                     continue;
                 }
 
@@ -106,6 +127,11 @@ internal sealed partial class LegacyImportService(
                 await AddMapAsync(runId, tenant.Id, row, "organization_stores", store.Id, maps, cancellationToken);
                 Increment(created, "stores");
             }
+
+            var unknownOverrides = storeOverrides.Keys.Except(storeRows.Select(row => row.SourceId),
+                StringComparer.OrdinalIgnoreCase).ToArray();
+            if (unknownOverrides.Length > 0)
+                throw new InvalidOperationException("门店映射包含来源数据中不存在的门店ID；已停止迁移");
 
             // Customer.HomeStoreId is enforced by PostgreSQL but intentionally has no EF navigation. Persist
             // migrated stores first so later customer inserts cannot be ordered ahead of their store FK.
