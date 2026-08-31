@@ -52,6 +52,22 @@ public sealed class LegacyStoreAttributionPlanTests
     }
 
     [Fact]
+    public void FinancialIncrementalModeRejectsFirstImportSwitches()
+    {
+        var valid = LegacyImportOptions.Parse(
+        [
+            "import", "--input", Path.GetTempPath(), "--tenant", "B01", "--financial-incremental",
+        ]);
+        Assert.True(valid.FinancialIncrementalSync);
+
+        Assert.Throws<LegacyMigrationException>(() => LegacyImportOptions.Parse(
+        [
+            "import", "--input", Path.GetTempPath(), "--tenant", "B01", "--financial-incremental",
+            "--reconcile-existing-customers",
+        ]));
+    }
+
+    [Fact]
     public void ResolvesSourceIdCodeAndNameWithoutLeakingOtherFields()
     {
         var rows = new[]
