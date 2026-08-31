@@ -87,14 +87,34 @@ internal sealed partial class LegacyImportService(
             var storesByLegacyName = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
             foreach (var row in storeRows)
             {
-                if (TryMapped(maps, row, out var mappedStoreId))
+                if (maps.TryGetValue((row.Entity, row.SourceId), out var existingStoreMap))
                 {
+                    var mappedStoreId = existingStoreMap.TargetId;
+                    if (!string.Equals(existingStoreMap.SourceSha256, row.SourceSha256,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!command.FinancialIncrementalSync)
+                            throw new InvalidOperationException($"来源记录已变化，拒绝覆盖：{row.Entity}/{row.SourceId}");
+                        var mappedStore = await db.Stores.SingleAsync(x => x.TenantId == tenant.Id &&
+                            x.Id == mappedStoreId, cancellationToken);
+                        var latestName = CleanText(Field(row, "shop_name"), 100)
+                            ?? throw new InvalidOperationException("增量门店名称无效；已停止同步");
+                        var latestAddress = CleanText(Field(row, "shop_addr"), 300);
+                        mappedStore.UpdateProfile(mappedStore.Code, latestName, mappedStore.TimeZoneId,
+                            latestAddress ?? mappedStore.Address);
+                        await AddRevisionAsync(runId, tenant.Id, row, existingStoreMap, maps,
+                            cancellationToken);
+                        Increment(created, "store-updates");
+                    }
+                    else
+                    {
+                        Increment(skipped, "stores");
+                    }
                     storesBySource[row.SourceId] = mappedStoreId;
                     var legacyCode = Field(row, "shop_code");
                     if (!string.IsNullOrWhiteSpace(legacyCode)) storesByLegacyCode[legacyCode] = mappedStoreId;
                     var legacyName = CleanText(Field(row, "shop_name"), 100);
                     if (legacyName is not null) AddStoreAlias(storesByLegacyName, legacyName, mappedStoreId);
-                    Increment(skipped, "stores");
                     continue;
                 }
 
@@ -293,9 +313,18 @@ internal sealed partial class LegacyImportService(
             var consumedExistingCustomers = new HashSet<Guid>();
             var storedValuePlans = new List<LegacyStoredValuePlan>();
             var financialSnapshots = new List<(Guid CustomerId, LegacySourceRow Row)>();
+            var financialRevisions = new List<LegacyFinancialRevisionPlan>();
             foreach (var row in customerRows)
             {
-                if (TryMapped(maps, row, out _)) { Increment(skipped, "customers"); continue; }
+                maps.TryGetValue((row.Entity, row.SourceId), out var existingCustomerMap);
+                if (existingCustomerMap is not null && string.Equals(existingCustomerMap.SourceSha256,
+                        row.SourceSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    Increment(skipped, "customers");
+                    continue;
+                }
+                if (existingCustomerMap is not null && !command.FinancialIncrementalSync)
+                    throw new InvalidOperationException($"来源记录已变化，拒绝覆盖：{row.Entity}/{row.SourceId}");
                 var name = CleanText(Field(row, "member_name"), 100);
                 var mobile = Field(row, "member_hand");
                 if (name is null || string.IsNullOrWhiteSpace(mobile))
@@ -328,9 +357,45 @@ internal sealed partial class LegacyImportService(
                 Customer customer;
                 var mobileKey = Convert.ToHexString(protectedMobile.LookupHash);
                 Customer? existingCustomer = null;
-                var reconcilesExistingCustomer = command.ReconcileExistingCustomers &&
+                var incrementalCustomer = existingCustomerMap is not null;
+                var reconcilesExistingCustomer = !incrementalCustomer && command.ReconcileExistingCustomers &&
                     existingCustomersByMobile.TryGetValue(mobileKey, out existingCustomer) &&
                     consumedExistingCustomers.Add(existingCustomer.Id);
+                if (incrementalCustomer)
+                {
+                    customer = await db.Customers.SingleAsync(x => x.TenantId == tenant.Id &&
+                        x.Id == existingCustomerMap!.TargetId, cancellationToken);
+                    if (await db.Customers.AnyAsync(x => x.TenantId == tenant.Id && x.Id != customer.Id &&
+                            x.Status != CustomerStatus.Merged && x.MobileLookupHash == protectedMobile.LookupHash,
+                            cancellationToken))
+                        throw new InvalidOperationException("增量顾客手机号与其他顾客冲突；已停止同步");
+                    customer.ChangeHomeStore(homeStoreId);
+                    customer.UpdateProfile(name, protectedMobile.Ciphertext, protectedMobile.LookupHash,
+                        protectedMobile.LastFour, ParseGender(Field(row, "member_sex")), birthDate,
+                        CleanCode(Field(row, "member_source"), 40), false, false,
+                        DateOnly.FromDateTime(DateTime.UtcNow));
+                    var previousStoredValue = await LoadPreviousStoredValueAsync(tenant.Id, row.SourceId,
+                        cancellationToken);
+                    var currentStoredValue = StoredValue(row);
+                    await AddRevisionAsync(runId, tenant.Id, row, existingCustomerMap!, maps,
+                        cancellationToken);
+                    financialRevisions.Add(new LegacyFinancialRevisionPlan(customer.Id, row,
+                        previousStoredValue.PrincipalMinor, previousStoredValue.BonusMinor,
+                        currentStoredValue.PrincipalMinor, currentStoredValue.BonusMinor));
+                    if (currentStoredValue.HasEvidence || previousStoredValue.PrincipalMinor > 0 ||
+                        previousStoredValue.BonusMinor > 0)
+                    {
+                        var levelSource = Field(row, "member_iclevel")?.Trim() ?? string.Empty;
+                        var cardTypeId = cardTypes.GetValueOrDefault(levelSource,
+                            fallbackStoredValueCardTypeId ?? throw new InvalidOperationException(
+                                "缺少旧系统储值卡类型"));
+                        storedValuePlans.Add(new LegacyStoredValuePlan(row, customer.Id, homeStoreId, cardTypeId,
+                            currentStoredValue.PrincipalMinor, currentStoredValue.BonusMinor, true,
+                            previousStoredValue.PrincipalMinor, previousStoredValue.BonusMinor, true));
+                    }
+                    Increment(created, "customer-updates");
+                    continue;
+                }
                 if (reconcilesExistingCustomer)
                 {
                     customer = existingCustomer!;
@@ -361,7 +426,8 @@ internal sealed partial class LegacyImportService(
                     var cardTypeId = cardTypes.GetValueOrDefault(levelSource,
                         fallbackStoredValueCardTypeId ?? throw new InvalidOperationException("缺少旧系统储值卡类型"));
                     storedValuePlans.Add(new LegacyStoredValuePlan(row, customer.Id, homeStoreId, cardTypeId,
-                        storedValue.PrincipalMinor, storedValue.BonusMinor, reconcilesExistingCustomer));
+                        storedValue.PrincipalMinor, storedValue.BonusMinor, reconcilesExistingCustomer,
+                        0, 0, false));
                 }
             }
 
@@ -400,8 +466,23 @@ internal sealed partial class LegacyImportService(
                     db.MemberCards.Add(card);
                     Increment(created, "stored-value-cards");
                 }
-                await AddMapAsync(runId, tenant.Id, cardSource, "membership_cards", card.Id, maps,
-                    cancellationToken);
+                if (maps.TryGetValue((cardSource.Entity, cardSource.SourceId), out var existingCardMap))
+                {
+                    if (!string.Equals(existingCardMap.SourceSha256, cardSource.SourceSha256,
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (!plan.IsIncremental)
+                            throw new InvalidOperationException(
+                                $"来源记录已变化，拒绝覆盖：{cardSource.Entity}/{cardSource.SourceId}");
+                        await AddRevisionAsync(runId, tenant.Id, cardSource, existingCardMap, maps,
+                            cancellationToken);
+                    }
+                }
+                else
+                {
+                    await AddMapAsync(runId, tenant.Id, cardSource, "membership_cards", card.Id, maps,
+                        cancellationToken);
+                }
                 cardPlans.Add((plan, card));
             }
             await db.SaveChangesAsync(cancellationToken);
@@ -427,137 +508,154 @@ internal sealed partial class LegacyImportService(
             foreach (var item in cardPlans)
             {
                 var businessId = DeterministicGuid($"{tenant.Id:N}:legacy-stored-value:{item.Plan.Row.SourceId}");
-                ReconcileOpeningBalance(accountsByCardAndType[(item.Card.Id, MemberAccountType.Principal)],
-                    item.Plan.PrincipalMinor, "Principal", businessId, item.Plan.Row, created);
-                ReconcileOpeningBalance(accountsByCardAndType[(item.Card.Id, MemberAccountType.Bonus)],
-                    item.Plan.BonusMinor, "Bonus", businessId, item.Plan.Row, created);
+                if (item.Plan.IsIncremental)
+                {
+                    ApplyBalanceDelta(accountsByCardAndType[(item.Card.Id, MemberAccountType.Principal)],
+                        item.Plan.PrincipalMinor - item.Plan.PreviousPrincipalMinor, "Principal", businessId,
+                        item.Plan.Row, created);
+                    ApplyBalanceDelta(accountsByCardAndType[(item.Card.Id, MemberAccountType.Bonus)],
+                        item.Plan.BonusMinor - item.Plan.PreviousBonusMinor, "Bonus", businessId,
+                        item.Plan.Row, created);
+                }
+                else
+                {
+                    ReconcileOpeningBalance(accountsByCardAndType[(item.Card.Id, MemberAccountType.Principal)],
+                        item.Plan.PrincipalMinor, "Principal", businessId, item.Plan.Row, created);
+                    ReconcileOpeningBalance(accountsByCardAndType[(item.Card.Id, MemberAccountType.Bonus)],
+                        item.Plan.BonusMinor, "Bonus", businessId, item.Plan.Row, created);
+                }
             }
             await db.SaveChangesAsync(cancellationToken);
 
             foreach (var snapshot in financialSnapshots)
                 await InsertFinancialSnapshotAsync(runId, tenant.Id, snapshot.CustomerId, snapshot.Row,
                     cancellationToken);
+            foreach (var revision in financialRevisions)
+                await InsertFinancialRevisionAsync(runId, tenant.Id, revision, cancellationToken);
 
-            var photosByCustomer = dataset.Photos.GroupBy(x => x.SourceCustomerId, StringComparer.Ordinal)
-                .ToDictionary(x => x.Key, x => x.OrderBy(photo => photo.Slot).ToArray(), StringComparer.Ordinal);
-            foreach (var row in customerRows)
+            if (!command.FinancialIncrementalSync)
             {
-                if (!maps.TryGetValue(("customers", row.SourceId), out var customerMap)) continue;
-                var memo = CleanText(Field(row, "member_memo"), 4_000);
-                photosByCustomer.TryGetValue(row.SourceId, out var photos);
-                photos ??= [];
-                if (memo is null && photos.Length == 0) continue;
-                var noteSource = row with
+                var photosByCustomer = dataset.Photos.GroupBy(x => x.SourceCustomerId, StringComparer.Ordinal)
+                    .ToDictionary(x => x.Key, x => x.OrderBy(photo => photo.Slot).ToArray(), StringComparer.Ordinal);
+                foreach (var row in customerRows)
                 {
-                    Entity = "customer-service-record",
-                    SourceSha256 = CombinedHash(row.SourceSha256, photos.Select(x => x.PlainSha256))
-                };
-                if (TryMapped(maps, noteSource, out _)) { Increment(skipped, "service-records"); continue; }
-                var storeId = ResolveStore(row, "member_shop", storesBySource, storesByLegacyCode,
-                    storesByLegacyName, defaultStoreId);
-                var record = new ServiceRecord(tenant.Id, storeId, customerMap.TargetId, null,
-                    ParseOccurredAt(Field(row, "member_time2"), Field(row, "member_time1")),
-                    "旧系统顾客档案备注（迁移）", memo, null,
-                    DeterministicGuid($"{tenant.Id:N}:legacy-service-record:{row.SourceId}"), operatorId,
-                    DateTimeOffset.UtcNow);
-                foreach (var photo in photos)
-                {
-                    if (photo.Content.LongLength > SecureFileStorage.MaximumImageBytes)
+                    if (!maps.TryGetValue(("customers", row.SourceId), out var customerMap)) continue;
+                    var memo = CleanText(Field(row, "member_memo"), 4_000);
+                    photosByCustomer.TryGetValue(row.SourceId, out var photos);
+                    photos ??= [];
+                    if (memo is null && photos.Length == 0) continue;
+                    var noteSource = row with
                     {
-                        await AddExceptionAsync(runId, tenant.Id, row, $"member_image{photo.Slot}",
-                            "PHOTO_TOO_LARGE", "Warning", "历史照片超过5MB，未导入附件", cancellationToken);
-                        Increment(exceptions, "photos");
+                        Entity = "customer-service-record",
+                        SourceSha256 = CombinedHash(row.SourceSha256, photos.Select(x => x.PlainSha256))
+                    };
+                    if (TryMapped(maps, noteSource, out _)) { Increment(skipped, "service-records"); continue; }
+                    var storeId = ResolveStore(row, "member_shop", storesBySource, storesByLegacyCode,
+                        storesByLegacyName, defaultStoreId);
+                    var record = new ServiceRecord(tenant.Id, storeId, customerMap.TargetId, null,
+                        ParseOccurredAt(Field(row, "member_time2"), Field(row, "member_time1")),
+                        "旧系统顾客档案备注（迁移）", memo, null,
+                        DeterministicGuid($"{tenant.Id:N}:legacy-service-record:{row.SourceId}"), operatorId,
+                        DateTimeOffset.UtcNow);
+                    foreach (var photo in photos)
+                    {
+                        if (photo.Content.LongLength > SecureFileStorage.MaximumImageBytes)
+                        {
+                            await AddExceptionAsync(runId, tenant.Id, row, $"member_image{photo.Slot}",
+                                "PHOTO_TOO_LARGE", "Warning", "历史照片超过5MB，未导入附件", cancellationToken);
+                            Increment(exceptions, "photos");
+                            continue;
+                        }
+                        await using var content = new MemoryStream(photo.Content, writable: false);
+                        var stored = await fileStorage.StoreImageAsync(tenant.Id, storeId,
+                            StoredFilePurposes.ServiceRecordImage, operatorId,
+                            new FileUploadInput($"legacy-{row.SourceId}-slot-{photo.Slot}.jpg", photo.ContentType,
+                                photo.Content.LongLength, content), cancellationToken);
+                        storedFiles.Add(stored);
+                        db.StoredFiles.Add(stored);
+                        record.AttachImage(stored.Id);
+                        Increment(created, "photos");
+                    }
+                    db.ServiceRecords.Add(record);
+                    await AddMapAsync(runId, tenant.Id, noteSource, "customer_service_records", record.Id, maps,
+                        cancellationToken);
+                    Increment(created, "service-records");
+                }
+
+                var carePhotosByRecord = (dataset.CarePhotos ?? [])
+                    .GroupBy(x => x.SourceCareRecordId, StringComparer.Ordinal)
+                    .ToDictionary(x => x.Key, x => x.OrderBy(photo => photo.Slot).ToArray(), StringComparer.Ordinal);
+                foreach (var row in Rows(rows, "care-records"))
+                {
+                    carePhotosByRecord.TryGetValue(row.SourceId, out var carePhotos);
+                    carePhotos ??= [];
+                    var noteSource = row with
+                    {
+                        Entity = "care-record-service-record",
+                        SourceSha256 = CombinedHash(row.SourceSha256, carePhotos.Select(x => x.PlainSha256))
+                    };
+                    if (TryMapped(maps, noteSource, out _))
+                    {
+                        Increment(skipped, "care-records");
                         continue;
                     }
-                    await using var content = new MemoryStream(photo.Content, writable: false);
-                    var stored = await fileStorage.StoreImageAsync(tenant.Id, storeId,
-                        StoredFilePurposes.ServiceRecordImage, operatorId,
-                        new FileUploadInput($"legacy-{row.SourceId}-slot-{photo.Slot}.jpg", photo.ContentType,
-                            photo.Content.LongLength, content), cancellationToken);
-                    storedFiles.Add(stored);
-                    db.StoredFiles.Add(stored);
-                    record.AttachImage(stored.Id);
-                    Increment(created, "photos");
-                }
-                db.ServiceRecords.Add(record);
-                await AddMapAsync(runId, tenant.Id, noteSource, "customer_service_records", record.Id, maps,
-                    cancellationToken);
-                Increment(created, "service-records");
-            }
 
-            var carePhotosByRecord = (dataset.CarePhotos ?? [])
-                .GroupBy(x => x.SourceCareRecordId, StringComparer.Ordinal)
-                .ToDictionary(x => x.Key, x => x.OrderBy(photo => photo.Slot).ToArray(), StringComparer.Ordinal);
-            foreach (var row in Rows(rows, "care-records"))
-            {
-                carePhotosByRecord.TryGetValue(row.SourceId, out var carePhotos);
-                carePhotos ??= [];
-                var noteSource = row with
-                {
-                    Entity = "care-record-service-record",
-                    SourceSha256 = CombinedHash(row.SourceSha256, carePhotos.Select(x => x.PlainSha256))
-                };
-                if (TryMapped(maps, noteSource, out _))
-                {
-                    Increment(skipped, "care-records");
-                    continue;
-                }
-
-                var sourceCustomerId = Field(row, "bill_member")?.Trim();
-                if (string.IsNullOrWhiteSpace(sourceCustomerId) ||
-                    !maps.TryGetValue(("customers", sourceCustomerId), out var customerMap))
-                {
-                    await AddExceptionAsync(runId, tenant.Id, row, "bill_member", "CUSTOMER_NOT_MAPPED", "Error",
-                        "护理记录对应顾客未能安全映射，已跳过", cancellationToken);
-                    Increment(exceptions, "care-records");
-                    continue;
-                }
-
-                var storeId = ResolveStore(row, "bill_shop", storesBySource, storesByLegacyCode,
-                    storesByLegacyName, defaultStoreId);
-                var followUpParts = new[]
-                {
-                    CleanText(Field(row, "bill_next"), 100) is { } next ? $"下次护理：{next}" : null,
-                    CleanText(Field(row, "bill_emplee"), 100) is { } employee ? $"护理人员：{employee}" : null,
-                    CleanText(Field(row, "bill_memo"), 1_700)
-                }.Where(value => value is not null);
-                var followUp = CleanText(string.Join("；", followUpParts), 2_000);
-                var record = new ServiceRecord(
-                    tenant.Id,
-                    storeId,
-                    customerMap.TargetId,
-                    null,
-                    ParseOccurredAt(Field(row, "bill_time1"), Field(row, "bill_date")),
-                    CleanText(Field(row, "bill_intro"), 2_000),
-                    CleanText(Field(row, "bill_plan"), 4_000),
-                    followUp,
-                    DeterministicGuid($"{tenant.Id:N}:legacy-care-record:{row.SourceId}"),
-                    operatorId,
-                    DateTimeOffset.UtcNow);
-                foreach (var photo in carePhotos)
-                {
-                    if (photo.Content.LongLength > SecureFileStorage.MaximumImageBytes)
+                    var sourceCustomerId = Field(row, "bill_member")?.Trim();
+                    if (string.IsNullOrWhiteSpace(sourceCustomerId) ||
+                        !maps.TryGetValue(("customers", sourceCustomerId), out var customerMap))
                     {
-                        await AddExceptionAsync(runId, tenant.Id, row, $"care_image{photo.Slot}",
-                            "PHOTO_TOO_LARGE", "Warning", "历史护理照片超过5MB，未导入附件", cancellationToken);
-                        Increment(exceptions, "care-photos");
+                        await AddExceptionAsync(runId, tenant.Id, row, "bill_member", "CUSTOMER_NOT_MAPPED", "Error",
+                            "护理记录对应顾客未能安全映射，已跳过", cancellationToken);
+                        Increment(exceptions, "care-records");
                         continue;
                     }
-                    await using var content = new MemoryStream(photo.Content, writable: false);
-                    var stored = await fileStorage.StoreImageAsync(tenant.Id, storeId,
-                        StoredFilePurposes.ServiceRecordImage, operatorId,
-                        new FileUploadInput($"legacy-care-{row.SourceId}-slot-{photo.Slot}.jpg", photo.ContentType,
-                            photo.Content.LongLength, content), cancellationToken);
-                    storedFiles.Add(stored);
-                    db.StoredFiles.Add(stored);
-                    record.AttachImage(stored.Id);
-                    Increment(created, "care-photos");
+
+                    var storeId = ResolveStore(row, "bill_shop", storesBySource, storesByLegacyCode,
+                        storesByLegacyName, defaultStoreId);
+                    var followUpParts = new[]
+                    {
+                        CleanText(Field(row, "bill_next"), 100) is { } next ? $"下次护理：{next}" : null,
+                        CleanText(Field(row, "bill_emplee"), 100) is { } employee ? $"护理人员：{employee}" : null,
+                        CleanText(Field(row, "bill_memo"), 1_700)
+                    }.Where(value => value is not null);
+                    var followUp = CleanText(string.Join("；", followUpParts), 2_000);
+                    var record = new ServiceRecord(
+                        tenant.Id,
+                        storeId,
+                        customerMap.TargetId,
+                        null,
+                        ParseOccurredAt(Field(row, "bill_time1"), Field(row, "bill_date")),
+                        CleanText(Field(row, "bill_intro"), 2_000),
+                        CleanText(Field(row, "bill_plan"), 4_000),
+                        followUp,
+                        DeterministicGuid($"{tenant.Id:N}:legacy-care-record:{row.SourceId}"),
+                        operatorId,
+                        DateTimeOffset.UtcNow);
+                    foreach (var photo in carePhotos)
+                    {
+                        if (photo.Content.LongLength > SecureFileStorage.MaximumImageBytes)
+                        {
+                            await AddExceptionAsync(runId, tenant.Id, row, $"care_image{photo.Slot}",
+                                "PHOTO_TOO_LARGE", "Warning", "历史护理照片超过5MB，未导入附件", cancellationToken);
+                            Increment(exceptions, "care-photos");
+                            continue;
+                        }
+                        await using var content = new MemoryStream(photo.Content, writable: false);
+                        var stored = await fileStorage.StoreImageAsync(tenant.Id, storeId,
+                            StoredFilePurposes.ServiceRecordImage, operatorId,
+                            new FileUploadInput($"legacy-care-{row.SourceId}-slot-{photo.Slot}.jpg", photo.ContentType,
+                                photo.Content.LongLength, content), cancellationToken);
+                        storedFiles.Add(stored);
+                        db.StoredFiles.Add(stored);
+                        record.AttachImage(stored.Id);
+                        Increment(created, "care-photos");
+                    }
+                    db.ServiceRecords.Add(record);
+                    await AddMapAsync(runId, tenant.Id, noteSource, "customer_service_records", record.Id, maps,
+                        cancellationToken);
+                    Increment(created, "care-records");
+                    Increment(created, "service-records");
                 }
-                db.ServiceRecords.Add(record);
-                await AddMapAsync(runId, tenant.Id, noteSource, "customer_service_records", record.Id, maps,
-                    cancellationToken);
-                Increment(created, "care-records");
-                Increment(created, "service-records");
             }
 
             await db.SaveChangesAsync(cancellationToken);
@@ -609,6 +707,12 @@ internal sealed partial class LegacyImportService(
             throw new InvalidOperationException("迁移数据超过安全上限");
         if (dataset.Rows.Any(row => row.SourceSha256.Length != 64 || !row.SourceSha256.All(Uri.IsHexDigit)))
             throw new InvalidOperationException("来源记录摘要无效");
+        if (command.FinancialIncrementalSync && dataset.Rows.Any(row =>
+                row.Entity is not ("stores" or "customers")))
+            throw new InvalidOperationException("金额增量同步只允许门店和顾客模块");
+        if (command.FinancialIncrementalSync && (dataset.Photos.Count > 0 ||
+                (dataset.CarePhotos?.Count ?? 0) > 0))
+            throw new InvalidOperationException("金额增量同步不接收护理或顾客图片");
     }
 
     private static LegacySourceRow[] Rows(
@@ -766,15 +870,24 @@ internal sealed partial class LegacyImportService(
         Guid tenantId, CancellationToken cancellationToken)
     {
         await using var command = CreateCommand("""
-            SELECT source_entity,source_id,source_sha256,target_id
-            FROM legacy_migration_record_maps WHERE tenant_id=@tenant_id
+            WITH all_maps AS (
+                SELECT source_entity,source_id,source_sha256,target_table,target_id,created_at_utc AS captured_at_utc
+                FROM legacy_migration_record_maps WHERE tenant_id=@tenant_id
+                UNION ALL
+                SELECT source_entity,source_id,source_sha256,target_table,target_id,captured_at_utc
+                FROM legacy_migration_record_revisions WHERE tenant_id=@tenant_id
+            )
+            SELECT DISTINCT ON (source_entity,source_id)
+                source_entity,source_id,source_sha256,target_table,target_id
+            FROM all_maps
+            ORDER BY source_entity,source_id,captured_at_utc DESC
             """);
         command.Parameters.AddWithValue("tenant_id", NpgsqlDbType.Uuid, tenantId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var result = new Dictionary<(string, string), LegacyMap>();
         while (await reader.ReadAsync(cancellationToken))
             result[(reader.GetString(0), reader.GetString(1))] =
-                new LegacyMap(reader.GetString(2), reader.GetGuid(3));
+                new LegacyMap(reader.GetString(2), reader.GetString(3), reader.GetGuid(4));
         return result;
     }
 
@@ -796,7 +909,31 @@ internal sealed partial class LegacyImportService(
         command.Parameters.AddWithValue("target_table", NpgsqlDbType.Varchar, targetTable);
         command.Parameters.AddWithValue("target_id", NpgsqlDbType.Uuid, targetId);
         await command.ExecuteNonQueryAsync(cancellationToken);
-        maps[(row.Entity, row.SourceId)] = new LegacyMap(row.SourceSha256, targetId);
+        maps[(row.Entity, row.SourceId)] = new LegacyMap(row.SourceSha256, targetTable, targetId);
+    }
+
+    private async Task AddRevisionAsync(Guid runId, Guid tenantId, LegacySourceRow row, LegacyMap previous,
+        IDictionary<(string Entity, string SourceId), LegacyMap> maps, CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand("""
+            INSERT INTO legacy_migration_record_revisions
+              (id,tenant_id,run_id,source_entity,source_id,source_sha256,previous_source_sha256,
+               target_table,target_id,captured_at_utc)
+            VALUES (@id,@tenant_id,@run_id,@source_entity,@source_id,@source_sha256,@previous_source_sha256,
+               @target_table,@target_id,now())
+            """);
+        command.Parameters.AddWithValue("id", NpgsqlDbType.Uuid, Guid.CreateVersion7());
+        command.Parameters.AddWithValue("tenant_id", NpgsqlDbType.Uuid, tenantId);
+        command.Parameters.AddWithValue("run_id", NpgsqlDbType.Uuid, runId);
+        command.Parameters.AddWithValue("source_entity", NpgsqlDbType.Varchar, row.Entity);
+        command.Parameters.AddWithValue("source_id", NpgsqlDbType.Varchar, row.SourceId);
+        command.Parameters.AddWithValue("source_sha256", NpgsqlDbType.Varchar, row.SourceSha256);
+        command.Parameters.AddWithValue("previous_source_sha256", NpgsqlDbType.Varchar, previous.SourceSha256);
+        command.Parameters.AddWithValue("target_table", NpgsqlDbType.Varchar, previous.TargetTable);
+        command.Parameters.AddWithValue("target_id", NpgsqlDbType.Uuid, previous.TargetId);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+        maps[(row.Entity, row.SourceId)] = new LegacyMap(row.SourceSha256, previous.TargetTable,
+            previous.TargetId);
     }
 
     private async Task AddExceptionAsync(Guid runId, Guid tenantId, LegacySourceRow row, string? field,
@@ -846,6 +983,72 @@ internal sealed partial class LegacyImportService(
         AddNullable(command, "credit", NpgsqlDbType.Bigint, ParseMinor(Field(row, "member_credit")));
         AddNullable(command, "arrear", NpgsqlDbType.Bigint, ParseMinor(Field(row, "member_arrear")));
         AddNullable(command, "score", NpgsqlDbType.Numeric, ParseDecimal(Field(row, "member_score")));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private async Task<LegacyStoredValue> LoadPreviousStoredValueAsync(Guid tenantId, string sourceCustomerId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand("""
+            SELECT GREATEST(COALESCE(source_member_money_minor,0),0),
+                   GREATEST(COALESCE(source_member_bonus_minor,0),0) +
+                   GREATEST(COALESCE(source_member_sbonus_minor,0),0),
+                   GREATEST(COALESCE(source_member_store_minor,0),0)
+            FROM (
+                SELECT source_member_money_minor,source_member_bonus_minor,source_member_sbonus_minor,
+                       source_member_store_minor,captured_at_utc
+                FROM legacy_customer_financial_revisions
+                WHERE tenant_id=@tenant_id AND source_customer_id=@source_customer_id
+                UNION ALL
+                SELECT source_member_money_minor,source_member_bonus_minor,source_member_sbonus_minor,
+                       source_member_store_minor,captured_at_utc
+                FROM legacy_customer_financial_snapshots
+                WHERE tenant_id=@tenant_id AND source_customer_id=@source_customer_id
+            ) evidence
+            ORDER BY captured_at_utc DESC
+            LIMIT 1
+            """);
+        command.Parameters.AddWithValue("tenant_id", NpgsqlDbType.Uuid, tenantId);
+        command.Parameters.AddWithValue("source_customer_id", NpgsqlDbType.Varchar, sourceCustomerId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+            throw new InvalidOperationException("已映射顾客缺少上一版财务快照；已停止金额同步");
+        var principal = reader.GetInt64(0);
+        var bonus = reader.GetInt64(1);
+        var historicalTopup = reader.GetInt64(2);
+        return new LegacyStoredValue(principal, bonus,
+            principal > 0 || bonus > 0 || historicalTopup > 0);
+    }
+
+    private async Task InsertFinancialRevisionAsync(Guid runId, Guid tenantId,
+        LegacyFinancialRevisionPlan revision, CancellationToken cancellationToken)
+    {
+        await using var command = CreateCommand("""
+            INSERT INTO legacy_customer_financial_revisions
+              (id,tenant_id,run_id,customer_id,source_customer_id,source_sha256,
+               source_member_money_minor,source_member_bonus_minor,source_member_sbonus_minor,
+               source_member_store_minor,source_member_credit_minor,source_member_arrear_minor,
+               source_member_score,principal_delta_minor,bonus_delta_minor,captured_at_utc)
+            VALUES (@id,@tenant_id,@run_id,@customer_id,@source_customer_id,@source_sha256,
+               @money,@bonus,@sbonus,@store,@credit,@arrear,@score,@principal_delta,@bonus_delta,now())
+            """);
+        command.Parameters.AddWithValue("id", NpgsqlDbType.Uuid, Guid.CreateVersion7());
+        command.Parameters.AddWithValue("tenant_id", NpgsqlDbType.Uuid, tenantId);
+        command.Parameters.AddWithValue("run_id", NpgsqlDbType.Uuid, runId);
+        command.Parameters.AddWithValue("customer_id", NpgsqlDbType.Uuid, revision.CustomerId);
+        command.Parameters.AddWithValue("source_customer_id", NpgsqlDbType.Varchar, revision.Row.SourceId);
+        command.Parameters.AddWithValue("source_sha256", NpgsqlDbType.Varchar, revision.Row.SourceSha256);
+        AddNullable(command, "money", NpgsqlDbType.Bigint, ParseMinor(Field(revision.Row, "member_money")));
+        AddNullable(command, "bonus", NpgsqlDbType.Bigint, ParseMinor(Field(revision.Row, "member_bonus")));
+        AddNullable(command, "sbonus", NpgsqlDbType.Bigint, ParseMinor(Field(revision.Row, "member_sbonus")));
+        AddNullable(command, "store", NpgsqlDbType.Bigint, ParseMinor(Field(revision.Row, "member_store")));
+        AddNullable(command, "credit", NpgsqlDbType.Bigint, ParseMinor(Field(revision.Row, "member_credit")));
+        AddNullable(command, "arrear", NpgsqlDbType.Bigint, ParseMinor(Field(revision.Row, "member_arrear")));
+        AddNullable(command, "score", NpgsqlDbType.Numeric, ParseDecimal(Field(revision.Row, "member_score")));
+        command.Parameters.AddWithValue("principal_delta", NpgsqlDbType.Bigint,
+            revision.CurrentPrincipalMinor - revision.PreviousPrincipalMinor);
+        command.Parameters.AddWithValue("bonus_delta", NpgsqlDbType.Bigint,
+            revision.CurrentBonusMinor - revision.PreviousBonusMinor);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -899,6 +1102,21 @@ internal sealed partial class LegacyImportService(
             : "stored-value-bonus-ledgers");
     }
 
+    private void ApplyBalanceDelta(MemberAccount account, long delta, string accountLabel, Guid businessId,
+        LegacySourceRow row, Dictionary<string, int> created)
+    {
+        if (delta == 0) return;
+        var commandId = DeterministicGuid(
+            $"{account.TenantId:N}:legacy-balance-sync:{row.SourceId}:{accountLabel}:{row.SourceSha256}");
+        var ledger = delta > 0
+            ? account.Credit("LegacyBalanceSync", businessId, delta, commandId, DateTimeOffset.UtcNow)
+            : account.Debit("LegacyBalanceSync", businessId, checked(-delta), commandId, DateTimeOffset.UtcNow);
+        db.MemberAccountLedgers.Add(ledger);
+        Increment(created, accountLabel == "Principal"
+            ? "stored-value-principal-sync-ledgers"
+            : "stored-value-bonus-sync-ledgers");
+    }
+
     private static LegacyStoredValue StoredValue(LegacySourceRow row)
     {
         var principal = Math.Max(ParseMinor(Field(row, "member_money")) ?? 0, 0);
@@ -930,8 +1148,11 @@ internal sealed partial class LegacyImportService(
     [GeneratedRegex("\\s+", RegexOptions.CultureInvariant, 1000)]
     private static partial Regex SpacePattern();
 
-    private sealed record LegacyMap(string SourceSha256, Guid TargetId);
+    private sealed record LegacyMap(string SourceSha256, string TargetTable, Guid TargetId);
     private sealed record LegacyStoredValue(long PrincipalMinor, long BonusMinor, bool HasEvidence);
     private sealed record LegacyStoredValuePlan(LegacySourceRow Row, Guid CustomerId, Guid StoreId,
-        Guid CardTypeId, long PrincipalMinor, long BonusMinor, bool ReconcilesExistingCustomer);
+        Guid CardTypeId, long PrincipalMinor, long BonusMinor, bool ReconcilesExistingCustomer,
+        long PreviousPrincipalMinor, long PreviousBonusMinor, bool IsIncremental);
+    private sealed record LegacyFinancialRevisionPlan(Guid CustomerId, LegacySourceRow Row,
+        long PreviousPrincipalMinor, long PreviousBonusMinor, long CurrentPrincipalMinor, long CurrentBonusMinor);
 }

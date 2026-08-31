@@ -86,6 +86,43 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task LegacyFinancialIncrementalAppliesOnlySourceBalanceDelta()
+    {
+        static LegacySourceRow Row(string entity, string id, char hash,
+            params (string Key, string? Value)[] fields) =>
+            new(entity, id, new string(hash, 64),
+                fields.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal));
+
+        var initial = new LegacyImportDataset("B01", "integration-financial-delta", new string('6', 64),
+            "integration-v1",
+            [
+                Row("stores", "9901", '7', ("shop_code", "9901"), ("shop_name", "金额增量店")),
+                Row("customers", "9906", '8', ("member_name", "金额增量顾客"),
+                    ("member_hand", "13900001996"), ("member_shop", "金额增量店"),
+                    ("member_money", "100.00"), ("member_bonus", "20.00"), ("member_store", "100.00")),
+            ], []);
+        await fixture.RunLegacyImportAsync(new LegacyImportCommand(initial, DryRun: false));
+
+        var changed = new LegacyImportDataset("B01", "integration-financial-delta", new string('9', 64),
+            "integration-v2",
+            [
+                Row("stores", "9901", '7', ("shop_code", "9901"), ("shop_name", "金额增量店")),
+                Row("customers", "9906", 'a', ("member_name", "金额增量顾客"),
+                    ("member_hand", "13900001996"), ("member_shop", "金额增量店"),
+                    ("member_money", "85.00"), ("member_bonus", "25.00"), ("member_store", "100.00")),
+            ], []);
+        var result = await fixture.RunLegacyImportAsync(new LegacyImportCommand(changed, DryRun: false,
+            FinancialIncrementalSync: true));
+
+        Assert.Equal(1, result.Created["customer-updates"]);
+        Assert.Equal(1, result.Created["stored-value-principal-sync-ledgers"]);
+        Assert.Equal(1, result.Created["stored-value-bonus-sync-ledgers"]);
+        var balances = await fixture.GetLegacyCustomerBalancesAsync("9906");
+        Assert.Equal(8_500, balances.PrincipalMinor);
+        Assert.Equal(2_500, balances.BonusMinor);
+    }
+
+    [Fact]
     public async Task LegacyImportRejectsNonEmptyUnmappedStoreInsteadOfUsingDefault()
     {
         static LegacySourceRow Row(string entity, string id, params (string Key, string? Value)[] fields) =>
@@ -134,7 +171,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202608310040", ready?.SchemaVersion);
+        Assert.Equal("202608310041", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {
@@ -1349,6 +1386,24 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
             "SELECT count(*) FROM legacy_migration_runs WHERE source_system=@source_system", connection);
         command.Parameters.AddWithValue("source_system", sourceSystem);
         return Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    public async Task<(long PrincipalMinor, long BonusMinor)> GetLegacyCustomerBalancesAsync(string sourceId)
+    {
+        await using var connection = new NpgsqlConnection(database.GetConnectionString());
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            SELECT COALESCE(sum(a.balance_units) FILTER (WHERE a.account_type='Principal'),0),
+                   COALESCE(sum(a.balance_units) FILTER (WHERE a.account_type='Bonus'),0)
+            FROM legacy_migration_record_maps m
+            JOIN membership_cards c ON c.customer_id=m.target_id AND c.status='Active'
+            JOIN member_accounts a ON a.card_id=c.id
+            WHERE m.source_entity='customers' AND m.source_id=@source_id
+            """, connection);
+        command.Parameters.AddWithValue("source_id", sourceId);
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        return (reader.GetInt64(0), reader.GetInt64(1));
     }
 
     public int CountStoredFileBlobs()

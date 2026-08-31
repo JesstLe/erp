@@ -36,7 +36,8 @@ public static class LegacyImportCli
                 !options.Apply,
                 options.ConfirmedTargetTenantCode,
                 options.SyncMappedStores,
-                options.ReconcileExistingCustomers), cancellationToken);
+                options.ReconcileExistingCustomers,
+                options.FinancialIncrementalSync), cancellationToken);
             await output.WriteLineAsync($"迁移运行：{result.RunId}，已完成={result.AlreadyCompleted}，模式={(result.DryRun ? "干跑" : "执行")}。");
             foreach (var item in result.Created.OrderBy(x => x.Key, StringComparer.Ordinal))
                 await output.WriteLineAsync($"创建 {item.Key}: {item.Value}");
@@ -76,7 +77,8 @@ public sealed record LegacyImportOptions(
     IReadOnlyDictionary<string, string>? StoreMappings = null,
     string? ConfirmedTargetTenantCode = null,
     bool SyncMappedStores = false,
-    bool ReconcileExistingCustomers = false)
+    bool ReconcileExistingCustomers = false,
+    bool FinancialIncrementalSync = false)
 {
     public static LegacyImportOptions Parse(string[] args)
     {
@@ -89,6 +91,7 @@ public sealed record LegacyImportOptions(
         string? confirmedTarget = null;
         var syncMappedStores = false;
         var reconcileExistingCustomers = false;
+        var financialIncrementalSync = false;
         var storeMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (var index = 1; index < args.Length; index++)
         {
@@ -111,6 +114,7 @@ public sealed record LegacyImportOptions(
                 }
                 case "--sync-mapped-stores": syncMappedStores = true; break;
                 case "--reconcile-existing-customers": reconcileExistingCustomers = true; break;
+                case "--financial-incremental": financialIncrementalSync = true; break;
                 case "--apply": apply = true; break;
                 default: throw new LegacyMigrationException($"不支持的导入参数：{args[index]}");
             }
@@ -123,6 +127,8 @@ public sealed record LegacyImportOptions(
             throw new LegacyMigrationException("非测试品牌必须使用 --confirm-target 重复确认精确的目标品牌编码。");
         if (syncMappedStores && storeMappings.Count == 0)
             throw new LegacyMigrationException("同步映射门店时必须提供门店映射。");
+        if (financialIncrementalSync && (syncMappedStores || reconcileExistingCustomers))
+            throw new LegacyMigrationException("金额增量同步不能与首次迁移开关同时使用。");
         if (inputs.Count is 0 or > 20) throw new LegacyMigrationException("导入必须提供1到20个来源目录。");
         var fullInputs = inputs.Select(path =>
         {
@@ -134,7 +140,7 @@ public sealed record LegacyImportOptions(
         if (version.Length is < 3 or > 40 || version.Any(char.IsControl))
             throw new LegacyMigrationException("导入版本格式无效。");
         return new LegacyImportOptions(fullInputs, tenant, apply, version, storeMappings,
-            confirmedTarget, syncMappedStores, reconcileExistingCustomers);
+            confirmedTarget, syncMappedStores, reconcileExistingCustomers, financialIncrementalSync);
     }
 
     private static string Next(string[] args, ref int index)
@@ -222,6 +228,8 @@ public sealed class LegacyImportDatasetLoader(EncryptedPayloadStore payloadStore
                     .Concat((options.StoreMappings ?? new Dictionary<string, string>())
                         .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
                         .Select(item => $"store-map:{item.Key}:{item.Value}"))
+                    .Append($"import-version:{options.ImportVersion}")
+                    .Append($"financial-incremental:{options.FinancialIncrementalSync}")
                     .Order(StringComparer.Ordinal)))));
             return new LegacyImportDataset(options.TenantCode, "siweicloud-swshop", fingerprint,
                 options.ImportVersion, rows, photos, carePhotos, options.StoreMappings);
