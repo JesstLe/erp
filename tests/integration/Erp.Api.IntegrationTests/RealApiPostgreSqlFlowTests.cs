@@ -890,6 +890,19 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal(10_000L, secondStoreOverview.PeriodNetRevenueMinor);
         Assert.Equal(10_000L, secondStoreOverview.StoredValueNetMinor);
 
+        var dashboard = await client.GetFromJsonAsync<DashboardOverviewDto>(
+            "/api/v1/reports/dashboard-overview");
+        Assert.Equal("全部门店（2 家）", dashboard!.ScopeName);
+        Assert.Equal(24_000L, dashboard.TodayRevenueMinor);
+        Assert.Equal(24_000L, dashboard.MonthRevenueMinor);
+        Assert.Equal(24_000L, dashboard.LifetimeRevenueMinor);
+        Assert.Equal(36_000L, dashboard.StoredValueBalanceMinor);
+        Assert.Equal(11_000L, dashboard.PendingReconciliationMinor);
+        Assert.Equal(2, dashboard.TodaySettledOrderCount);
+        Assert.Equal(30, dashboard.Trend.Count);
+        Assert.Equal(24_000L, dashboard.Trend.Single(x => x.Date == reportDate).NetRevenueMinor);
+        Assert.Equal(2, dashboard.Stores.Count);
+
         var autoClosedSecondStoreShift = await PostAsync<CashierShiftDto>(client,
             $"/api/v1/payments/shifts/{secondStoreShift.Id}/submit", new
             {
