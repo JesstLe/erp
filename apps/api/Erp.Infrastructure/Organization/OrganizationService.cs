@@ -133,13 +133,13 @@ public sealed class OrganizationService(ErpDbContext db, IHttpContextAccessor ht
         try
         {
             var code = await codeGenerator.NextStoreCodeAsync(tenantId, cancellationToken);
-            var store = new Store(tenantId, code, command.Name, command.TimeZoneId);
+            var store = new Store(tenantId, code, command.Name, command.TimeZoneId, command.Address);
             db.Stores.Add(store);
             await db.SaveChangesAsync(cancellationToken);
             AddAudit(tenantId, store.Id, command.OperatorId, "organization.store.create", "Store", store.Id,
                 null, store.Status.ToString(), JsonSerializer.Serialize(new
                 {
-                    store.Code, store.Name, store.TimeZoneId,
+                    store.Code, store.Name, store.TimeZoneId, store.Address,
                 }));
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
@@ -170,14 +170,14 @@ public sealed class OrganizationService(ErpDbContext db, IHttpContextAccessor ht
         var code = command.Code.Trim().ToUpperInvariant();
         if (!string.Equals(store.Code, code, StringComparison.Ordinal))
             return ResultFactory.Failure<StoreProfileDto>("STORE_CODE_IMMUTABLE", "门店编码创建后不可修改");
-        var before = new { store.Code, store.Name, store.TimeZoneId };
+        var before = new { store.Code, store.Name, store.TimeZoneId, store.Address };
         try
         {
-            store.UpdateProfile(code, command.Name, command.TimeZoneId);
+            store.UpdateProfile(code, command.Name, command.TimeZoneId, command.Address);
             AddAudit(tenantId, store.Id, command.OperatorId, "organization.store.update", "Store", store.Id,
                 store.Status.ToString(), store.Status.ToString(), JsonSerializer.Serialize(new
                 {
-                    before, after = new { store.Code, store.Name, store.TimeZoneId },
+                    before, after = new { store.Code, store.Name, store.TimeZoneId, store.Address },
                 }));
             await db.SaveChangesAsync(cancellationToken);
             return ResultFactory.Success((await BuildStoresAsync(tenantId, [store], cancellationToken)).Single());
@@ -282,6 +282,7 @@ public sealed class OrganizationService(ErpDbContext db, IHttpContextAccessor ht
                 Enabled = x.Count(item => item.LifecycleStatus == FacilityLifecycleStatus.Enabled),
             }).ToDictionaryAsync(x => x.StoreId, cancellationToken);
         return stores.Select(store => new StoreProfileDto(store.Id, store.Code, store.Name, store.TimeZoneId,
+            store.Address,
             store.Status.ToString(), managers.GetValueOrDefault(store.Id, []),
             employeeCounts.GetValueOrDefault(store.Id), groupCounts.GetValueOrDefault(store.Id),
             facilityCounts.TryGetValue(store.Id, out var counts) ? counts.Count : 0,

@@ -11,7 +11,7 @@ credentials_file=/root/erp-initial-credentials.txt
 
 tenant_code=${ERP_BOOTSTRAP_TENANT_CODE:-B01}
 tenant_name=${ERP_BOOTSTRAP_TENANT_NAME:-门店 ERP}
-store_code=${ERP_BOOTSTRAP_STORE_CODE:-S01}
+store_code=${ERP_BOOTSTRAP_STORE_CODE:-S001}
 store_name=${ERP_BOOTSTRAP_STORE_NAME:-总店}
 owner_account=${ERP_BOOTSTRAP_OWNER_ACCOUNT:-erp.owner}
 owner_display_name=${ERP_BOOTSTRAP_OWNER_DISPLAY_NAME:-负责人}

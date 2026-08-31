@@ -44,6 +44,37 @@ final result: passed
 
 ---
 
+# Modern facility settlement — Design QA
+
+- Source reference: `/var/folders/fd/g85xtdkd3xqcbh39833pkkjh0000gn/T/codex-clipboard-e840ac95-fe93-4bac-bb58-bc582ef1d1a4.jpg`
+- Browser-rendered implementation: `/tmp/erp-settlement-qa-final.png`
+- Combined comparison evidence: `/tmp/erp-settlement-comparison.png`
+- Viewport/state: 1220 × 832 CSS px, authenticated local OWNER, facility service ended with one service item and the settlement modal open.
+
+## Findings
+
+No actionable P0/P1/P2 mismatch remains in the requested settlement-window scope.
+
+- The first row preserves the legacy information hierarchy—消费金额、优惠金额、应收金额—while using the modern UI's rounded neutral cards.
+- 会员姓名、会员卡号、优惠金额 and default payment are visible before payment splits. Blank-value inheritance is explained in context instead of forcing operators to repeat earlier entries.
+- 现金、支付宝、银联/银行卡、微信、储值卡 and 团购 are all visible in the initial viewport; external channels retain optional transaction references.
+- The modal body scrolls independently for optional notes and POS-print settings, while 取消 and 确认收款 remain fixed and visible at the bottom of a 1220 × 832 viewport.
+- The comparison keeps the legacy form ordering and dense cashier workflow, but deliberately retains the approved modern radius, spacing, typography and status wording.
+- A long selected-item list now owns its vertical scroll area. At the customer-reported 402 × 744 viewport, the bill list measures 371 px high against 899 px of content and scrolls from the first line to the fifth line without moving or covering the fixed action bar.
+
+## Primary interactions tested
+
+- Opened an available facility without starting its timer.
+- Added a service, assigned an employee, then explicitly started and ended the timer.
+- Opened settlement and verified all requested member, discount and payment fields.
+- Confirmed the quick-select dropdown and icon-free bottom actions render in the live modern workbench.
+- Reproduced the five-line bill from the customer screenshot, scrolled the left bill pane to `scrollTop=520`, and verified the fourth and fifth products become visible while the bottom action row stays fixed.
+- Did not submit the final payment during visual QA.
+
+final result: passed
+
+---
+
 # Modern facility cashier using classic workflow — Design QA
 
 - Source visual truth: `/Users/lv/Workspace/erp/design-audit/flow-compare-2026-08-27/05-classic-service-counter-1280.png`

@@ -8,12 +8,14 @@ public sealed class Store : Entity
     {
     }
 
-    public Store(Guid tenantId, string code, string name, string timeZoneId = "Asia/Shanghai")
+    public Store(Guid tenantId, string code, string name, string timeZoneId = "Asia/Shanghai",
+        string? address = null)
         : base(tenantId)
     {
         Code = Normalize(code, 32, nameof(code)).ToUpperInvariant();
         Name = Normalize(name, 100, nameof(name));
         TimeZoneId = Normalize(timeZoneId, 64, nameof(timeZoneId));
+        Address = Optional(address, 300, "门店地址");
         Status = StoreStatus.Enabled;
     }
 
@@ -23,6 +25,8 @@ public sealed class Store : Entity
 
     public string TimeZoneId { get; private set; } = "Asia/Shanghai";
 
+    public string? Address { get; private set; }
+
     public StoreStatus Status { get; private set; }
 
     public void Rename(string name)
@@ -31,7 +35,7 @@ public sealed class Store : Entity
         Touch();
     }
 
-    public void UpdateProfile(string code, string name, string timeZoneId)
+    public void UpdateProfile(string code, string name, string timeZoneId, string? address = null)
     {
         var normalizedCode = Normalize(code, 32, nameof(code)).ToUpperInvariant();
         if (!string.Equals(Code, normalizedCode, StringComparison.Ordinal))
@@ -41,6 +45,7 @@ public sealed class Store : Entity
 
         Name = Normalize(name, 100, nameof(name));
         TimeZoneId = Normalize(timeZoneId, 64, nameof(timeZoneId));
+        Address = Optional(address, 300, "门店地址");
         Touch();
     }
 
@@ -66,6 +71,15 @@ public sealed class Store : Entity
             throw new DomainRuleException("VALIDATION_FAILED", $"{field}长度不正确");
         }
 
+        return normalized;
+    }
+
+    private static string? Optional(string? value, int maxLength, string field)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrEmpty(normalized)) return null;
+        if (normalized.Length > maxLength)
+            throw new DomainRuleException("VALIDATION_FAILED", $"{field}最多{maxLength}个字符");
         return normalized;
     }
 }
