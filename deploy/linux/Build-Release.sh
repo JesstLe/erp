@@ -32,6 +32,10 @@ fi
 schema_version=$(find "$repository_root/db/migrations" -maxdepth 1 -type f -name 'V*.sql' -print |
   sed -E 's#^.*/V([0-9]+)__.*#\1#' | sort -n | tail -1)
 [[ "$schema_version" =~ ^[0-9]+$ ]] || die '无法识别 schema 版本'
+readiness_schema=$(sed -nE 's/.*RequiredSchemaVersion = "([0-9]+)";.*/\1/p' \
+  "$repository_root/apps/api/Erp.Infrastructure/Persistence/DatabaseReadinessService.cs")
+[[ "$readiness_schema" == "$schema_version" ]] ||
+  die "就绪检查 schema $readiness_schema 与最新迁移 $schema_version 不一致"
 
 source_fingerprint=$(
   while IFS= read -r -d '' source_path; do

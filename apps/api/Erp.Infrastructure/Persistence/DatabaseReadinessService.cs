@@ -6,7 +6,7 @@ namespace Erp.Infrastructure.Persistence;
 
 internal sealed class DatabaseReadinessService(ErpDbContext db) : IDatabaseReadinessService
 {
-    public const string RequiredSchemaVersion = "202608300038";
+    public const string RequiredSchemaVersion = "202608310039";
 
     public async Task<DatabaseReadinessDto> CheckAsync(CancellationToken cancellationToken)
     {
