@@ -73,6 +73,10 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.False(result.AlreadyCompleted);
         Assert.Equal(1, result.Created["stores"]);
         Assert.Equal(1, result.Created["customers"]);
+        Assert.Equal(1, result.Created["stored-value-cards"]);
+        Assert.Equal(3, result.Created["member-accounts"]);
+        Assert.Equal(1, result.Created["stored-value-principal-ledgers"]);
+        Assert.Equal(1, result.Created["stored-value-bonus-ledgers"]);
         Assert.Equal(2, result.Created["service-records"]);
         Assert.Equal(1, result.Created["photos"]);
         Assert.Equal(1, result.Created["care-records"]);

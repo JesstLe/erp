@@ -17,6 +17,41 @@ public sealed class LegacyStoreAttributionPlanTests
     }
 
     [Fact]
+    public void ImportOptionsRequireExactConfirmationForProductionTenant()
+    {
+        var input = Path.GetTempPath();
+
+        var missingConfirmation = Assert.Throws<LegacyMigrationException>(() => LegacyImportOptions.Parse(
+        [
+            "import", "--input", input, "--tenant", "B2026082001",
+        ]));
+        Assert.Contains("--confirm-target", missingConfirmation.Message, StringComparison.Ordinal);
+
+        var options = LegacyImportOptions.Parse(
+        [
+            "import", "--input", input, "--tenant", "B2026082001",
+            "--confirm-target", "B2026082001", "--store-map", "1=S001",
+            "--sync-mapped-stores", "--reconcile-existing-customers",
+        ]);
+
+        Assert.Equal("B2026082001", options.ConfirmedTargetTenantCode);
+        Assert.True(options.SyncMappedStores);
+        Assert.True(options.ReconcileExistingCustomers);
+    }
+
+    [Fact]
+    public void ImportOptionsRejectDuplicateTargetStoreCodes()
+    {
+        var exception = Assert.Throws<LegacyMigrationException>(() => LegacyImportOptions.Parse(
+        [
+            "import", "--input", Path.GetTempPath(), "--tenant", "B01",
+            "--store-map", "1=S001", "--store-map", "2=S001",
+        ]));
+
+        Assert.Contains("唯一", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ResolvesSourceIdCodeAndNameWithoutLeakingOtherFields()
     {
         var rows = new[]

@@ -51,7 +51,7 @@ public sealed partial class RepositoryArtifactIntegrationTests
     }
 
     [Fact]
-    public void LegacyImportIsB01OnlyIdempotentAndKeepsFinancialSnapshotsNonSpendable()
+    public void LegacyImportRequiresExactProductionTenantConfirmationAndKeepsFinancialSnapshotsNonSpendable()
     {
         var migration = File.ReadAllText(Path.Combine(RepositoryRoot, "db", "migrations",
             "V202608200032__legacy_migration_control_and_snapshots.sql"));
@@ -63,8 +63,9 @@ public sealed partial class RepositoryArtifactIntegrationTests
         Assert.Contains("UNIQUE (tenant_id, source_entity, source_id)", migration, StringComparison.Ordinal);
         Assert.Contains("CHECK (is_spendable = false)", migration, StringComparison.Ordinal);
         Assert.Contains("reject_legacy_append_only_change", migration, StringComparison.Ordinal);
-        Assert.Contains("dataset.TenantCode is not \"B01\"", importer, StringComparison.Ordinal);
-        Assert.Contains("new LegacyImportCommand(dataset, !options.Apply)", tool, StringComparison.Ordinal);
+        Assert.Contains("command.ConfirmedTargetTenantCode", importer, StringComparison.Ordinal);
+        Assert.Contains("--confirm-target", tool, StringComparison.Ordinal);
+        Assert.Contains("options.SyncMappedStores", tool, StringComparison.Ordinal);
         Assert.DoesNotContain("MapPost", importer, StringComparison.Ordinal);
     }
 

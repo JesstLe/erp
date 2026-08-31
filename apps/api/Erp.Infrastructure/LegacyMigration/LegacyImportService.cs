@@ -73,6 +73,15 @@ internal sealed partial class LegacyImportService(
             var storeOverrides = dataset.StoreSourceToTargetCodes ?? new Dictionary<string, string>();
             var existingStoresByCode = await db.Stores.Where(x => x.TenantId == tenant.Id)
                 .ToDictionaryAsync(x => x.Code, StringComparer.OrdinalIgnoreCase, cancellationToken);
+            var unknownOverrides = storeOverrides.Keys.Except(storeRows.Select(row => row.SourceId),
+                StringComparer.OrdinalIgnoreCase).ToArray();
+            if (unknownOverrides.Length > 0)
+                throw new InvalidOperationException("门店映射包含来源数据中不存在的门店ID；已停止迁移");
+            if (command.SyncMappedStores && storeOverrides.Count != storeRows.Length)
+                throw new InvalidOperationException("同步映射门店时必须覆盖全部来源门店；已停止迁移");
+            if (command.SyncMappedStores && existingStoresByCode.Keys
+                    .Except(storeOverrides.Values, StringComparer.OrdinalIgnoreCase).Any())
+                throw new InvalidOperationException("目标品牌存在迁移表之外的门店；已停止迁移");
             var storesBySource = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
             var storesByLegacyCode = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
             var storesByLegacyName = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
@@ -91,11 +100,27 @@ internal sealed partial class LegacyImportService(
 
                 if (storeOverrides.TryGetValue(row.SourceId, out var targetCode))
                 {
-                    if (!existingStoresByCode.TryGetValue(targetCode, out var targetStore))
-                        throw new InvalidOperationException(
-                            $"旧系统门店 {row.SourceId} 指定的目标门店编码不存在；已停止迁移");
+                    var legacyName = CleanText(Field(row, "shop_name"), 100);
                     var legacyAddress = CleanText(Field(row, "shop_addr"), 300);
-                    if (targetStore.Address is null && legacyAddress is not null)
+                    if (!existingStoresByCode.TryGetValue(targetCode, out var targetStore))
+                    {
+                        if (!command.SyncMappedStores || legacyName is null)
+                            throw new InvalidOperationException(
+                                $"旧系统门店 {row.SourceId} 指定的目标门店编码不存在；已停止迁移");
+                        targetStore = new Store(tenant.Id, targetCode, legacyName, address: legacyAddress);
+                        if (LooksDisabled(Field(row, "shop_stop"))) targetStore.Disable();
+                        db.Stores.Add(targetStore);
+                        existingStoresByCode[targetCode] = targetStore;
+                        Increment(created, "stores");
+                    }
+                    else if (command.SyncMappedStores)
+                    {
+                        if (legacyName is null)
+                            throw new InvalidOperationException("映射门店名称无效；已停止迁移");
+                        targetStore.UpdateProfile(targetStore.Code, legacyName, targetStore.TimeZoneId,
+                            legacyAddress ?? targetStore.Address);
+                    }
+                    else if (targetStore.Address is null && legacyAddress is not null)
                         targetStore.UpdateProfile(targetStore.Code, targetStore.Name, targetStore.TimeZoneId,
                             legacyAddress);
                     storesBySource[row.SourceId] = targetStore.Id;
@@ -131,11 +156,6 @@ internal sealed partial class LegacyImportService(
                 await AddMapAsync(runId, tenant.Id, row, "organization_stores", store.Id, maps, cancellationToken);
                 Increment(created, "stores");
             }
-
-            var unknownOverrides = storeOverrides.Keys.Except(storeRows.Select(row => row.SourceId),
-                StringComparer.OrdinalIgnoreCase).ToArray();
-            if (unknownOverrides.Length > 0)
-                throw new InvalidOperationException("门店映射包含来源数据中不存在的门店ID；已停止迁移");
 
             // Customer.HomeStoreId is enforced by PostgreSQL but intentionally has no EF navigation. Persist
             // migrated stores first so later customer inserts cannot be ordered ahead of their store FK.
@@ -241,6 +261,37 @@ internal sealed partial class LegacyImportService(
             }
 
             var customerRows = Rows(rows, "customers");
+            Guid? fallbackStoredValueCardTypeId = null;
+            if (customerRows.Any(row => StoredValue(row).HasEvidence))
+            {
+                fallbackStoredValueCardTypeId = await db.MemberCardTypes
+                    .Where(x => x.TenantId == tenant.Id && x.Code == "LEGACY-STORED")
+                    .Select(x => (Guid?)x.Id).SingleOrDefaultAsync(cancellationToken);
+                if (!fallbackStoredValueCardTypeId.HasValue)
+                {
+                    var fallbackType = new MemberCardType(tenant.Id, "LEGACY-STORED", "旧系统储值卡", null);
+                    db.MemberCardTypes.Add(fallbackType);
+                    fallbackStoredValueCardTypeId = fallbackType.Id;
+                    Increment(created, "stored-value-card-types");
+                }
+            }
+
+            var existingCustomersByMobile = new Dictionary<string, Customer>(StringComparer.Ordinal);
+            if (command.ReconcileExistingCustomers)
+            {
+                var existingCustomers = await db.Customers
+                    .Where(x => x.TenantId == tenant.Id && x.Status != CustomerStatus.Merged)
+                    .ToListAsync(cancellationToken);
+                foreach (var group in existingCustomers.GroupBy(
+                             customer => Convert.ToHexString(customer.MobileLookupHash), StringComparer.Ordinal))
+                {
+                    if (group.Count() != 1)
+                        throw new InvalidOperationException("目标品牌存在重复手机号顾客，无法安全合并旧系统顾客");
+                    existingCustomersByMobile[group.Key] = group.Single();
+                }
+            }
+            var consumedExistingCustomers = new HashSet<Guid>();
+            var storedValuePlans = new List<LegacyStoredValuePlan>();
             var financialSnapshots = new List<(Guid CustomerId, LegacySourceRow Row)>();
             foreach (var row in customerRows)
             {
@@ -274,19 +325,110 @@ internal sealed partial class LegacyImportService(
                         "生日格式无法证明，目标字段保持为空", cancellationToken);
                     Increment(exceptions, "birth-date");
                 }
-                var customer = new Customer(tenant.Id, homeStoreId, name, protectedMobile.Ciphertext,
-                    protectedMobile.LookupHash, protectedMobile.LastFour, ParseGender(Field(row, "member_sex")),
-                    birthDate, CleanCode(Field(row, "member_source"), 40), false, false,
-                    DateOnly.FromDateTime(DateTime.UtcNow));
-                db.Customers.Add(customer);
-                await AddMapAsync(runId, tenant.Id, row, "customers", customer.Id, maps, cancellationToken);
+                Customer customer;
+                var mobileKey = Convert.ToHexString(protectedMobile.LookupHash);
+                Customer? existingCustomer = null;
+                var reconcilesExistingCustomer = command.ReconcileExistingCustomers &&
+                    existingCustomersByMobile.TryGetValue(mobileKey, out existingCustomer) &&
+                    consumedExistingCustomers.Add(existingCustomer.Id);
+                if (reconcilesExistingCustomer)
+                {
+                    customer = existingCustomer!;
+                    await AddMapAsync(runId, tenant.Id, row, "customers", customer.Id, maps, cancellationToken);
+                    Increment(created, "customer-mappings");
+                }
+                else
+                {
+                    customer = new Customer(tenant.Id, homeStoreId, name, protectedMobile.Ciphertext,
+                        protectedMobile.LookupHash, protectedMobile.LastFour, ParseGender(Field(row, "member_sex")),
+                        birthDate, CleanCode(Field(row, "member_source"), 40), false, false,
+                        DateOnly.FromDateTime(DateTime.UtcNow));
+                    db.Customers.Add(customer);
+                    await AddMapAsync(runId, tenant.Id, row, "customers", customer.Id, maps, cancellationToken);
+                    Increment(created, "customers");
+                }
                 financialSnapshots.Add((customer.Id, row));
-                Increment(created, "customers");
+
+                var storedValue = StoredValue(row);
+                if (storedValue.HasEvidence)
+                {
+                    var levelSource = Field(row, "member_iclevel")?.Trim() ?? string.Empty;
+                    var cardTypeId = cardTypes.GetValueOrDefault(levelSource,
+                        fallbackStoredValueCardTypeId ?? throw new InvalidOperationException("缺少旧系统储值卡类型"));
+                    storedValuePlans.Add(new LegacyStoredValuePlan(row, customer.Id, homeStoreId, cardTypeId,
+                        storedValue.PrincipalMinor, storedValue.BonusMinor, reconcilesExistingCustomer));
+                }
             }
 
             // Snapshot rows have a real FK to customers, so flush all normalized master data first while
             // remaining inside the same serializable transaction. Dry runs still roll the entire unit back.
             await db.SaveChangesAsync(cancellationToken);
+
+            var planCustomerIds = storedValuePlans.Select(plan => plan.CustomerId).Distinct().ToArray();
+            var activeCardsByCustomer = planCustomerIds.Length == 0
+                ? new Dictionary<Guid, MemberCard>()
+                : (await db.MemberCards.Where(card => card.TenantId == tenant.Id &&
+                        planCustomerIds.Contains(card.CustomerId) && card.Status == MemberCardStatus.Active)
+                    .OrderBy(card => card.CreatedAtUtc).ToListAsync(cancellationToken))
+                    .GroupBy(card => card.CustomerId).ToDictionary(group => group.Key, group => group.First());
+            var cardPlans = new List<(LegacyStoredValuePlan Plan, MemberCard Card)>();
+            foreach (var plan in storedValuePlans)
+            {
+                var cardSource = plan.Row with
+                {
+                    Entity = "customer-stored-value-card",
+                    SourceSha256 = CombinedHash(plan.Row.SourceSha256, ["stored-value-v1"]),
+                };
+                MemberCard card;
+                if (plan.ReconcilesExistingCustomer && activeCardsByCustomer.TryGetValue(plan.CustomerId, out var activeCard))
+                {
+                    card = activeCard;
+                    Increment(skipped, "stored-value-cards");
+                }
+                else
+                {
+                    var occurredAt = ParseOccurredAt(Field(plan.Row, "member_time1"), null)
+                        .ToOffset(TimeSpan.FromHours(8));
+                    card = new MemberCard(tenant.Id, plan.CustomerId, plan.CardTypeId, plan.StoreId,
+                        LegacyCardNo(plan.Row.SourceId), DateOnly.FromDateTime(occurredAt.DateTime), null,
+                        "旧系统储值迁移");
+                    db.MemberCards.Add(card);
+                    Increment(created, "stored-value-cards");
+                }
+                await AddMapAsync(runId, tenant.Id, cardSource, "membership_cards", card.Id, maps,
+                    cancellationToken);
+                cardPlans.Add((plan, card));
+            }
+            await db.SaveChangesAsync(cancellationToken);
+
+            var cardIds = cardPlans.Select(item => item.Card.Id).Distinct().ToArray();
+            var accountsByCardAndType = cardIds.Length == 0
+                ? new Dictionary<(Guid, MemberAccountType), MemberAccount>()
+                : (await db.MemberAccounts.Where(account => account.TenantId == tenant.Id &&
+                        cardIds.Contains(account.CardId)).ToListAsync(cancellationToken))
+                    .ToDictionary(account => (account.CardId, account.AccountType));
+            foreach (var cardId in cardIds)
+            foreach (var accountType in Enum.GetValues<MemberAccountType>())
+            {
+                if (accountsByCardAndType.ContainsKey((cardId, accountType))) continue;
+                var plan = cardPlans.First(item => item.Card.Id == cardId).Plan;
+                var account = new MemberAccount(tenant.Id, plan.CustomerId, cardId, accountType);
+                db.MemberAccounts.Add(account);
+                accountsByCardAndType[(cardId, accountType)] = account;
+                Increment(created, "member-accounts");
+            }
+            await db.SaveChangesAsync(cancellationToken);
+
+            foreach (var item in cardPlans)
+            {
+                var businessId = DeterministicGuid($"{tenant.Id:N}:legacy-stored-value:{item.Plan.Row.SourceId}");
+                ReconcileOpeningBalance(accountsByCardAndType[(item.Card.Id, MemberAccountType.Principal)],
+                    item.Plan.PrincipalMinor, "Principal", businessId, item.Plan.Row, created);
+                ReconcileOpeningBalance(accountsByCardAndType[(item.Card.Id, MemberAccountType.Bonus)],
+                    item.Plan.BonusMinor, "Bonus", businessId, item.Plan.Row, created);
+            }
+            await db.SaveChangesAsync(cancellationToken);
+
             foreach (var snapshot in financialSnapshots)
                 await InsertFinancialSnapshotAsync(runId, tenant.Id, snapshot.CustomerId, snapshot.Row,
                     cancellationToken);
@@ -452,8 +594,9 @@ internal sealed partial class LegacyImportService(
     private static void Validate(LegacyImportCommand command)
     {
         var dataset = command.Dataset;
-        if (dataset.TenantCode is not "B01")
-            throw new InvalidOperationException("本迁移切片只允许写入测试品牌 B01");
+        if (dataset.TenantCode is not "B01" &&
+            !string.Equals(command.ConfirmedTargetTenantCode, dataset.TenantCode, StringComparison.Ordinal))
+            throw new InvalidOperationException("非测试品牌缺少精确的目标品牌二次确认");
         if (dataset.SourceFingerprintSha256.Length != 64 || !dataset.SourceFingerprintSha256.All(Uri.IsHexDigit))
             throw new InvalidOperationException("来源指纹无效");
         if (dataset.Rows.Count > 20_000 || dataset.Photos.Count > 20_000 ||
@@ -733,6 +876,41 @@ internal sealed partial class LegacyImportService(
         catch (OverflowException) { return null; }
     }
 
+    private void ReconcileOpeningBalance(MemberAccount account, long targetBalance, string accountLabel,
+        Guid businessId, LegacySourceRow row, Dictionary<string, int> created)
+    {
+        if (account.BalanceUnits == targetBalance) return;
+        var occurredAt = ParseOccurredAt(Field(row, "member_time2"), Field(row, "member_time1"));
+        var commandId = DeterministicGuid(
+            $"{account.TenantId:N}:legacy-balance:{row.SourceId}:{accountLabel}:{targetBalance}");
+        var ledger = account.BalanceUnits < targetBalance
+            ? account.Credit("LegacyStoredValueOpening", businessId, targetBalance - account.BalanceUnits,
+                commandId, occurredAt)
+            : account.Debit("LegacyBalanceReconciliation", businessId, account.BalanceUnits - targetBalance,
+                commandId, occurredAt);
+        db.MemberAccountLedgers.Add(ledger);
+        Increment(created, accountLabel == "Principal"
+            ? "stored-value-principal-ledgers"
+            : "stored-value-bonus-ledgers");
+    }
+
+    private static LegacyStoredValue StoredValue(LegacySourceRow row)
+    {
+        var principal = Math.Max(ParseMinor(Field(row, "member_money")) ?? 0, 0);
+        var bonus = checked(Math.Max(ParseMinor(Field(row, "member_bonus")) ?? 0, 0) +
+                            Math.Max(ParseMinor(Field(row, "member_sbonus")) ?? 0, 0));
+        var historicalTopup = Math.Max(ParseMinor(Field(row, "member_store")) ?? 0, 0);
+        return new LegacyStoredValue(principal, bonus,
+            principal > 0 || bonus > 0 || historicalTopup > 0);
+    }
+
+    private static string LegacyCardNo(string sourceId)
+    {
+        var normalized = new string(sourceId.Where(char.IsAsciiLetterOrDigit).ToArray()).ToUpperInvariant();
+        if (normalized.Length is > 0 and <= 31) return $"LEGACY-{normalized}";
+        return $"LG-{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(sourceId)))[..24]}";
+    }
+
     private static void AddNullable(NpgsqlCommand command, string name, NpgsqlDbType type, object? value) =>
         command.Parameters.AddWithValue(name, type, value ?? DBNull.Value);
 
@@ -748,4 +926,7 @@ internal sealed partial class LegacyImportService(
     private static partial Regex SpacePattern();
 
     private sealed record LegacyMap(string SourceSha256, Guid TargetId);
+    private sealed record LegacyStoredValue(long PrincipalMinor, long BonusMinor, bool HasEvidence);
+    private sealed record LegacyStoredValuePlan(LegacySourceRow Row, Guid CustomerId, Guid StoreId,
+        Guid CardTypeId, long PrincipalMinor, long BonusMinor, bool ReconcilesExistingCustomer);
 }

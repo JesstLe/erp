@@ -30,7 +30,12 @@ public sealed record LegacyImportDataset(
     IReadOnlyList<LegacySourceCarePhoto>? CarePhotos = null,
     IReadOnlyDictionary<string, string>? StoreSourceToTargetCodes = null);
 
-public sealed record LegacyImportCommand(LegacyImportDataset Dataset, bool DryRun);
+public sealed record LegacyImportCommand(
+    LegacyImportDataset Dataset,
+    bool DryRun,
+    string? ConfirmedTargetTenantCode = null,
+    bool SyncMappedStores = false,
+    bool ReconcileExistingCustomers = false);
 
 public sealed record LegacyImportResult(
     Guid RunId,
