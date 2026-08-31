@@ -8,6 +8,28 @@ public static class OrganizationEndpoints
 {
     public static IEndpointRouteBuilder MapOrganizationEndpoints(this IEndpointRouteBuilder endpoints)
     {
+        var navigation = endpoints.MapGroup("/api/v1/navigation").WithTags("Organization")
+            .RequireAuthorization();
+
+        navigation.MapGet("/labels", async (IIdentityService identity, IOrganizationService organization,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            var labels = await organization.GetNavigationLabelsAsync(current.TenantId, cancellationToken);
+            return labels is null ? Results.NotFound() : Results.Ok(labels);
+        });
+
+        navigation.MapPut("/labels", async (NavigationLabelsRequest request, IIdentityService identity,
+            IOrganizationService organization, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await organization.UpdateNavigationLabelsAsync(current.TenantId,
+                    new UpdateNavigationLabelsCommand(request.Labels ?? new Dictionary<string, string>(),
+                        request.ExpectedVersion, current.Id), cancellationToken));
+        }).RequireAuthorization(SystemPermissions.OrganizationManage);
+
         var group = endpoints.MapGroup("/api/v1/organization").WithTags("Organization")
             .RequireAuthorization(SystemPermissions.OrganizationManage);
 
@@ -64,4 +86,5 @@ public static class OrganizationEndpoints
     private sealed record UpdateBrandRequest(string? Code, string? Name, uint ExpectedVersion);
     private sealed record StoreProfileRequest(string? Code, string? Name, string? TimeZoneId, uint ExpectedVersion);
     private sealed record ChangeStoreStatusRequest(bool Enable, string? Reason, uint ExpectedVersion);
+    private sealed record NavigationLabelsRequest(Dictionary<string, string>? Labels, uint ExpectedVersion);
 }

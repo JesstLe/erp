@@ -2,6 +2,7 @@ import {
   AppstoreOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
+  EyeOutlined,
   FileTextOutlined,
   MergeCellsOutlined,
   PauseCircleOutlined,
@@ -26,6 +27,7 @@ import type {
   PageResult,
   Payment,
   PaymentMethod,
+  PaymentReceipt,
   PriceBook,
   ProductItem,
   ServiceEmployee,
@@ -47,7 +49,7 @@ import { createSerialTaskQueue, retryVersionConflictOnce } from './modernFacilit
 type WorkbenchTab = 'main' | 'member' | 'service' | 'product'
 interface DiscountValues { percent: number; reason: string }
 interface SwitchValues { facilityId: string; reason?: string }
-interface SettleValues { methodId: string; amountYuan: number; memberAccountId?: string; verifiedMobile?: string; cashTenderedYuan?: number }
+interface SettleValues { methodId: string; amountYuan: number; memberAccountId?: string; verifiedMobile?: string; cashTenderedYuan?: number; externalReference?: string; groupBuyPlatform?: string }
 interface DraftUpdate {
   lines?: ClassicCashierDraftLine[]
   customerId?: string
@@ -77,6 +79,12 @@ function duration(seconds: number) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
 }
 function requestError(error: unknown) { return error instanceof ApiError ? error.message : error instanceof Error ? error.message : '操作失败，请稍后重试' }
+export function buildManualPaymentReference(methodCode: string, reference?: string, groupBuyPlatform?: string) {
+  const normalizedReference = reference?.trim() ?? ''
+  return methodCode === 'GROUP_BUY_MANUAL'
+    ? `${groupBuyPlatform?.trim() ?? ''}:${normalizedReference}`
+    : normalizedReference
+}
 
 function fromOrder(order: ServiceOrder): ClassicCashierDraftLine[] {
   return order.lines.map((line) => ({
@@ -107,6 +115,8 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   const [productToAddId, setProductToAddId] = useState<string>(); const [productAddedByEmployeeId, setProductAddedByEmployeeId] = useState<string>()
   const [memberSearch, setMemberSearch] = useState(''); const [discountOpen, setDiscountOpen] = useState(false); const [employeeOpen, setEmployeeOpen] = useState(false); const [consultantOpen, setConsultantOpen] = useState(false)
   const [switchOpen, setSwitchOpen] = useState(false); const [mergeOpen, setMergeOpen] = useState(false); const [mergeOrderId, setMergeOrderId] = useState<string>(); const [settleOpen, setSettleOpen] = useState(false); const [prebill, setPrebill] = useState<ServiceOrderPrebill>()
+  const [completedPayment, setCompletedPayment] = useState<Payment>(); const [completedReceipt, setCompletedReceipt] = useState<PaymentReceipt>()
+  const [showExtendedPaymentMethods, setShowExtendedPaymentMethods] = useState(false)
   const [serviceEnded, setServiceEnded] = useState(!isBeforeStart && (!facility.sessionId || !['IN_USE', 'PAUSED'].includes(facility.status)))
   const [discountForm] = Form.useForm<DiscountValues>(); const [switchForm] = Form.useForm<SwitchValues>(); const [settleForm] = Form.useForm<SettleValues>()
   const chosenMethodId = Form.useWatch('methodId', settleForm); const debouncedMemberSearch = useDebouncedValue(memberSearch.trim())
@@ -148,6 +158,8 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   const totalMinor = classicCashierTotal(lines); const selectedCustomer = customers.data?.find((item) => item.id === customerId)
   const memberAccounts = customerDetail.data?.cards.flatMap((card) => card.accounts.filter((account) => ['Active', 'ACTIVE'].includes(account.status)).map((account) => ({ ...account, label: `${card.cardTypeName} · ${account.accountType} · ${money(account.balanceUnits)}` }))) ?? []
   const chosenMethod = paymentMethods.data?.find((item) => item.id === chosenMethodId)
+  const isGroupBuyMethod = chosenMethod?.code === 'GROUP_BUY_MANUAL'
+  const visiblePaymentMethods = (paymentMethods.data ?? []).filter((method) => showExtendedPaymentMethods || method.code !== 'GROUP_BUY_MANUAL')
   const liveSeconds = facility.startedAtUtc && facility.status === 'IN_USE' ? liveAnchor.current.activeSeconds + Math.max(0, Math.floor((tick - liveAnchor.current.at) / 1000)) : facility.activeSeconds
   const editable = isBeforeStart || draft.data?.status === 'Draft'
 
@@ -263,6 +275,7 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
 
   const mergeMutation = useMutation({ mutationFn: async () => { await draftSaveQueue.current.idle(); const target = queryClient.getQueryData<ServiceOrder>(orderKey) ?? draft.data; const source = mergeCandidates.data?.find((item) => item.id === mergeOrderId); if (!storeId || !target || !source) throw new Error('请选择待合并账单'); return apiRequest<ServiceOrder>(`/api/v1/cashier/orders/${target.id}/merge`, { method: 'POST', body: JSON.stringify({ storeId, sourceOrderId: source.id, expectedTargetVersion: target.version, expectedSourceVersion: source.version, commandId: commandId() }) }) }, onSuccess: (order) => { queryClient.setQueryData(orderKey, order); setLines(fromOrder(order)); setCustomerId(order.customerId); setMergeOpen(false); setMergeOrderId(undefined); queryClient.invalidateQueries({ queryKey: ['cashier-orders', storeId] }); message.success('账单已合并，关联接待将在同一笔收款完成') }, onError: (error) => message.error(requestError(error)) })
   const prebillMutation = useMutation({ mutationFn: async () => { const order = queryClient.getQueryData<ServiceOrder>(orderKey) ?? draft.data; if (!storeId || !order) throw new Error('消费单草稿尚未加载'); await persistCurrentLines(); const latest = queryClient.getQueryData<ServiceOrder>(orderKey) ?? order; return apiRequest<ServiceOrderPrebill>(`/api/v1/cashier/orders/${latest.id}/prebill`, { method: 'POST', body: JSON.stringify({ storeId, expectedVersion: latest.version, commandId: commandId() }) }) }, onSuccess: setPrebill, onError: (error) => message.error(requestError(error)) })
+  const receiptMutation = useMutation({ mutationFn: () => { if (!storeId || !completedPayment) throw new Error('收款记录不存在'); return apiRequest<PaymentReceipt>(`/api/v1/payments/${completedPayment.id}/receipt`, { method: 'POST', body: JSON.stringify({ storeId, commandId: commandId() }) }) }, onSuccess: setCompletedReceipt, onError: (error) => message.error(requestError(error)) })
 
   const settleMutation = useMutation({
     mutationFn: async (values: SettleValues) => {
@@ -279,13 +292,16 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
       const method = paymentMethods.data?.find((item) => item.id === values.methodId)
       if (!method) throw new Error('请选择支付方式')
       if (method.channelProvider) return { order, payment: undefined as Payment | undefined, channel: true }
-      const payment = await apiRequest<Payment>(`/api/v1/payments/orders/${order.id}/settle`, { method: 'POST', body: JSON.stringify({ storeId, expectedVersion: order.version, commandId: commandId(), cashTenderedMinor: method.category === 'Cash' ? Math.round((values.cashTenderedYuan ?? values.amountYuan) * 100) : null, verifiedMobile: values.verifiedMobile, allocations: [{ methodId: method.id, amountMinor: Math.round(values.amountYuan * 100), memberAccountId: method.category === 'InternalAccount' ? values.memberAccountId : null }] }) })
+      const externalReference = method.category === 'ManualExternal'
+        ? buildManualPaymentReference(method.code, values.externalReference, values.groupBuyPlatform)
+        : null
+      const payment = await apiRequest<Payment>(`/api/v1/payments/orders/${order.id}/settle`, { method: 'POST', body: JSON.stringify({ storeId, expectedVersion: order.version, commandId: commandId(), cashTenderedMinor: method.category === 'Cash' ? Math.round((values.cashTenderedYuan ?? values.amountYuan) * 100) : null, verifiedMobile: values.verifiedMobile, allocations: [{ methodId: method.id, amountMinor: Math.round(values.amountYuan * 100), externalReference, memberAccountId: method.category === 'InternalAccount' ? values.memberAccountId : null }] }) })
       return { order, payment, pendingApproval: false, channel: false }
     },
-    onSuccess: async (result) => { if (result.pendingApproval) { message.warning('改价已提交审批；审批完成后可在收银待处理列表继续收款'); setSettleOpen(false); navigate('/cashier'); return } if (result.channel) { message.info('官方渠道付款码将在完整收款台生成，当前账单已进入待支付'); setSettleOpen(false); navigate('/cashier'); return } message.success('收款完成，接待和账单均已完成'); setSettleOpen(false); settleForm.resetFields(); await onCompleted(); onExit() },
+    onSuccess: async (result) => { if (result.pendingApproval) { message.warning('改价已提交审批；审批完成后可在收银待处理列表继续收款'); setSettleOpen(false); navigate('/cashier'); return } if (result.channel) { message.info('官方渠道付款码将在完整收款台生成，当前账单已进入待支付'); setSettleOpen(false); navigate('/cashier'); return } message.success('收款完成，接待和账单均已完成'); setSettleOpen(false); settleForm.resetFields(); setCompletedPayment(result.payment); await onCompleted() },
     onError: (error) => message.error(requestError(error)),
   })
-  const openSettlement = () => { if (isBeforeStart) { message.warning('请先确认录单信息并点击“开始计时”'); return } if (!lines.length) { message.warning('请先选择项目或产品'); return } if (lines.some((line) => line.lineType === 'Service' && !line.employeeId)) { message.warning('请先通过“整单员工”或明细选择服务员工'); return } const method = paymentMethods.data?.find((item) => !item.channelProvider) ?? paymentMethods.data?.[0]; settleForm.setFieldsValue({ methodId: method?.id, amountYuan: totalMinor / 100, cashTenderedYuan: totalMinor / 100 }); setSettleOpen(true) }
+  const openSettlement = () => { if (isBeforeStart) { message.warning('请先确认录单信息并点击“开始计时”'); return } if (!lines.length) { message.warning('请先选择项目或产品'); return } if (lines.some((line) => line.lineType === 'Service' && !line.employeeId)) { message.warning('请先通过“整单员工”或明细选择服务员工'); return } const method = paymentMethods.data?.find((item) => !item.channelProvider && item.code !== 'GROUP_BUY_MANUAL') ?? paymentMethods.data?.[0]; setShowExtendedPaymentMethods(false); settleForm.resetFields(); settleForm.setFieldsValue({ methodId: method?.id, amountYuan: totalMinor / 100, cashTenderedYuan: totalMinor / 100, groupBuyPlatform: '抖音' }); setSettleOpen(true) }
 
   if (!isBeforeStart && draft.isLoading) return <div className="modern-cashier-loading"><Spin size="large" description="正在恢复该服务位的账单草稿" /></div>
   if (!isBeforeStart && (draft.error || !draft.data)) return <Alert type="error" showIcon title={requestError(draft.error)} action={<Button onClick={() => draft.refetch()}>重新加载</Button>} />
@@ -337,6 +353,8 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
     <Modal title="更换房台" open={switchOpen} onCancel={() => setSwitchOpen(false)} onOk={() => switchForm.submit()} okText="确认更换" confirmLoading={facilityMutation.isPending}><Form form={switchForm} layout="vertical" onFinish={switchFacility}><Form.Item name="facilityId" label="目标空闲服务位" rules={[{ required: true }]}><Select options={availableFacilities.map((item) => ({ value: item.id, label: `${item.displayName} · ${item.code}` }))} /></Form.Item><Form.Item name="reason" label="更换原因（可选）" rules={[{ max: 500 }]}><Input maxLength={500} /></Form.Item></Form></Modal>
     <Modal title="合并账单" open={mergeOpen} onCancel={() => setMergeOpen(false)} onOk={() => mergeMutation.mutate()} okText="确认合并" confirmLoading={mergeMutation.isPending}><Alert type="warning" showIcon title="合并后，两次接待使用同一张主账单结算；顾客或顾问不一致时系统会阻止合并。" className="modal-alert" /><Select className="full-width" value={mergeOrderId} onChange={setMergeOrderId} placeholder="请选择另一张草稿账单" loading={mergeCandidates.isLoading} options={mergeCandidates.data?.map((order) => ({ value: order.id, label: `${order.orderNo} · ${order.lines.map((line) => line.itemName).join('、') || '空草稿'} · ${money(order.receivableMinor)}` }))} /></Modal>
     <Modal title={`预结小票${prebill ? ` · ${prebill.prebillNo}` : ''}`} open={Boolean(prebill)} onCancel={() => setPrebill(undefined)} footer={<><Button onClick={() => setPrebill(undefined)}>关闭</Button><Button type="primary" onClick={() => window.print()}>打印预览</Button></>}><div className="modern-prebill">{prebill && <><h2>{prebill.storeName}</h2><p>消费单：{prebill.orderNo}</p><p>顾客：{prebill.customerDisplayName}　顾问：{prebill.consultantEmployeeName ?? '未设置'}</p>{prebill.lines.map((line, index) => <div key={`${line.itemCode}-${index}`}><span>{line.itemName} × {line.quantity}{line.employeeName ? ` · ${line.employeeName}` : ''}</span><b>{money(line.lineAmountMinor)}</b></div>)}<footer>应收合计 <b>{money(prebill.receivableMinor)}</b></footer></>}</div></Modal>
-    <Modal title="收银结算" open={settleOpen} onCancel={() => setSettleOpen(false)} onOk={() => settleForm.submit()} okText="确认收款" confirmLoading={settleMutation.isPending} width={560}><Alert type="info" showIcon title="设施计时只用于运营记录，本次应收完全来自店长选择的项目、产品和成交价。确认收款时会先结束尚未结束的设施服务。" className="modal-alert" /><Form form={settleForm} layout="vertical" onFinish={(values) => settleMutation.mutate(values)}><Form.Item name="methodId" label="支付方式" rules={[{ required: true }]}><Select options={paymentMethods.data?.map((method) => ({ value: method.id, label: `${method.name}${method.channelProvider ? '（官方渠道）' : method.category === 'ManualExternal' ? '（人工登记待核对）' : ''}` }))} onChange={() => { settleForm.setFieldValue('memberAccountId', undefined); settleForm.setFieldValue('verifiedMobile', undefined) }} /></Form.Item><Form.Item name="amountYuan" label={`收款金额（应收 ${money(totalMinor)}）`} rules={[{ required: true }, { type: 'number', min: totalMinor / 100, max: totalMinor / 100 }]}><InputNumber precision={2} className="full-width" prefix="¥" /></Form.Item>{chosenMethod?.category === 'Cash' && <Form.Item name="cashTenderedYuan" label="现金实收" rules={[{ required: true }, { type: 'number', min: totalMinor / 100 }]}><InputNumber precision={2} className="full-width" prefix="¥" /></Form.Item>}{chosenMethod?.category === 'InternalAccount' && <><Form.Item name="memberAccountId" label="会员账户" rules={[{ required: true }]}><Select loading={customerDetail.isLoading} options={memberAccounts.map((account) => ({ value: account.id, label: account.label }))} /></Form.Item><Form.Item name="verifiedMobile" label="会员完整手机号" rules={[{ required: true }, { pattern: /^1[3-9]\d{9}$/, message: '请输入有效手机号' }]}><Input maxLength={11} inputMode="numeric" /></Form.Item></>}</Form></Modal>
+    <Modal title="结算完成" open={Boolean(completedPayment) && !completedReceipt} closable={false} footer={<><Button onClick={() => { setCompletedPayment(undefined); onExit() }}>完成并返回房台</Button><Button type="primary" icon={<PrinterOutlined />} loading={receiptMutation.isPending} onClick={() => receiptMutation.mutate()}>打印结算小票</Button></>}><Alert type="success" showIcon title="本次收款已记录，设施接待和消费单均已完成。" /><div className="modern-settlement-result"><span>支付单号<strong>{completedPayment?.paymentNo}</strong></span><span>应收金额<strong>{money(completedPayment?.receivableMinor ?? 0)}</strong></span><span>已收金额<strong>{money(completedPayment?.paidMinor ?? 0)}</strong></span><span>对账状态<strong>{completedPayment?.allocations.some((line) => line.reconciliationStatus === 'Pending') ? '待核对' : '已确认'}</strong></span></div></Modal>
+    <Modal title={`结算小票${completedReceipt ? ` · ${completedReceipt.paymentNo}` : ''}`} open={Boolean(completedReceipt)} closable={false} footer={<><Button onClick={() => { setCompletedReceipt(undefined); setCompletedPayment(undefined); onExit() }}>完成并返回房台</Button><Button type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>打印</Button></>}><div className="modern-prebill">{completedReceipt && <><h2>{completedReceipt.storeName}</h2><p>消费单：{completedReceipt.orderNo}</p><p>顾客：{completedReceipt.customerName}　收银员：{completedReceipt.operatorName}</p>{completedReceipt.lines.map((line, index) => <div key={`${line.itemName}-${index}`}><span>{line.itemName} × {line.quantity}{line.employeeName ? ` · ${line.employeeName}` : ''}</span><b>{money(line.amountMinor)}</b></div>)}<footer>实收合计 <b>{money(completedReceipt.receivableMinor)}</b></footer></>}</div></Modal>
+    <Modal title="收银结算" open={settleOpen} onCancel={() => setSettleOpen(false)} onOk={() => settleForm.submit()} okText="确认收款" confirmLoading={settleMutation.isPending} width={620}><Alert type="info" showIcon title="设施计时只用于运营记录，本次应收完全来自店长选择的项目、产品和成交价。确认收款时会先结束尚未结束的设施服务。" className="modal-alert" /><Form form={settleForm} layout="vertical" onFinish={(values) => settleMutation.mutate(values)}><Form.Item name="methodId" label="支付方式" rules={[{ required: true }]}><Select options={visiblePaymentMethods.map((method) => ({ value: method.id, label: `${method.name}${method.channelProvider ? '（官方渠道）' : method.category === 'ManualExternal' ? '（人工登记待核对）' : ''}` }))} onChange={() => { settleForm.setFieldValue('memberAccountId', undefined); settleForm.setFieldValue('verifiedMobile', undefined); settleForm.setFieldValue('externalReference', undefined) }} /></Form.Item><Button type="dashed" block icon={<EyeOutlined />} className="payment-more-button" onClick={() => setShowExtendedPaymentMethods((value) => !value)}>{showExtendedPaymentMethods ? '收起团购支付' : '显示团购/更多支付'}</Button><Form.Item name="amountYuan" label={`收款金额（应收 ${money(totalMinor)}）`} rules={[{ required: true }, { type: 'number', min: totalMinor / 100, max: totalMinor / 100 }]}><InputNumber precision={2} className="full-width" prefix="¥" /></Form.Item>{chosenMethod?.category === 'Cash' && <Form.Item name="cashTenderedYuan" label="现金实收" rules={[{ required: true }, { type: 'number', min: totalMinor / 100 }]}><InputNumber precision={2} className="full-width" prefix="¥" /></Form.Item>}{isGroupBuyMethod && <Form.Item name="groupBuyPlatform" label="团购平台" rules={[{ required: true }]}><Select options={['抖音', '美团', '快手', '其他平台'].map((value) => ({ value, label: value }))} /></Form.Item>}{chosenMethod?.category === 'ManualExternal' && <Form.Item name="externalReference" label={isGroupBuyMethod ? '核销券码/订单号' : '交易参考号'} extra="人工登记会完成本单，并进入交班与待对账金额；参考号用于后续核对。" rules={[{ required: true, whitespace: true, message: isGroupBuyMethod ? '请输入核销券码或订单号' : '请输入交易参考号' }, { min: 4 }, { max: 80 }]}><Input maxLength={80} placeholder={isGroupBuyMethod ? '请输入平台核销券码或订单号' : '请输入支付流水号、银行卡凭证号等'} /></Form.Item>}{chosenMethod?.category === 'InternalAccount' && <><Form.Item name="memberAccountId" label="会员账户" rules={[{ required: true }]}><Select loading={customerDetail.isLoading} options={memberAccounts.map((account) => ({ value: account.id, label: account.label }))} /></Form.Item><Form.Item name="verifiedMobile" label="会员完整手机号" rules={[{ required: true }, { pattern: /^1[3-9]\d{9}$/, message: '请输入有效手机号' }]}><Input maxLength={11} inputMode="numeric" /></Form.Item></>}</Form></Modal>
   </div>
 }

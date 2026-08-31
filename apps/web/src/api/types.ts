@@ -8,6 +8,7 @@ export interface EmployeePosition { id: string; code: string; name: string; sort
 export interface BrandProfile { id: string; code: string; name: string; status: string; version: number }
 export interface StoreProfile { id: string; code: string; name: string; timeZoneId: string; status: string; managerNames: string[]; employeeCount: number; facilityGroupCount: number; facilityCount: number; enabledFacilityCount: number; version: number }
 export interface OrganizationSettings { brand: BrandProfile; stores: StoreProfile[] }
+export interface NavigationLabels { labels: Record<string, string>; version: number }
 export interface ServiceItem { id: string; code: string; name: string; standardDurationMinutes: number; status: string; version: number; commissionMode?: string; commissionRateBasisPoints?: number; commissionFixedMinor?: number }
 export interface ProductItem { id: string; code: string; name: string; unitName: string; trackInventory: boolean; imageFileId?: string; status: string; version: number }
 export interface PriceBookLine { serviceItemId: string; serviceItemName: string; unitPriceMinor: number }

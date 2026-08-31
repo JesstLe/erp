@@ -228,6 +228,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             ConfigureBase(entity);
             entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(32);
             entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(100);
+            entity.Property(x => x.NavigationLabelsJson).HasColumnName("navigation_labels_json")
+                .HasColumnType("jsonb");
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
             entity.HasIndex(x => x.Code).IsUnique();
         });

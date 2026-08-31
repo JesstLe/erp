@@ -17,6 +17,14 @@ public sealed class OrganizationService(ErpDbContext db, IHttpContextAccessor ht
     BusinessCodeGenerator codeGenerator)
     : IOrganizationService
 {
+    private static readonly HashSet<string> NavigationLabelKeys =
+    [
+        "/", "/facilities", "/scheduling", "/customers", "/cashier", "/inventory",
+        "/supply-chain", "/catalog/items", "/catalog/products", "/catalog/prices", "/reports",
+        "/audit", "/settings/facilities", "/settings/organization", "/settings/employees",
+        "/settings/payment-channels",
+    ];
+
     public async Task<OrganizationSettingsDto?> GetSettingsAsync(Guid tenantId,
         CancellationToken cancellationToken)
     {
@@ -62,6 +70,57 @@ public sealed class OrganizationService(ErpDbContext db, IHttpContextAccessor ht
         catch (DbUpdateException exception) when (IsUniqueViolation(exception))
         {
             return ResultFactory.Failure<BrandProfileDto>("DUPLICATE_TENANT_CODE", "品牌编码已存在");
+        }
+    }
+
+    public async Task<NavigationLabelsDto?> GetNavigationLabelsAsync(Guid tenantId,
+        CancellationToken cancellationToken)
+    {
+        var tenant = await db.Tenants.AsNoTracking().SingleOrDefaultAsync(x => x.Id == tenantId,
+            cancellationToken);
+        return tenant is null ? null : ToNavigationLabels(tenant);
+    }
+
+    public async Task<Result<NavigationLabelsDto>> UpdateNavigationLabelsAsync(Guid tenantId,
+        UpdateNavigationLabelsCommand command, CancellationToken cancellationToken)
+    {
+        var tenant = await db.Tenants.SingleOrDefaultAsync(x => x.Id == tenantId, cancellationToken);
+        if (tenant is null)
+            return ResultFactory.Failure<NavigationLabelsDto>("TENANT_NOT_FOUND", "品牌不存在");
+        if (tenant.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<NavigationLabelsDto>("VERSION_CONFLICT", "导航名称已变化，请刷新后重试");
+        if (command.Labels.Count > NavigationLabelKeys.Count ||
+            command.Labels.Keys.Any(key => !NavigationLabelKeys.Contains(key)))
+            return ResultFactory.Failure<NavigationLabelsDto>("VALIDATION_FAILED", "包含不支持的导航项目");
+
+        var normalized = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, value) in command.Labels)
+        {
+            var label = value?.Trim() ?? string.Empty;
+            if (label.Length is < 1 or > 24)
+                return ResultFactory.Failure<NavigationLabelsDto>("VALIDATION_FAILED", "导航名称必须为1到24个字符");
+            normalized[key] = label;
+        }
+
+        var before = tenant.NavigationLabelsJson;
+        try
+        {
+            tenant.UpdateNavigationLabels(JsonSerializer.Serialize(normalized));
+            AddAudit(tenantId, null, command.OperatorId, "organization.navigation-labels.update", "Tenant",
+                tenant.Id, tenant.Status.ToString(), tenant.Status.ToString(), JsonSerializer.Serialize(new
+                {
+                    before = DeserializeNavigationLabels(before), after = normalized,
+                }));
+            await db.SaveChangesAsync(cancellationToken);
+            return ResultFactory.Success(ToNavigationLabels(tenant));
+        }
+        catch (DomainRuleException exception)
+        {
+            return ResultFactory.Failure<NavigationLabelsDto>(exception.Code, exception.Message);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return ResultFactory.Failure<NavigationLabelsDto>("VERSION_CONFLICT", "导航名称已变化，请刷新后重试");
         }
     }
 
@@ -231,6 +290,23 @@ public sealed class OrganizationService(ErpDbContext db, IHttpContextAccessor ht
 
     private static BrandProfileDto ToBrand(Tenant tenant) => new(tenant.Id, tenant.Code, tenant.Name,
         tenant.Status.ToString(), tenant.Version);
+
+    private static NavigationLabelsDto ToNavigationLabels(Tenant tenant) =>
+        new(DeserializeNavigationLabels(tenant.NavigationLabelsJson), tenant.Version);
+
+    private static Dictionary<string, string> DeserializeNavigationLabels(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new Dictionary<string, string>();
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(json) ??
+                new Dictionary<string, string>();
+        }
+        catch (JsonException)
+        {
+            return new Dictionary<string, string>();
+        }
+    }
 
     private static bool ValidTimeZone(string value)
     {
