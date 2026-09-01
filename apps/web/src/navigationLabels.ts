@@ -17,7 +17,9 @@ export const defaultNavigationLabels: Record<string, string> = {
   '/settings/payment-channels': '支付渠道配置',
 }
 
-export const configurableNavigationItems = Object.entries(defaultNavigationLabels).map(([key, label]) => ({ key, label }))
+export const configurableNavigationItems = Object.entries(defaultNavigationLabels)
+  .filter(([key]) => key !== '/cashier')
+  .map(([key, label]) => ({ key, label }))
 
 export function resolveNavigationLabel(key: string, labels?: Record<string, string>) {
   return labels?.[key]?.trim() || defaultNavigationLabels[key] || key

@@ -54,7 +54,7 @@ export function FacilitiesPage() {
   />
 
   return <div className="page-stack">
-    <div className="page-heading"><div><Typography.Title level={2}>设施接待</Typography.Title><Typography.Paragraph>点击可用设施后再明确开始；计时只记录占用，不参与自动收费。</Typography.Paragraph></div><Space>{canConfigure && <Button icon={<SettingOutlined />} onClick={() => navigate('/settings/facilities')}>门店设施配置</Button>}<Button onClick={() => refresh()} loading={board.isFetching}>刷新状态</Button></Space></div>
+    <div className="page-heading"><div><Typography.Title level={2}>设施接待</Typography.Title><Typography.Paragraph>点击可用设施后再明确开始；计时只记录占用，不参与自动收费。</Typography.Paragraph></div><Space>{canCheckout && <Button type="primary" onClick={() => navigate('/facilities/orders')}>消费单管理</Button>}{canConfigure && <Button icon={<SettingOutlined />} onClick={() => navigate('/settings/facilities')}>门店设施配置</Button>}<Button onClick={() => refresh()} loading={board.isFetching}>刷新状态</Button></Space></div>
     {board.error && <Alert type="error" showIcon title={board.error instanceof Error ? board.error.message : '设施看板加载失败'} />}
     {!board.isLoading && !board.data?.groups.length && <Card variant="borderless"><Empty description="当前门店还没有设施，请先打开门店设施配置" /></Card>}
     {board.data?.groups.map((group) => <section key={group.id} className="facility-group"><Typography.Title level={4}>{group.displayName}<Typography.Text type="secondary"> · {group.facilities.length} 个设施</Typography.Text></Typography.Title><div className="facility-grid">{group.facilities.map((item) => {

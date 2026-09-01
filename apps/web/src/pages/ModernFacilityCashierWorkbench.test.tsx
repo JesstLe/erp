@@ -89,6 +89,25 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     expect(screen.getByDisplayValue('现场调整成交价')).toBeTruthy()
   })
 
+  it('previews birthday, age, residence and remaining stored value before linking a member', async () => {
+    const baseImplementation = apiRequestMock.getMockImplementation()
+    apiRequestMock.mockImplementation((path: string, options?: unknown) => {
+      if (path === '/api/v1/customers/search') return Promise.resolve({ items: [{ id: 'customer-1', displayName: '王女士', maskedMobile: '136****5138', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', activeCardCount: 1, createdAtUtc: '2026-01-01T00:00:00Z' }], total: 1, page: 1, pageSize: 30 })
+      if (path.startsWith('/api/v1/customers/customer-1?')) return Promise.resolve({ id: 'customer-1', displayName: '王女士', maskedMobile: '136****5138', gender: 'Female', birthDate: '1990-05-06', residence: '水木清华小区', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', version: 1, serviceNotificationConsent: false, marketingConsent: false, cards: [{ id: 'card-1', cardTypeName: '储值卡', maskedCardNo: '****1001', status: 'Active', validFrom: '2026-01-01', accounts: [{ id: 'account-1', accountType: 'Principal', balanceUnits: 12_000, status: 'Active' }, { id: 'account-2', accountType: 'Bonus', balanceUnits: 3_000, status: 'Active' }] }], mergedAliases: [] })
+      return baseImplementation?.(path, options)
+    })
+
+    render(<MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ModernFacilityCashierWorkbench facility={facility} availableFacilities={[]} onFacilityChanged={vi.fn()} onExit={vi.fn()} onCompleted={vi.fn()} /></QueryClientProvider></MemoryRouter>)
+
+    fireEvent.click(screen.getByRole('button', { name: /会员.*刷卡/s }))
+    fireEvent.click(await screen.findByRole('button', { name: /王女士.*136\*\*\*\*5138/s }))
+    expect(await screen.findByText('1990-05-06')).toBeTruthy()
+    expect(screen.getByText('水木清华小区')).toBeTruthy()
+    expect(screen.getByText('¥150.00')).toBeTruthy()
+    expect(screen.getByText(/岁$/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: '确认选择该顾客' })).toBeTruthy()
+  })
+
   it('shows group-buy, Meituan and Douyin directly in the settlement split panel', async () => {
     apiRequestMock.mockImplementation((path: string) => {
       if (path === '/api/v1/catalog/price-books') return Promise.resolve([])

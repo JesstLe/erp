@@ -1,4 +1,4 @@
-import { AppstoreOutlined, AuditOutlined, BankOutlined, BarChartOutlined, BellOutlined, CalendarOutlined, ClockCircleOutlined, ControlOutlined, CreditCardOutlined, InboxOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, PayCircleOutlined, ProfileOutlined, QuestionCircleOutlined, SafetyCertificateOutlined, SettingOutlined, ShoppingOutlined, TagsOutlined, TeamOutlined, TruckOutlined } from '@ant-design/icons'
+import { AppstoreOutlined, AuditOutlined, BankOutlined, BarChartOutlined, BellOutlined, CalendarOutlined, ClockCircleOutlined, ControlOutlined, CreditCardOutlined, InboxOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, ProfileOutlined, QuestionCircleOutlined, SafetyCertificateOutlined, SettingOutlined, ShoppingOutlined, TagsOutlined, TeamOutlined, TruckOutlined } from '@ant-design/icons'
 import { Avatar, Badge, Button, Dropdown, Empty, Layout, Menu, Popover, Select, Tag, Tooltip, Typography, type MenuProps } from 'antd'
 import { useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
@@ -22,7 +22,6 @@ const operationMenuItems: AuthorizedMenuItem[] = [
   { key: '/facilities', icon: <ClockCircleOutlined />, label: defaultNavigationLabels['/facilities'], permission: Permission.FacilityOperate },
   { key: '/scheduling', icon: <CalendarOutlined />, label: defaultNavigationLabels['/scheduling'], permission: Permission.SchedulingOperate },
   { key: '/customers', icon: <TeamOutlined />, label: defaultNavigationLabels['/customers'], permission: Permission.CustomerRead },
-  { key: '/cashier', icon: <PayCircleOutlined />, label: defaultNavigationLabels['/cashier'], permission: Permission.CashierCheckout },
   { key: '/inventory', icon: <InboxOutlined />, label: defaultNavigationLabels['/inventory'], permission: Permission.InventoryRead },
   { key: '/supply-chain', icon: <TruckOutlined />, label: defaultNavigationLabels['/supply-chain'], permission: Permission.SupplyChainRead },
 ]
@@ -75,7 +74,7 @@ export function AppLayout() {
     <Sider width={232} collapsedWidth={76} breakpoint="lg" collapsed={collapsed} onBreakpoint={setCollapsed} className="app-sider">
       <div className="app-logo"><span className="app-logo-mark"><BrandLogo /></span>{!collapsed && <strong>门店 ERP</strong>}</div>
       <nav className="sider-menu-scroll" aria-label="主导航">
-        <Menu theme="light" mode="inline" items={menuItems} selectedKeys={[location.pathname]} onClick={({ key }) => navigate(key)} />
+        <Menu theme="light" mode="inline" items={menuItems} selectedKeys={[location.pathname.startsWith('/facilities') ? '/facilities' : location.pathname]} onClick={({ key }) => navigate(key)} />
       </nav>
       <div className="sider-version" title={`版本 ${appVersion} · ${environmentLabel}`}>{collapsed ? `v${appVersion.split('.')[0]}` : `v${appVersion} · ${environmentLabel}`}</div>
     </Sider>

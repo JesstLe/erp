@@ -1,16 +1,19 @@
 import {
   AppstoreOutlined,
+  CalendarOutlined,
   ClockCircleOutlined,
   DeleteOutlined,
   FileTextOutlined,
+  HomeOutlined,
   PrinterOutlined,
   SearchOutlined,
   ShoppingOutlined,
   TeamOutlined,
   UserOutlined,
+  WalletOutlined,
 } from '@ant-design/icons'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Alert, Button, Checkbox, Empty, Form, Input, InputNumber, Modal, Select, Spin, Tag, message } from 'antd'
+import { Alert, Button, Checkbox, Empty, Form, Input, InputNumber, Modal, Select, Spin, Tag, Typography, message } from 'antd'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiRequest, ApiError } from '../api/client'
@@ -77,6 +80,21 @@ function duration(seconds: number) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
 }
 function requestError(error: unknown) { return error instanceof ApiError ? error.message : error instanceof Error ? error.message : '操作失败，请稍后重试' }
+function ageFromBirthDate(birthDate?: string) {
+  if (!birthDate) return undefined
+  const [year, month, day] = birthDate.split('-').map(Number)
+  const today = new Date()
+  let age = today.getFullYear() - year
+  if (today.getMonth() + 1 < month || (today.getMonth() + 1 === month && today.getDate() < day)) age -= 1
+  return Math.max(0, age)
+}
+function storedValue(detail?: CustomerDetail) {
+  return detail?.cards
+    .filter((card) => card.status.toUpperCase() === 'ACTIVE')
+    .flatMap((card) => card.accounts)
+    .filter((account) => ['PRINCIPAL', 'BONUS'].includes(account.accountType.toUpperCase()))
+    .reduce((sum, account) => sum + account.balanceUnits, 0) ?? 0
+}
 
 function fromOrder(order: ServiceOrder): ClassicCashierDraftLine[] {
   return order.lines.map((line) => ({
@@ -101,7 +119,7 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   const [modal, modalContextHolder] = Modal.useModal()
   const isBeforeStart = facility.status === 'AVAILABLE' && !facility.sessionId && !facility.visitId
   const [tick, setTick] = useState(Date.now()); const [tab, setTab] = useState<WorkbenchTab>('service'); const [catalogSearch, setCatalogSearch] = useState('')
-  const [lines, setLines] = useState<ClassicCashierDraftLine[]>([]); const [customerId, setCustomerId] = useState<string>(); const [note, setNote] = useState('')
+  const [lines, setLines] = useState<ClassicCashierDraftLine[]>([]); const [customerId, setCustomerId] = useState<string>(); const [previewCustomerId, setPreviewCustomerId] = useState<string>(); const [note, setNote] = useState('')
   const [sourceChannel, setSourceChannel] = useState(''); const [manualTicketNo, setManualTicketNo] = useState(''); const [maleGuestCount, setMaleGuestCount] = useState(0); const [maleAgeBand, setMaleAgeBand] = useState<string>(); const [femaleGuestCount, setFemaleGuestCount] = useState(0); const [femaleAgeBand, setFemaleAgeBand] = useState<string>()
   const [consultantEmployeeId, setConsultantEmployeeId] = useState<string>()
   const [productToAddId, setProductToAddId] = useState<string>(); const [productAddedByEmployeeId, setProductAddedByEmployeeId] = useState<string>()
@@ -147,6 +165,7 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   const customers = useQuery({ queryKey: ['modern-cashier-customers', storeId, debouncedMemberSearch], enabled: Boolean(storeId), queryFn: () => apiRequest<PageResult<CustomerSummary>>('/api/v1/customers/search', { method: 'POST', body: JSON.stringify({ storeId, query: debouncedMemberSearch, page: 1, pageSize: 30 }) }), select: (result) => result.items })
   const effectiveCustomerId = settleOpen ? settlementCustomerId || customerId : customerId
   const customerDetail = useQuery({ queryKey: ['customer-detail', storeId, effectiveCustomerId], enabled: Boolean(storeId && effectiveCustomerId), queryFn: () => apiRequest<CustomerDetail>(`/api/v1/customers/${effectiveCustomerId}?storeId=${storeId}`) })
+  const memberPreview = useQuery({ queryKey: ['customer-cashier-preview', storeId, previewCustomerId], enabled: Boolean(storeId && previewCustomerId), queryFn: () => apiRequest<CustomerDetail>(`/api/v1/customers/${previewCustomerId}?storeId=${storeId}`) })
   const mergeCandidates = useQuery({ queryKey: ['cashier-merge-candidates', storeId, draft.data?.id], enabled: Boolean(storeId && mergeOpen), queryFn: () => apiRequest<PageResult<ServiceOrder>>(`/api/v1/cashier/orders?storeId=${storeId}&status=Draft&page=1&pageSize=100`), select: (result) => result.items.filter((order) => order.id !== draft.data?.id) })
 
   const currentPriceBook = useMemo(() => priceBooks.data?.filter((book) => book.status.toUpperCase() === 'PUBLISHED').sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom) || (b.publishedAtUtc ?? '').localeCompare(a.publishedAtUtc ?? ''))[0], [priceBooks.data])
@@ -310,7 +329,7 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
       const payment = await apiRequest<Payment>(`/api/v1/payments/orders/${order.id}/settle`, { method: 'POST', body: JSON.stringify({ storeId, expectedVersion: order.version, commandId: commandId(), cashTenderedMinor: plan.cashTenderedMinor, verifiedMobile: values.verifiedMobile, allocations: plan.allocations }) })
       return { order, payment, pendingApproval: false, channel: false, autoPrint: Boolean(values.autoPrint) }
     },
-    onSuccess: async (result) => { if (result.pendingApproval) { message.warning('改价已提交审批；审批完成后可在收银待处理列表继续收款'); setSettleOpen(false); navigate('/cashier'); return } if (result.channel) { message.info('官方渠道付款码将在完整收款台生成，当前账单已进入待支付'); setSettleOpen(false); navigate('/cashier'); return } message.success('收款完成，接待和账单均已完成'); setSettleOpen(false); settleForm.resetFields(); setCompletedPayment(result.payment); if (result.autoPrint && result.payment) { setAutoPrintReceipt(true); receiptMutation.mutate(result.payment) } await onCompleted() },
+    onSuccess: async (result) => { if (result.pendingApproval) { message.warning('改价已提交审批；审批完成后可在消费单管理中继续收款'); setSettleOpen(false); navigate('/facilities/orders'); return } if (result.channel) { message.info('官方渠道付款码将在消费单管理中生成，当前账单已进入待支付'); setSettleOpen(false); navigate('/facilities/orders'); return } message.success('收款完成，接待和账单均已完成'); setSettleOpen(false); settleForm.resetFields(); setCompletedPayment(result.payment); if (result.autoPrint && result.payment) { setAutoPrintReceipt(true); receiptMutation.mutate(result.payment) } await onCompleted() },
     onError: (error) => message.error(requestError(error)),
   })
   const openSettlement = () => { if (isBeforeStart) { message.warning('请先确认录单信息并点击“开始计时”'); return } if (!lines.length) { message.warning('请先选择项目或产品'); return } if (lines.some((line) => line.referencePriceDefined === false && line.enteredPriceMinor <= 0)) { message.warning('请先为未设置目录价的项目或产品输入本次成交价'); return } if (lines.some((line) => line.lineType === 'Service' && !line.employeeId)) { message.warning('请先通过“整单员工”或明细选择服务员工'); return } const method = paymentMethods.data?.find((item) => !item.channelProvider && item.code !== 'GROUP_BUY_MANUAL' && item.category !== 'InternalAccount') ?? paymentMethods.data?.[0]; settleForm.resetFields(); settleForm.setFieldsValue({ methodId: method?.id, groupBuyPlatform: '美团', autoPrint: false }); setSettleOpen(true) }
@@ -340,7 +359,7 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
       </section>
       <section className="modern-catalog-pane">
         {tab === 'main' && <div className="modern-main-order"><h2>主单信息</h2><div className="modern-order-facts"><span>消费单号<strong>{draft.data?.orderNo ?? '开始后自动生成'}</strong></span><span>接待编号<strong>{facility.visitNo ?? '开始后自动生成'}</strong></span><span>整单顾问<strong>{draft.data?.consultantEmployeeName ?? employees.data?.find((employee) => employee.id === consultantEmployeeId)?.displayName ?? '未选择'}</strong></span><span>草稿状态<strong>{isBeforeStart ? '待开始计时' : draft.data?.priceAuthorizationStatus === 'PendingApproval' ? '改价待审批' : draft.data?.status}</strong></span></div><label>关联顾客<Select allowClear showSearch optionFilterProp="label" value={customerId} disabled={!editable} placeholder="可暂不识别顾客" options={customers.data?.map((item) => ({ value: item.id, label: `${item.displayName} · ${item.maskedMobile}` }))} onChange={async (value) => { setCustomerId(value); if (!isBeforeStart) await saveDraft.mutateAsync({ customerId: value }) }} /></label><div className="modern-reception-grid"><label>来店渠道<Input value={sourceChannel} disabled={!editable} maxLength={80} placeholder="可自定义，例如朋友介绍、线上平台" onChange={(event) => setSourceChannel(event.target.value)} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ sourceChannel }) }} /></label><label>手工票号<Input value={manualTicketNo} disabled={!editable} maxLength={80} placeholder="可选" onChange={(event) => setManualTicketNo(event.target.value)} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ manualTicketNo }) }} /></label><label>男客人数<InputNumber min={0} max={99} value={maleGuestCount} disabled={!editable} onChange={(value) => setMaleGuestCount(Number(value ?? 0))} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ maleGuestCount }) }} /></label><label>男客年龄段<Select allowClear options={ageBands} value={maleAgeBand} disabled={!editable || maleGuestCount === 0} onChange={setMaleAgeBand} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ maleAgeBand }) }} /></label><label>女客人数<InputNumber min={0} max={99} value={femaleGuestCount} disabled={!editable} onChange={(value) => setFemaleGuestCount(Number(value ?? 0))} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ femaleGuestCount }) }} /></label><label>女客年龄段<Select allowClear options={ageBands} value={femaleAgeBand} disabled={!editable || femaleGuestCount === 0} onChange={setFemaleAgeBand} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ femaleAgeBand }) }} /></label></div><label>接待备注<Input.TextArea rows={3} value={note} disabled={!editable} maxLength={1000} showCount onChange={(event) => setNote(event.target.value)} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ note }) }} /></label><Alert type="info" showIcon title={isBeforeStart ? '当前尚未计时。选好顾客、项目、产品和员工后，请点击“开始计时”。' : '设施占用时长仅作运营记录；收费金额只由当前项目、产品和店长确认的成交价决定。'} /></div>}
-        {tab === 'member' && <div className="modern-member-search"><div className="modern-catalog-search"><Input prefix={<SearchOutlined />} value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} placeholder="输入姓名、完整手机号或卡号自动查询" allowClear /></div><div className="modern-member-results">{customers.isFetching && <Spin size="small" />}{customers.data?.map((customer) => <button type="button" key={customer.id} className={customer.id === customerId ? 'active' : ''} disabled={!editable} onClick={async () => { setCustomerId(customer.id); if (!isBeforeStart) await saveDraft.mutateAsync({ customerId: customer.id }); setTab('service') }}><UserOutlined /><b>{customer.displayName}</b><span>{customer.maskedMobile}</span><small>{customer.homeStoreName} · {customer.activeCardCount} 张有效卡</small></button>)}</div></div>}
+        {tab === 'member' && <div className="modern-member-search"><div className="modern-catalog-search"><Input prefix={<SearchOutlined />} value={memberSearch} onChange={(event) => { setMemberSearch(event.target.value); setPreviewCustomerId(undefined) }} placeholder="输入姓名、完整手机号或卡号自动查询" allowClear /></div><div className="modern-member-results">{customers.isFetching && <Spin size="small" />}{customers.data?.map((customer) => <button type="button" key={customer.id} className={customer.id === previewCustomerId || customer.id === customerId ? 'active' : ''} disabled={!editable} onClick={() => setPreviewCustomerId(customer.id)}><UserOutlined /><b>{customer.displayName}</b><span>{customer.maskedMobile}</span><small>{customer.homeStoreName} · {customer.activeCardCount} 张有效卡</small></button>)}</div>{memberPreview.isFetching && <Spin size="small" />}{memberPreview.data && <section className="modern-member-preview"><header><div><b>{memberPreview.data.displayName}</b><span>{memberPreview.data.maskedMobile}</span></div><Tag color={memberPreview.data.cards.some((card) => card.status.toUpperCase() === 'ACTIVE') ? 'green' : 'default'}>{memberPreview.data.cards.some((card) => card.status.toUpperCase() === 'ACTIVE') ? '储值用户' : '普通顾客'}</Tag></header><div className="modern-member-preview-grid"><span><CalendarOutlined />生日<strong>{memberPreview.data.birthDate ?? '未填写'}</strong></span><span><UserOutlined />年龄<strong>{ageFromBirthDate(memberPreview.data.birthDate) === undefined ? '未填写' : `${ageFromBirthDate(memberPreview.data.birthDate)} 岁`}</strong></span><span><HomeOutlined />住宅<strong>{memberPreview.data.residence ?? '未填写'}</strong></span><span><WalletOutlined />储值余额<strong>{money(storedValue(memberPreview.data))}</strong></span></div><Typography.Text type="secondary">归属门店：{memberPreview.data.homeStoreName}；余额为当前有效卡本金与赠送金额合计。</Typography.Text><Button type="primary" disabled={!editable} onClick={async () => { setCustomerId(memberPreview.data.id); if (!isBeforeStart) await saveDraft.mutateAsync({ customerId: memberPreview.data.id }); setTab('service') }}>确认选择该顾客</Button></section>}</div>}
         {(tab === 'service' || tab === 'product') && <><div className="modern-catalog-search"><Select value="all" options={[{ value: 'all', label: '全部分类' }]} /><Select className="modern-catalog-quick-select" showSearch optionFilterProp="label" value={undefined} placeholder={tab === 'service' ? '下拉快速选择项目' : '下拉快速选择产品'} disabled={!editable || saveDraft.isPending} options={(tab === 'service' ? serviceCatalog : productCatalog).map((item) => ({ value: item.id, label: `${item.code} · ${item.name}` }))} onChange={(id) => { if (tab === 'service') { const item = serviceCatalog.find((entry) => entry.id === id); if (item) void addService(item) } else { const item = productCatalog.find((entry) => entry.id === id); if (item) openAddProduct(item) } }} /><Input prefix={<SearchOutlined />} value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="输入编号或名称自动查询" allowClear /></div><div className="modern-catalog-grid">{tab === 'service' ? serviceCatalog.map((item) => <button type="button" key={item.id} disabled={!editable || saveDraft.isPending} onClick={() => addService(item)}><small>No.{item.code}</small><b>{item.name}</b><span>{item.hasPublishedPrice ? money(item.priceMinor) : '未设置目录价'} / {item.duration ?? '-'} 分钟</span></button>) : productCatalog.map((item) => <button type="button" key={item.id} disabled={!editable || saveDraft.isPending} onClick={() => openAddProduct(item)}><small>No.{item.code}</small><b>{item.name}</b><span>{item.hasPublishedPrice ? money(item.priceMinor) : '未设置目录价'} / 库存 {item.stock ?? '-'} {item.unitName}</span></button>)}</div></>}
       </section>
     </div>

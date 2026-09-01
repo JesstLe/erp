@@ -31,7 +31,8 @@ public static class CustomerEndpoints
             var current = await identity.GetCurrentAsync(cancellationToken);
             if (current is null) return Results.Unauthorized();
             if (!HasStore(current, storeId)) return Results.Forbid();
-            var includeFinancialDetails = current.Permissions.Contains(SystemPermissions.MembershipManage);
+            var includeFinancialDetails = current.Permissions.Contains(SystemPermissions.MembershipManage) ||
+                                          current.Permissions.Contains(SystemPermissions.CashierCheckout);
             return EndpointResults.From(await customers.GetAsync(current.TenantId, storeId, customerId,
                 includeFinancialDetails, cancellationToken));
         });
@@ -76,7 +77,7 @@ public static class CustomerEndpoints
             if (!HasStore(current, request.StoreId)) return Results.Forbid();
             return EndpointResults.From(await customers.CreateAsync(current.TenantId,
                 new CreateCustomerCommand(request.StoreId, request.Name ?? string.Empty, request.Mobile ?? string.Empty,
-                    request.Gender, request.BirthDate, request.SourceCode, request.ServiceNotificationConsent,
+                    request.Gender, request.BirthDate, request.Residence, request.SourceCode, request.ServiceNotificationConsent,
                     request.MarketingConsent, request.CommandId, current.Id), cancellationToken));
         }).RequireAuthorization(SystemPermissions.CustomerWrite);
 
@@ -88,7 +89,7 @@ public static class CustomerEndpoints
             if (!HasStore(current, request.StoreId)) return Results.Forbid();
             return EndpointResults.From(await customers.UpdateAsync(current.TenantId,
                 new UpdateCustomerCommand(request.StoreId, customerId, request.Name ?? string.Empty,
-                    request.Mobile ?? string.Empty, request.Gender, request.BirthDate, request.SourceCode,
+                    request.Mobile ?? string.Empty, request.Gender, request.BirthDate, request.Residence, request.SourceCode,
                     request.ServiceNotificationConsent, request.MarketingConsent, request.ExpectedVersion,
                     request.CommandId, current.Id), cancellationToken));
         }).RequireAuthorization(SystemPermissions.CustomerManage);
@@ -320,9 +321,9 @@ public static class CustomerEndpoints
     private sealed record UpdateServiceRecordCategoryRequest(string? Name, int SortOrder, bool IsEnabled,
         uint ExpectedVersion);
     private sealed record CreateCustomerRequest(Guid StoreId, string? Name, string? Mobile, string? Gender,
-        DateOnly? BirthDate, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent, Guid CommandId);
+        DateOnly? BirthDate, string? Residence, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent, Guid CommandId);
     private sealed record UpdateCustomerRequest(Guid StoreId, string? Name, string? Mobile, string? Gender,
-        DateOnly? BirthDate, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent,
+        DateOnly? BirthDate, string? Residence, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent,
         uint ExpectedVersion, Guid CommandId);
     private sealed record ChangeCustomerStatusRequest(Guid StoreId, bool Restore, string? Reason,
         uint ExpectedVersion, Guid CommandId);

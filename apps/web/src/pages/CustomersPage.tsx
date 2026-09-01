@@ -97,6 +97,7 @@ interface EditCustomerValues {
   mobile: string;
   gender: string;
   birthDate?: string;
+  residence?: string;
   sourceCode?: string;
   serviceNotificationConsent: boolean;
   marketingConsent: boolean;
@@ -523,6 +524,7 @@ export function CustomersPage() {
       mobile: revealedMobile.mobile,
       gender: detail.data.gender,
       birthDate: detail.data.birthDate,
+      residence: detail.data.residence,
       sourceCode: detail.data.sourceCode,
       serviceNotificationConsent: detail.data.serviceNotificationConsent,
       marketingConsent: detail.data.marketingConsent,
@@ -792,6 +794,11 @@ export function CustomersPage() {
                   key: "birthDate",
                   label: "生日",
                   children: detail.data.birthDate ?? "未填写",
+                },
+                {
+                  key: "residence",
+                  label: "住宅",
+                  children: detail.data.residence ?? "未填写",
                 },
                 {
                   key: "source",
@@ -1080,6 +1087,13 @@ export function CustomersPage() {
               <Input type="date" max={new Date().toISOString().slice(0, 10)} />
             </Form.Item>
           </Space>
+          <Form.Item
+            name="residence"
+            label="住宅（可选）"
+            rules={[{ max: 300 }]}
+          >
+            <Input maxLength={300} placeholder="例如小区、街道或常住区域" />
+          </Form.Item>
           <Form.Item
             name="sourceCode"
             label="来源渠道（可选）"
@@ -1413,6 +1427,13 @@ export function CustomersPage() {
               <Input type="date" max={new Date().toISOString().slice(0, 10)} />
             </Form.Item>
           </Space>
+          <Form.Item
+            name="residence"
+            label="住宅（可选）"
+            rules={[{ max: 300 }]}
+          >
+            <Input maxLength={300} placeholder="例如小区、街道或常住区域" />
+          </Form.Item>
           <Form.Item
             name="sourceCode"
             label="来源渠道（可选）"
