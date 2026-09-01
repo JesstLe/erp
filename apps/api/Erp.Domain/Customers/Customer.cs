@@ -11,7 +11,7 @@ public sealed class Customer : Entity
 
     public Customer(Guid tenantId, Guid homeStoreId, string name, string mobileCiphertext, byte[] mobileLookupHash,
         string mobileLastFour, CustomerGender gender, DateOnly? birthDate, string? sourceCode,
-        bool serviceNotificationConsent, bool marketingConsent, DateOnly currentDate)
+        bool serviceNotificationConsent, bool marketingConsent, DateOnly currentDate, string? residence = null)
         : base(tenantId)
     {
         HomeStoreId = homeStoreId;
@@ -25,6 +25,7 @@ public sealed class Customer : Entity
             throw new DomainRuleException("VALIDATION_FAILED", "生日不能晚于今天");
         Gender = gender;
         BirthDate = birthDate;
+        Residence = OptionalText(residence, 300);
         SourceCode = OptionalText(sourceCode, 40);
         ServiceNotificationConsent = serviceNotificationConsent;
         MarketingConsent = marketingConsent;
@@ -38,6 +39,7 @@ public sealed class Customer : Entity
     public string MobileLastFour { get; private set; } = string.Empty;
     public CustomerGender Gender { get; private set; }
     public DateOnly? BirthDate { get; private set; }
+    public string? Residence { get; private set; }
     public string? SourceCode { get; private set; }
     public bool ServiceNotificationConsent { get; private set; }
     public bool MarketingConsent { get; private set; }
@@ -79,6 +81,13 @@ public sealed class Customer : Entity
         if (HomeStoreId == homeStoreId) return;
         HomeStoreId = homeStoreId;
         Touch();
+    }
+
+    public void UpdateResidence(string? residence)
+    {
+        if (Status == CustomerStatus.Merged)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "已合并顾客档案不能再修改");
+        Residence = OptionalText(residence, 300);
     }
 
     public void Disable()

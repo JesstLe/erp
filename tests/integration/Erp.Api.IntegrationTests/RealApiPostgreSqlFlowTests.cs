@@ -205,7 +205,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202608310041", ready?.SchemaVersion);
+        Assert.Equal("202609010042", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {

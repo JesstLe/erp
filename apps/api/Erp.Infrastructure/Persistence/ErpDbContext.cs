@@ -478,6 +478,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.MobileLastFour).HasColumnName("mobile_last_four").HasMaxLength(4);
             entity.Property(x => x.Gender).HasColumnName("gender").HasConversion<string>().HasMaxLength(16);
             entity.Property(x => x.BirthDate).HasColumnName("birth_date");
+            entity.Property(x => x.Residence).HasColumnName("residence").HasMaxLength(300);
             entity.Property(x => x.SourceCode).HasColumnName("source_code").HasMaxLength(40);
             entity.Property(x => x.ServiceNotificationConsent).HasColumnName("service_notification_consent");
             entity.Property(x => x.MarketingConsent).HasColumnName("marketing_consent");

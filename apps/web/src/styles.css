@@ -259,6 +259,19 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
 .modern-member-results button b { color: #243644; }
 .modern-member-results button small { color: #929da7; }
 .modern-member-results button:hover:not(:disabled), .modern-member-results button.active { border-color: #4db8ae; background: #f0fbf9; }
+.modern-member-preview { margin: 10px; padding: 16px; display: grid; gap: 14px; border: 1px solid #b9e4df; border-radius: 16px; background: linear-gradient(145deg, #f8fffe, #f2faf9); }
+.modern-member-preview > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.modern-member-preview > header > div { display: flex; align-items: baseline; gap: 10px; }
+.modern-member-preview > header b { color: #18323a; font-size: 18px; }
+.modern-member-preview > header span { color: #667581; }
+.modern-member-preview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.modern-member-preview-grid > span { min-width: 0; padding: 11px 12px; display: grid; grid-template-columns: 20px 1fr; gap: 2px 7px; border: 1px solid #e2ecee; border-radius: 11px; background: #fff; color: #7b8994; }
+.modern-member-preview-grid > span > .anticon { grid-row: 1 / 3; color: #1b9b90; margin-top: 2px; }
+.modern-member-preview-grid strong { overflow-wrap: anywhere; color: #263945; }
+.facilities-orders-page { display: grid; gap: 14px; }
+.facilities-module-banner { border: 1px solid #dfe8eb; }
+.facilities-module-banner-content { width: 100%; }
+.facilities-module-banner h4.ant-typography { margin: 0 0 3px; }
 .modern-cashier-actions { min-height: 72px; display: flex; align-items: stretch; gap: 6px; padding: 6px; border-top: 1px solid #e1e9ec; background: #f6f8f9; overflow-x: auto; }
 .modern-cashier-actions button { flex: 0 0 86px; display: inline-flex; align-items: center; justify-content: center; padding: 8px 10px; border: 1px solid #d9e2e6; border-radius: 11px; background: #fff; color: #435462; font-size: 13px; font-weight: 600; line-height: 1.25; white-space: nowrap; cursor: pointer; }
 .modern-cashier-actions button:hover:not(:disabled) { background: #1f9d92; color: #fff; }
@@ -420,4 +433,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
   .login-heading h1.ant-typography { font-size: 38px; }
   .login-form .ant-form-item { margin-bottom: 23px; }
   .login-security-note { margin-top: 54px; }
+  .modern-member-preview-grid { grid-template-columns: 1fr; }
+  .facilities-module-banner-content { align-items: flex-start; flex-direction: column; }
 }

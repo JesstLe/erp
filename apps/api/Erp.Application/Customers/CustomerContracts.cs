@@ -12,17 +12,17 @@ public sealed record MemberCardDto(Guid Id, string CardTypeName, string MaskedCa
 public sealed record MergedCustomerAliasDto(Guid Id, string DisplayName, string MaskedMobile,
     DateTimeOffset? MergedAtUtc);
 public sealed record CustomerDetailDto(Guid Id, string DisplayName, string MaskedMobile, string Gender,
-    DateOnly? BirthDate, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent,
+    DateOnly? BirthDate, string? Residence, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent,
     string Status, Guid HomeStoreId, string HomeStoreName, uint Version, IReadOnlyList<MemberCardDto> Cards,
     IReadOnlyList<MergedCustomerAliasDto> MergedAliases);
 public sealed record CustomerMobileRevealDto(Guid CustomerId, string Mobile, DateTimeOffset RevealedAtUtc);
 public sealed record CustomerExportDto(byte[] Content, string FileName, int RowCount, bool IncludesFullMobile);
 
 public sealed record CreateCustomerCommand(Guid StoreId, string Name, string Mobile, string? Gender,
-    DateOnly? BirthDate, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent,
+    DateOnly? BirthDate, string? Residence, string? SourceCode, bool ServiceNotificationConsent, bool MarketingConsent,
     Guid CommandId, Guid OperatorId);
 public sealed record UpdateCustomerCommand(Guid StoreId, Guid CustomerId, string Name, string Mobile,
-    string? Gender, DateOnly? BirthDate, string? SourceCode, bool ServiceNotificationConsent,
+    string? Gender, DateOnly? BirthDate, string? Residence, string? SourceCode, bool ServiceNotificationConsent,
     bool MarketingConsent, uint ExpectedVersion, Guid CommandId, Guid OperatorId);
 public sealed record ChangeCustomerStatusCommand(Guid StoreId, Guid CustomerId, bool Restore, string Reason,
     uint ExpectedVersion, Guid CommandId, Guid OperatorId);

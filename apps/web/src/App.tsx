@@ -14,6 +14,7 @@ const PriceBooksPage = lazy(() => import('./pages/PriceBooksPage').then((module)
 const FacilitiesPage = lazy(() => import('./pages/FacilitiesPage').then((module) => ({ default: module.FacilitiesPage })))
 const CustomersPage = lazy(() => import('./pages/CustomersPage').then((module) => ({ default: module.CustomersPage })))
 const CashierPage = lazy(() => import('./pages/CashierPage').then((module) => ({ default: module.CashierPage })))
+const FacilitiesOrdersPage = lazy(() => import('./pages/FacilitiesOrdersPage').then((module) => ({ default: module.FacilitiesOrdersPage })))
 const AuditPage = lazy(() => import('./pages/AuditPage').then((module) => ({ default: module.AuditPage })))
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 const EmployeesPage = lazy(() => import('./pages/EmployeesPage').then((module) => ({ default: module.EmployeesPage })))
@@ -65,6 +66,7 @@ export default function App() {
             <Route path="catalog/prices" element={<PriceBooksPage />} />
           </Route>
           <Route element={<AuthorizedRoute permission={Permission.FacilityOperate} />}><Route path="facilities" element={<FacilitiesPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.CashierCheckout} />}><Route path="facilities/orders" element={<FacilitiesOrdersPage />} /></Route>
           <Route element={<AuthorizedRoute permission={Permission.SchedulingOperate} />}><Route path="scheduling" element={<SchedulingPage />} /></Route>
           <Route element={<AuthorizedRoute permission={Permission.CustomerRead} />}><Route path="customers" element={<CustomersPage />} /></Route>
           <Route element={<AuthorizedRoute permission={Permission.CashierCheckout} />}><Route path="cashier" element={<CashierPage />} /></Route>

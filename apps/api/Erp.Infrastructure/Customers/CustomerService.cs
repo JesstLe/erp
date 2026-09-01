@@ -151,7 +151,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         }
         catch (ArgumentException exception) { return ResultFactory.Failure<CustomerDetailDto>("VALIDATION_FAILED", exception.Message); }
 
-        var requestHash = RequestHash($"CUSTOMER_CREATE|{command.StoreId}|{command.Name}|{Convert.ToHexString(mobile.LookupHash)}|{gender}|{command.BirthDate}|{command.SourceCode}|{command.ServiceNotificationConsent}|{command.MarketingConsent}");
+        var requestHash = RequestHash($"CUSTOMER_CREATE|{command.StoreId}|{command.Name}|{Convert.ToHexString(mobile.LookupHash)}|{gender}|{command.BirthDate}|{command.Residence}|{command.SourceCode}|{command.ServiceNotificationConsent}|{command.MarketingConsent}");
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var replay = await ReplayAsync<CustomerDetailDto>(tenantId, command.CommandId, requestHash,
             id => GetAsync(tenantId, command.StoreId, id, includeFinancialDetails: false, cancellationToken),
@@ -177,7 +177,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             }
             var customer = new Customer(tenantId, command.StoreId, command.Name, mobile.Ciphertext, mobile.LookupHash,
                 mobile.LastFour, gender, command.BirthDate, command.SourceCode, command.ServiceNotificationConsent,
-                command.MarketingConsent, StoreDate(now, timeZoneId));
+                command.MarketingConsent, StoreDate(now, timeZoneId), command.Residence);
             db.Customers.Add(customer);
             AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, customer.Id, now);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "customer.create", "Customer", customer.Id,
@@ -219,7 +219,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         }
 
         var requestHash = RequestHash($"CUSTOMER_UPDATE|{command.StoreId}|{command.CustomerId}|{command.Name}|" +
-            $"{Convert.ToHexString(mobile.LookupHash)}|{gender}|{command.BirthDate}|{command.SourceCode}|" +
+            $"{Convert.ToHexString(mobile.LookupHash)}|{gender}|{command.BirthDate}|{command.Residence}|{command.SourceCode}|" +
             $"{command.ServiceNotificationConsent}|{command.MarketingConsent}|{command.ExpectedVersion}");
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable,
             cancellationToken);
@@ -250,19 +250,20 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
                     cancellationToken);
             var before = new
             {
-                customer.Name, customer.Gender, customer.BirthDate, customer.SourceCode,
+                customer.Name, customer.Gender, customer.BirthDate, customer.Residence, customer.SourceCode,
                 customer.ServiceNotificationConsent, customer.MarketingConsent,
             };
             customer.UpdateProfile(command.Name, mobile.Ciphertext, mobile.LookupHash, mobile.LastFour, gender,
                 command.BirthDate, command.SourceCode, command.ServiceNotificationConsent,
                 command.MarketingConsent, StoreDate(clock.GetUtcNow(), timeZoneId));
+            customer.UpdateResidence(command.Residence);
             var now = clock.GetUtcNow();
             AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, customer.Id, now);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "customer.update", "Customer", customer.Id,
                 customer.Status.ToString(), customer.Status.ToString(), command.CommandId, now,
                 metadata: JsonSerializer.Serialize(new { before, after = new
                 {
-                    customer.Name, customer.Gender, customer.BirthDate, customer.SourceCode,
+                    customer.Name, customer.Gender, customer.BirthDate, customer.Residence, customer.SourceCode,
                     customer.ServiceNotificationConsent, customer.MarketingConsent,
                 } }));
             await db.SaveChangesAsync(cancellationToken);
@@ -600,7 +601,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
                 x.BalanceUnits, x.Status.ToString())).ToList())).ToList();
         return new CustomerDetailDto(customer.Id, customer.Name,
             privacy.MaskProtectedMobile(customer.MobileCiphertext), customer.Gender.ToString(), customer.BirthDate,
-            customer.SourceCode,
+            customer.Residence, customer.SourceCode,
             customer.ServiceNotificationConsent, customer.MarketingConsent, customer.Status.ToString(),
             customer.HomeStoreId, homeStoreName, customer.Version, cardDtos, aliases.Select(x => new MergedCustomerAliasDto(
                 x.Id, x.Name, privacy.MaskProtectedMobile(x.MobileCiphertext), x.MergedAtUtc)).ToList());
