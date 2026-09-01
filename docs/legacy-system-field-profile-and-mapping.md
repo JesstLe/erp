@@ -199,7 +199,9 @@
 | `customers.member_iclevel` | `T` | 通过 23 个会员等级映射到 `card_type_id` |
 | `customers.member_time1` | `T` | 全量日期时间，作为旧建档时间候选 |
 | `customers.member_last`, `customers.member_time2` | `R` | 最近到店/消费/修改时间候选，含空值；需确认含义后决定是否进入活动历史 |
-| `customers.member_money`, `customers.member_bonus`, `customers.member_sbonus`, `customers.member_store`, `customers.member_credit`, `customers.member_arrear`, `customers.member_score` | `R` | 余额、本金、赠送金、累计储值、信用/欠款和积分语义不能仅凭字段名确定。没有不可变流水和分账证据前，禁止写入本金、奖励金、积分或欠款账户 |
+| `customers.member_store` | `R` | 当前可用本金；与 `member_bonus + member_sbonus` 合计后必须逐分等于旧系统首页“储值余额” |
+| `customers.member_bonus`, `customers.member_sbonus` | `R` | 当前可用赠送金组成项；当前样本 `member_bonus` 为零，仍按两项非负合计保留兼容性 |
+| `customers.member_money`, `customers.member_credit`, `customers.member_arrear`, `customers.member_score` | `R` | 非当前可用本金；保留为财务证据，不写入可消费账户，具体历史口径在单据对账阶段解释 |
 | `customers.member_discountC`, `customers.member_discountP`, `customers.member_discountS`, `customers.member_dismode` | `R` | 旧顾客折扣快照/模式候选；应优先从会员等级权益规则重建，不能直接覆盖新价格 |
 | `customers.member_sms1`, `customers.member_sms2` | `R` | 旧短信标志不能自动等同于现行营销授权；迁移后默认不授权，除非能提供授权时间和来源证据 |
 | `customers.member_audit` | `R` | 审核/状态字段含义待确认，不能直接决定顾客停用 |

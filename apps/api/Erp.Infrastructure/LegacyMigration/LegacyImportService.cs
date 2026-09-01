@@ -990,7 +990,7 @@ internal sealed partial class LegacyImportService(
         CancellationToken cancellationToken)
     {
         await using var command = CreateCommand("""
-            SELECT GREATEST(COALESCE(source_member_money_minor,0),0),
+            SELECT GREATEST(COALESCE(source_member_store_minor,0),0),
                    GREATEST(COALESCE(source_member_bonus_minor,0),0) +
                    GREATEST(COALESCE(source_member_sbonus_minor,0),0),
                    GREATEST(COALESCE(source_member_store_minor,0),0)
@@ -1119,12 +1119,10 @@ internal sealed partial class LegacyImportService(
 
     private static LegacyStoredValue StoredValue(LegacySourceRow row)
     {
-        var principal = Math.Max(ParseMinor(Field(row, "member_money")) ?? 0, 0);
+        var principal = Math.Max(ParseMinor(Field(row, "member_store")) ?? 0, 0);
         var bonus = checked(Math.Max(ParseMinor(Field(row, "member_bonus")) ?? 0, 0) +
                             Math.Max(ParseMinor(Field(row, "member_sbonus")) ?? 0, 0));
-        var historicalTopup = Math.Max(ParseMinor(Field(row, "member_store")) ?? 0, 0);
-        return new LegacyStoredValue(principal, bonus,
-            principal > 0 || bonus > 0 || historicalTopup > 0);
+        return new LegacyStoredValue(principal, bonus, principal > 0 || bonus > 0);
     }
 
     private static string LegacyCardNo(string sourceId)
