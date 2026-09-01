@@ -107,7 +107,7 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     expect(screen.getByRole('button', { name: '确认选择该顾客' })).toBeTruthy()
   })
 
-  it('shows group-buy, Meituan and Douyin directly in the settlement split panel', async () => {
+  it('shows payment splits and visibly inherits the selected member and card into settlement', async () => {
     apiRequestMock.mockImplementation((path: string) => {
       if (path === '/api/v1/catalog/price-books') return Promise.resolve([])
       if (path === '/api/v1/catalog/service-items') return Promise.resolve([])
@@ -118,9 +118,11 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
         { id: 'cash', code: 'CASH', name: '现金', category: 'Cash', isEnabled: true },
         { id: 'group-buy', code: 'GROUP_BUY_MANUAL', name: '团购平台核销', category: 'ManualExternal', isEnabled: true },
       ])
-      if (path === '/api/v1/customers/cashier-search') return Promise.resolve({ items: [], total: 0, page: 1, pageSize: 30 })
+      if (path === '/api/v1/customers/cashier-search') return Promise.resolve({ items: [{ id: 'customer-1', displayName: '王女士', mobile: '13615345138', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', activeCardCount: 1, principalBalanceMinor: 20_000, bonusBalanceMinor: 0, createdAtUtc: '2026-01-01T00:00:00Z' }], total: 1, page: 1, pageSize: 30 })
+      if (path.startsWith('/api/v1/customers/customer-1?')) return Promise.resolve({ id: 'customer-1', displayName: '王女士', maskedMobile: '136****5138', gender: 'Unknown', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', version: 1, cards: [{ id: 'card-1', cardTypeName: '储值卡', maskedCardNo: 'CARD-001', status: 'Active', validFrom: '2026-01-01', accounts: [{ id: 'account-1', accountType: 'Principal', balanceUnits: 20_000, status: 'Active' }] }], mergedAliases: [] })
       if (path === '/api/v1/cashier/visits/visit-1/draft') return Promise.resolve({
         id: 'order-1', orderNo: 'SO-001', visitId: 'visit-1', status: 'Draft', version: 1,
+        customerId: 'customer-1',
         referenceTotalMinor: 5_000, receivableMinor: 5_000,
         lines: [{ id: 'line-1', lineType: 'Product', productItemId: 'product-1', itemCode: 'P001', itemName: '护理用品', unitName: '件', quantity: 1, referencePriceMinor: 5_000, enteredPriceMinor: 5_000, lineAmountMinor: 5_000 }],
       })
@@ -130,8 +132,12 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     render(<MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ModernFacilityCashierWorkbench facility={runningFacility} availableFacilities={[]} onFacilityChanged={vi.fn()} onExit={vi.fn()} onCompleted={vi.fn()} /></QueryClientProvider></MemoryRouter>)
 
     await screen.findByText(/1\. 护理用品/)
+    await screen.findByText('会员：王女士')
     fireEvent.click(screen.getByRole('button', { name: '结算' }))
     expect(await screen.findByText('收银结算')).toBeTruthy()
+    expect(screen.getByText('王女士 · 13615345138')).toBeTruthy()
+    expect(screen.getByText('CARD-001 · 储值卡')).toBeTruthy()
+    expect(screen.getByText('已沿用主单会员：王女士')).toBeTruthy()
     expect(screen.queryByText(/显示团购|更多支付/)).toBeNull()
     expect(screen.getByText('团购支付')).toBeTruthy()
     expect(screen.getByText('美团')).toBeTruthy()
