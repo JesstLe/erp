@@ -407,15 +407,27 @@ internal sealed partial class LegacyImportService(
                 {
                     customer = await db.Customers.SingleAsync(x => x.TenantId == tenant.Id &&
                         x.Id == existingCustomerMap!.TargetId, cancellationToken);
-                    if (await db.Customers.AnyAsync(x => x.TenantId == tenant.Id && x.Id != customer.Id &&
+                    var mobileConflicts = await db.Customers.AnyAsync(x => x.TenantId == tenant.Id &&
+                            x.Id != customer.Id &&
                             x.Status != CustomerStatus.Merged && x.MobileLookupHash == protectedMobile.LookupHash,
-                            cancellationToken))
+                            cancellationToken);
+                    if (mobileConflicts && !command.FinancialRebaseline)
                         throw new InvalidOperationException("增量顾客手机号与其他顾客冲突；已停止同步");
                     customer.ChangeHomeStore(homeStoreId);
-                    customer.UpdateProfile(name, protectedMobile.Ciphertext, protectedMobile.LookupHash,
-                        protectedMobile.LastFour, ParseGender(Field(row, "member_sex")), birthDate,
-                        CleanCode(Field(row, "member_source"), 40), false, false,
-                        DateOnly.FromDateTime(DateTime.UtcNow));
+                    if (mobileConflicts)
+                    {
+                        await AddExceptionAsync(runId, tenant.Id, row, "member_hand",
+                            "MOBILE_CONFLICT_PRESERVED", "Warning",
+                            "来源手机号与其他顾客冲突，保留目标顾客原联系方式并继续金额重建", cancellationToken);
+                        Increment(exceptions, "customer-mobile-conflicts");
+                    }
+                    else
+                    {
+                        customer.UpdateProfile(name, protectedMobile.Ciphertext, protectedMobile.LookupHash,
+                            protectedMobile.LastFour, ParseGender(Field(row, "member_sex")), birthDate,
+                            CleanCode(Field(row, "member_source"), 40), false, false,
+                            DateOnly.FromDateTime(DateTime.UtcNow));
+                    }
                     var previousStoredValue = command.FinancialRebaseline
                         ? rebaselineBalances.GetValueOrDefault(customer.Id,
                             new LegacyStoredValue(0, 0, false))
