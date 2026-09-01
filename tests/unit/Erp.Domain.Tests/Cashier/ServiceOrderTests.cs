@@ -26,6 +26,26 @@ public sealed class ServiceOrderTests
     }
 
     [Fact]
+    public void MemberDiscountKeepsPricingSnapshotWithoutTriggeringManualApproval()
+    {
+        var cardTypeId = Guid.CreateVersion7();
+        var order = CreateOrder([new ServiceOrderLineDraft(Guid.CreateVersion7(), "S01", "标准服务", 1,
+            1800, 10_000, 8_000, "会员折扣：八折储值卡 8折", pricingSource:
+            ServiceOrderLinePricingSource.MemberDiscount, memberDiscountBasisPoints: 8_000,
+            memberCardTypeId: cardTypeId, memberCardTypeName: "八折储值卡")]);
+
+        Assert.False(order.HasPriceOverride);
+        Assert.Equal(0, order.ManualPriceOverrideDiscountMinor);
+        Assert.Equal(2_000, order.TotalDiscountMinor);
+        Assert.Equal(ServiceOrderLinePricingSource.MemberDiscount, order.Lines.Single().PricingSource);
+        Assert.Equal(cardTypeId, order.Lines.Single().MemberCardTypeId);
+        Assert.Equal("八折储值卡", order.Lines.Single().MemberCardTypeNameSnapshot);
+
+        order.Confirm(DateTimeOffset.UtcNow);
+        Assert.Equal(ServiceOrderStatus.PendingPayment, order.Status);
+    }
+
+    [Fact]
     public void PriceOverrideRequiresReason()
     {
         Assert.Throws<DomainRuleException>(() => CreateOrder(

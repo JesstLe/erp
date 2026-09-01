@@ -13,6 +13,10 @@ export interface ClassicCashierDraftLine {
   employeeId?: string
   employeeName?: string
   priceOverrideReason?: string
+  pricingSource?: 'ListPrice' | 'MemberDiscount' | 'ManualOverride'
+  memberDiscountBasisPoints?: number
+  memberCardTypeId?: string
+  memberCardTypeName?: string
 }
 
 export function classicCashierLineAmount(line: ClassicCashierDraftLine) {
@@ -35,5 +39,9 @@ export function applyClassicOrderDiscount(lines: ClassicCashierDraftLine[], perc
     ...line,
     enteredPriceMinor: Math.round(line.referencePriceMinor * factor),
     priceOverrideReason: factor === 1 ? undefined : reason,
+    pricingSource: factor === 1 ? 'ListPrice' as const : 'ManualOverride' as const,
+    memberDiscountBasisPoints: undefined,
+    memberCardTypeId: undefined,
+    memberCardTypeName: undefined,
   }))
 }

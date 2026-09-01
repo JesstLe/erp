@@ -498,6 +498,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(40);
             entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(80);
             entity.Property(x => x.ValidityDays).HasColumnName("validity_days");
+            entity.Property(x => x.ServiceDiscountBasisPoints).HasColumnName("service_discount_basis_points");
+            entity.Property(x => x.ProductDiscountBasisPoints).HasColumnName("product_discount_basis_points");
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
             entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
         });
@@ -721,6 +723,12 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.ReferenceAmountMinor).HasColumnName("reference_amount_minor");
             entity.Property(x => x.LineAmountMinor).HasColumnName("line_amount_minor");
             entity.Property(x => x.PriceOverrideReason).HasColumnName("price_override_reason").HasMaxLength(500);
+            entity.Property(x => x.PricingSource).HasColumnName("pricing_source").HasConversion<string>()
+                .HasMaxLength(24);
+            entity.Property(x => x.MemberDiscountBasisPoints).HasColumnName("member_discount_basis_points");
+            entity.Property(x => x.MemberCardTypeId).HasColumnName("member_card_type_id");
+            entity.Property(x => x.MemberCardTypeNameSnapshot).HasColumnName("member_card_type_name_snapshot")
+                .HasMaxLength(80);
             entity.Property(x => x.ReturnedQuantity).HasColumnName("returned_quantity");
             entity.Property(x => x.ServiceEmployeeId).HasColumnName("service_employee_id");
             entity.Property(x => x.EmployeeNoSnapshot).HasColumnName("employee_no_snapshot").HasMaxLength(32);

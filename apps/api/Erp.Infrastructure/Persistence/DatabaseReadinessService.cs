@@ -6,7 +6,7 @@ namespace Erp.Infrastructure.Persistence;
 
 internal sealed class DatabaseReadinessService(ErpDbContext db) : IDatabaseReadinessService
 {
-    public const string RequiredSchemaVersion = "202609010042";
+    public const string RequiredSchemaVersion = "202609010043";
 
     public async Task<DatabaseReadinessDto> CheckAsync(CancellationToken cancellationToken)
     {
@@ -67,6 +67,12 @@ internal sealed class DatabaseReadinessService(ErpDbContext db) : IDatabaseReadi
                    AND EXISTS (SELECT 1 FROM information_schema.columns
                                WHERE table_schema = 'public' AND table_name = 'customer_service_records'
                                  AND column_name = 'category_id' AND is_nullable = 'YES')
+                   AND EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_schema = 'public' AND table_name = 'membership_card_types'
+                                 AND column_name = 'service_discount_basis_points')
+                   AND EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_schema = 'public' AND table_name = 'service_order_lines'
+                                 AND column_name = 'pricing_source')
                    AND EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm')
                 """;
             command.CommandType = CommandType.Text;

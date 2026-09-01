@@ -52,20 +52,44 @@ public sealed class MemberCardType : Entity
 {
     private MemberCardType() { }
 
-    public MemberCardType(Guid tenantId, string code, string name, int? validityDays)
+    public MemberCardType(Guid tenantId, string code, string name, int? validityDays,
+        int serviceDiscountBasisPoints = 10_000, int productDiscountBasisPoints = 10_000)
         : base(tenantId)
     {
         Code = Required(code, 40, "卡类编号").ToUpperInvariant();
-        Name = Required(name, 80, "卡类名称");
-        if (validityDays is < 1 or > 3650) throw new DomainRuleException("VALIDATION_FAILED", "有效期天数必须为1到3650");
-        ValidityDays = validityDays;
+        SetTerms(name, validityDays, serviceDiscountBasisPoints, productDiscountBasisPoints);
         Status = MemberCardTypeStatus.Published;
     }
 
     public string Code { get; private set; } = string.Empty;
     public string Name { get; private set; } = string.Empty;
     public int? ValidityDays { get; private set; }
+    public int ServiceDiscountBasisPoints { get; private set; }
+    public int ProductDiscountBasisPoints { get; private set; }
     public MemberCardTypeStatus Status { get; private set; }
+
+    public void UpdateTerms(string name, int? validityDays, int serviceDiscountBasisPoints,
+        int productDiscountBasisPoints)
+    {
+        if (Status != MemberCardTypeStatus.Published)
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "只有已发布卡类可以调整会员折扣");
+        SetTerms(name, validityDays, serviceDiscountBasisPoints, productDiscountBasisPoints);
+        Touch();
+    }
+
+    private void SetTerms(string name, int? validityDays, int serviceDiscountBasisPoints,
+        int productDiscountBasisPoints)
+    {
+        Name = Required(name, 80, "卡类名称");
+        if (validityDays is < 1 or > 3650)
+            throw new DomainRuleException("VALIDATION_FAILED", "有效期天数必须为1到3650");
+        if (serviceDiscountBasisPoints is < 1_000 or > 10_000 ||
+            productDiscountBasisPoints is < 1_000 or > 10_000)
+            throw new DomainRuleException("VALIDATION_FAILED", "会员折扣必须在1折到10折之间");
+        ValidityDays = validityDays;
+        ServiceDiscountBasisPoints = serviceDiscountBasisPoints;
+        ProductDiscountBasisPoints = productDiscountBasisPoints;
+    }
 
     private static string Required(string value, int max, string field)
     {

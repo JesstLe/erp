@@ -130,6 +130,7 @@ export function CustomersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [membershipOpen, setMembershipOpen] = useState(false);
   const [cardTypeOpen, setCardTypeOpen] = useState(false);
+  const [editingCardType, setEditingCardType] = useState<MemberCardType>();
   const [topupCard, setTopupCard] = useState<MemberCard>();
   const [refundTopup, setRefundTopup] = useState<MemberTopup>();
   const [revealOpen, setRevealOpen] = useState(false);
@@ -270,15 +271,21 @@ export function CustomersPage() {
     },
     onError,
   });
-  const createCardType = useMutation({
-    mutationFn: (values: Record<string, unknown>) =>
-      apiRequest<MemberCardType>("/api/v1/customers/membership/card-types", {
-        method: "POST",
-        body: JSON.stringify({ ...values, commandId: commandId() }),
+  const saveCardType = useMutation({
+    mutationFn: (values: { name: string; validityDays?: number; serviceDiscount: number; productDiscount: number }) =>
+      apiRequest<MemberCardType>(editingCardType
+        ? `/api/v1/customers/membership/card-types/${editingCardType.id}`
+        : "/api/v1/customers/membership/card-types", {
+        method: editingCardType ? "PUT" : "POST",
+        body: JSON.stringify({ name: values.name, validityDays: values.validityDays,
+          serviceDiscountBasisPoints: Math.round(values.serviceDiscount * 1000),
+          productDiscountBasisPoints: Math.round(values.productDiscount * 1000),
+          expectedVersion: editingCardType?.version, commandId: commandId() }),
       }),
     onSuccess: async (cardType) => {
-      message.success(`卡类已发布，系统编号 ${cardType.code}`);
+      message.success(editingCardType ? "会员折扣已更新" : `卡类已发布，系统编号 ${cardType.code}`);
       setCardTypeOpen(false);
+      setEditingCardType(undefined);
       cardTypeForm.resetFields();
       await queryClient.invalidateQueries({ queryKey: ["member-card-types"] });
     },
@@ -611,7 +618,7 @@ export function CustomersPage() {
           {canManageCardTypes && (
             <Button
               icon={<SettingOutlined />}
-              onClick={() => setCardTypeOpen(true)}
+              onClick={() => { setEditingCardType(undefined); cardTypeForm.setFieldsValue({ serviceDiscount: 10, productDiscount: 10 }); setCardTypeOpen(true); }}
             >
               卡类配置
             </Button>
@@ -1494,23 +1501,33 @@ export function CustomersPage() {
         </Form>
       </Modal>
       <Modal
-        title="新建并发布卡类"
+        title={editingCardType ? `编辑卡类 · ${editingCardType.code}` : "新建并发布卡类"}
+        width={760}
         open={cardTypeOpen}
-        onCancel={() => setCardTypeOpen(false)}
+        onCancel={() => { setCardTypeOpen(false); setEditingCardType(undefined); cardTypeForm.resetFields(); }}
         onOk={() => cardTypeForm.submit()}
-        confirmLoading={createCardType.isPending}
-        okText="发布卡类"
+        confirmLoading={saveCardType.isPending}
+        okText={editingCardType ? "保存折扣配置" : "发布卡类"}
         destroyOnHidden
       >
+        <Space wrap className="card-type-config-list">
+          {cardTypes.data?.map((cardType) => <Button key={cardType.id} onClick={() => {
+            setEditingCardType(cardType);
+            cardTypeForm.setFieldsValue({ name: cardType.name, validityDays: cardType.validityDays,
+              serviceDiscount: cardType.serviceDiscountBasisPoints / 1000,
+              productDiscount: cardType.productDiscountBasisPoints / 1000 });
+          }}>{cardType.name} · 服务 {(cardType.serviceDiscountBasisPoints / 1000).toFixed(1)} 折 · 产品 {(cardType.productDiscountBasisPoints / 1000).toFixed(1)} 折</Button>)}
+          {editingCardType && <Button type="link" onClick={() => { setEditingCardType(undefined); cardTypeForm.resetFields(); cardTypeForm.setFieldsValue({ serviceDiscount: 10, productDiscount: 10 }); }}>新建其他卡类</Button>}
+        </Space>
         <Form
           form={cardTypeForm}
           layout="vertical"
-          onFinish={(values) => createCardType.mutate(values)}
+          onFinish={(values) => saveCardType.mutate(values)}
         >
           <Alert
             type="info"
             showIcon
-            title="发布后由系统自动生成品牌内唯一编号，例如 CT000001。"
+            title="折扣由后端权威计算。10 折表示原价；会员价不与团购核销叠加，历史订单不随以后调整而变化。"
             className="modal-alert"
           />
           <Form.Item
@@ -1520,6 +1537,16 @@ export function CustomersPage() {
           >
             <Input placeholder="例如 长期会员" maxLength={80} />
           </Form.Item>
+          <div className="two-column-form">
+            <Form.Item name="serviceDiscount" label="服务项目折扣" initialValue={10}
+              rules={[{ required: true }, { type: "number", min: 1, max: 10 }]}>
+              <InputNumber min={1} max={10} step={0.1} precision={2} suffix="折" className="full-width" />
+            </Form.Item>
+            <Form.Item name="productDiscount" label="产品折扣" initialValue={10}
+              rules={[{ required: true }, { type: "number", min: 1, max: 10 }]}>
+              <InputNumber min={1} max={10} step={0.1} precision={2} suffix="折" className="full-width" />
+            </Form.Item>
+          </div>
           <Form.Item
             name="validityDays"
             label="有效期天数（可选）"

@@ -159,7 +159,21 @@ public static class CustomerEndpoints
             var current = await identity.GetCurrentAsync(cancellationToken);
             return current is null ? Results.Unauthorized() : EndpointResults.From(await customers.CreateCardTypeAsync(current.TenantId,
                 new CreateMemberCardTypeCommand(request.Name ?? string.Empty,
-                    request.ValidityDays, request.CommandId, current.Id), cancellationToken));
+                    request.ValidityDays, request.ServiceDiscountBasisPoints ?? 10_000,
+                    request.ProductDiscountBasisPoints ?? 10_000, request.CommandId, current.Id), cancellationToken));
+        }).RequireAuthorization(SystemPermissions.MembershipCardTypeManage);
+
+        group.MapPut("/membership/card-types/{cardTypeId:guid}", async (Guid cardTypeId,
+            UpdateCardTypeRequest request, IIdentityService identity, ICustomerService customers,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await customers.UpdateCardTypeAsync(current.TenantId,
+                    new UpdateMemberCardTypeCommand(cardTypeId, request.Name ?? string.Empty,
+                        request.ValidityDays, request.ServiceDiscountBasisPoints,
+                        request.ProductDiscountBasisPoints, request.ExpectedVersion,
+                        request.CommandId, current.Id), cancellationToken));
         }).RequireAuthorization(SystemPermissions.MembershipCardTypeManage);
 
         group.MapPost("/{customerId:guid}/membership", async (Guid customerId, OpenMembershipRequest request,
@@ -344,7 +358,10 @@ public static class CustomerEndpoints
     private sealed record PreviewCustomerMergeRequest(Guid StoreId, Guid TargetCustomerId);
     private sealed record MergeCustomerRequest(Guid StoreId, Guid TargetCustomerId,
         uint ExpectedSourceVersion, uint ExpectedTargetVersion, string? Reason, Guid CommandId);
-    private sealed record CreateCardTypeRequest(string? Name, int? ValidityDays, Guid CommandId);
+    private sealed record CreateCardTypeRequest(string? Name, int? ValidityDays,
+        int? ServiceDiscountBasisPoints, int? ProductDiscountBasisPoints, Guid CommandId);
+    private sealed record UpdateCardTypeRequest(string? Name, int? ValidityDays,
+        int ServiceDiscountBasisPoints, int ProductDiscountBasisPoints, uint ExpectedVersion, Guid CommandId);
     private sealed record OpenMembershipRequest(Guid StoreId, Guid CardTypeId, string? CardNo, string? Note, Guid CommandId);
     private sealed record RevealCustomerMobileRequest(Guid StoreId, string? Purpose, Guid CommandId);
     private sealed record ExportCustomersRequest(Guid StoreId, string? Query, bool IncludeFullMobile,

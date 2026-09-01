@@ -9,7 +9,7 @@ const methods: PaymentMethod[] = [
   { id: 'principal', code: 'MEMBER_PRINCIPAL', name: '本金', category: 'InternalAccount', requiresOpenShift: false, internalAccountType: 'Principal' },
   { id: 'bonus', code: 'MEMBER_BONUS', name: '赠送金', category: 'InternalAccount', requiresOpenShift: false, internalAccountType: 'Bonus' },
 ]
-const cards: MemberCard[] = [{ id: 'card-1', cardTypeName: '储值卡', maskedCardNo: '****1234', status: 'Active', validFrom: '2026-01-01', accounts: [
+const cards: MemberCard[] = [{ id: 'card-1', cardTypeId: 'card-type-1', cardTypeName: '储值卡', maskedCardNo: '****1234', status: 'Active', validFrom: '2026-01-01', serviceDiscountBasisPoints: 10_000, productDiscountBasisPoints: 10_000, accounts: [
   { id: 'principal-account', accountType: 'Principal', balanceUnits: 5_000, status: 'Active' },
   { id: 'bonus-account', accountType: 'Bonus', balanceUnits: 2_000, status: 'Active' },
 ] }]
