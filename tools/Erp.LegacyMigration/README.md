@@ -131,6 +131,8 @@ dotnet Erp.LegacyMigration.dll import \
 
 默认仍是整笔干跑；核对变化数量、五门店金额及差额流水后才增加 `--apply`。增量模式只接受门店和顾客，不接收护理、图片或其他主数据。已迁移顾客按“新旧来源余额差额”生成 `LegacyBalanceSync` 不可变流水，不直接覆盖新系统账户余额；若来源扣减额大于新系统当前可用余额，整笔事务停止，防止旧系统和新系统同时消费造成双扣。每次来源哈希、前一版哈希、原始金额与本金/赠送金差额均写入追加式修订表。
 
+若早期迁移曾使用错误余额字段，只能通过一次性的 `--financial-rebaseline` 修正。该模式要求同时提供 `--expected-current-principal-minor`、`--expected-current-bonus-minor` 与 `--expected-mapped-customers` 三个生产现状护栏；任意一项差一分或一人都会在写入前停止。修正通过 `LegacyBalanceRebaseline` 不可变流水把每位已映射顾客对齐到当前来源快照，能处理来源行哈希未变化但映射语义已纠正的情况，不直接改写余额或删除历史流水。仍须先干跑、核对汇总，再使用完全相同的参数增加 `--apply`。
+
 发布包把工具放在 `ops/legacy-migration`，不暴露 HTTP 迁移接口。服务器只允许管理员通过 SSH 在备份后运行，并从 `/etc/erp/erp.env` 读取新系统数据库、密钥环和隐私配置；旧系统账号、密码和导出密钥仍通过临时安全环境提供，不进入发布包。
 
 ## 验证

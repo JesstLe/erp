@@ -123,6 +123,40 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
     }
 
     [Fact]
+    public async Task LegacyFinancialRebaselineCorrectsUnchangedSourceOnlyWhenGuardsMatch()
+    {
+        static LegacySourceRow Row(string entity, string id, char hash,
+            params (string Key, string? Value)[] fields) =>
+            new(entity, id, new string(hash, 64),
+                fields.ToDictionary(x => x.Key, x => x.Value, StringComparer.Ordinal));
+
+        var rows = new[]
+        {
+            Row("stores", "9911", 'b', ("shop_code", "9911"), ("shop_name", "金额重建店")),
+            Row("customers", "9916", 'c', ("member_name", "金额重建顾客"),
+                ("member_hand", "13900001916"), ("member_shop", "金额重建店"),
+                ("member_money", "1000.00"), ("member_bonus", "20.00"),
+                ("member_store", "100.00")),
+        };
+        var initial = new LegacyImportDataset("B01", "integration-financial-rebaseline",
+            new string('d', 64), "integration-v1", rows, []);
+        await fixture.RunLegacyImportAsync(new LegacyImportCommand(initial, DryRun: false));
+        await fixture.SetLegacyCustomerBalancesAsync("9916", 100_000, 2_000);
+
+        var guarded = new LegacyImportDataset("B01", "integration-financial-rebaseline",
+            new string('e', 64), "integration-v2", rows, []);
+        var result = await fixture.RunLegacyImportAsync(new LegacyImportCommand(guarded, DryRun: false,
+            FinancialRebaseline: true, ExpectedCurrentPrincipalMinor: 100_000,
+            ExpectedCurrentBonusMinor: 2_000, ExpectedMappedCustomers: 1));
+
+        Assert.Equal(1, result.Created["customer-updates"]);
+        Assert.Equal(1, result.Created["stored-value-principal-rebaseline-ledgers"]);
+        var balances = await fixture.GetLegacyCustomerBalancesAsync("9916");
+        Assert.Equal(10_000, balances.PrincipalMinor);
+        Assert.Equal(2_000, balances.BonusMinor);
+    }
+
+    [Fact]
     public async Task LegacyImportRejectsNonEmptyUnmappedStoreInsteadOfUsingDefault()
     {
         static LegacySourceRow Row(string entity, string id, params (string Key, string? Value)[] fields) =>
@@ -1404,6 +1438,27 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
         await using var reader = await command.ExecuteReaderAsync();
         Assert.True(await reader.ReadAsync());
         return (reader.GetInt64(0), reader.GetInt64(1));
+    }
+
+    public async Task SetLegacyCustomerBalancesAsync(string sourceId, long principalMinor, long bonusMinor)
+    {
+        await using var connection = new NpgsqlConnection(database.GetConnectionString());
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand("""
+            UPDATE member_accounts a
+            SET balance_units = CASE a.account_type
+                WHEN 'Principal' THEN @principal
+                WHEN 'Bonus' THEN @bonus
+                ELSE a.balance_units
+            END
+            FROM legacy_migration_record_maps m
+            WHERE m.source_entity='customers' AND m.source_id=@source_id
+              AND a.customer_id=m.target_id AND a.account_type IN ('Principal','Bonus')
+            """, connection);
+        command.Parameters.AddWithValue("source_id", sourceId);
+        command.Parameters.AddWithValue("principal", principalMinor);
+        command.Parameters.AddWithValue("bonus", bonusMinor);
+        Assert.Equal(2, await command.ExecuteNonQueryAsync());
     }
 
     public int CountStoredFileBlobs()

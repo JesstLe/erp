@@ -36,7 +36,11 @@ public sealed record LegacyImportCommand(
     string? ConfirmedTargetTenantCode = null,
     bool SyncMappedStores = false,
     bool ReconcileExistingCustomers = false,
-    bool FinancialIncrementalSync = false);
+    bool FinancialIncrementalSync = false,
+    bool FinancialRebaseline = false,
+    long? ExpectedCurrentPrincipalMinor = null,
+    long? ExpectedCurrentBonusMinor = null,
+    int? ExpectedMappedCustomers = null);
 
 public sealed record LegacyImportResult(
     Guid RunId,

@@ -68,6 +68,28 @@ public sealed class LegacyStoreAttributionPlanTests
     }
 
     [Fact]
+    public void FinancialRebaselineRequiresExactCurrentStateGuards()
+    {
+        var valid = LegacyImportOptions.Parse(
+        [
+            "import", "--input", Path.GetTempPath(), "--tenant", "B01", "--financial-rebaseline",
+            "--expected-current-principal-minor", "10000",
+            "--expected-current-bonus-minor", "2000",
+            "--expected-mapped-customers", "1",
+        ]);
+
+        Assert.True(valid.FinancialRebaseline);
+        Assert.Equal(10_000, valid.ExpectedCurrentPrincipalMinor);
+        Assert.Equal(2_000, valid.ExpectedCurrentBonusMinor);
+        Assert.Equal(1, valid.ExpectedMappedCustomers);
+
+        Assert.Throws<LegacyMigrationException>(() => LegacyImportOptions.Parse(
+        [
+            "import", "--input", Path.GetTempPath(), "--tenant", "B01", "--financial-rebaseline",
+        ]));
+    }
+
+    [Fact]
     public void ResolvesSourceIdCodeAndNameWithoutLeakingOtherFields()
     {
         var rows = new[]

@@ -65,6 +65,47 @@ internal sealed partial class LegacyImportService(
             var runId = Guid.CreateVersion7();
             await InsertRunAsync(runId, tenant.Id, dataset, command.DryRun, cancellationToken);
             var maps = await LoadMapsAsync(tenant.Id, cancellationToken);
+            var rebaselineBalances = new Dictionary<Guid, LegacyStoredValue>();
+            if (command.FinancialRebaseline)
+            {
+                var mappedCustomerIds = maps
+                    .Where(item => item.Key.Entity == "customers")
+                    .Select(item => item.Value.TargetId)
+                    .Distinct()
+                    .ToArray();
+                if (mappedCustomerIds.Length != command.ExpectedMappedCustomers)
+                    throw new InvalidOperationException("金额重建护栏失败：已映射顾客数量与预期不一致");
+                var existingMappedCustomers = await db.Customers.AsNoTracking()
+                    .CountAsync(customer => customer.TenantId == tenant.Id &&
+                        mappedCustomerIds.Contains(customer.Id), cancellationToken);
+                if (existingMappedCustomers != mappedCustomerIds.Length)
+                    throw new InvalidOperationException("金额重建护栏失败：顾客映射存在失效目标");
+                var currentAccounts = await db.MemberAccounts
+                    .Where(account => account.TenantId == tenant.Id &&
+                        mappedCustomerIds.Contains(account.CustomerId) &&
+                        (account.AccountType == MemberAccountType.Principal ||
+                         account.AccountType == MemberAccountType.Bonus))
+                    .ToListAsync(cancellationToken);
+                if (currentAccounts.GroupBy(account => (account.CustomerId, account.AccountType))
+                    .Any(group => group.Count() != 1))
+                    throw new InvalidOperationException("金额重建护栏失败：顾客存在多个同类型储值账户");
+                foreach (var customerId in mappedCustomerIds)
+                {
+                    var principal = currentAccounts.Where(account => account.CustomerId == customerId &&
+                            account.AccountType == MemberAccountType.Principal)
+                        .Sum(account => account.BalanceUnits);
+                    var bonus = currentAccounts.Where(account => account.CustomerId == customerId &&
+                            account.AccountType == MemberAccountType.Bonus)
+                        .Sum(account => account.BalanceUnits);
+                    rebaselineBalances[customerId] = new LegacyStoredValue(principal, bonus,
+                        principal > 0 || bonus > 0);
+                }
+                if (rebaselineBalances.Values.Sum(balance => balance.PrincipalMinor) !=
+                        command.ExpectedCurrentPrincipalMinor ||
+                    rebaselineBalances.Values.Sum(balance => balance.BonusMinor) !=
+                        command.ExpectedCurrentBonusMinor)
+                    throw new InvalidOperationException("金额重建护栏失败：当前本金或赠送金总额与预期不一致");
+            }
             var rows = dataset.Rows.GroupBy(x => x.Entity, StringComparer.Ordinal)
                 .ToDictionary(x => x.Key, x => x.OrderBy(row => row.SourceId, StringComparer.Ordinal).ToArray(),
                     StringComparer.Ordinal);
@@ -318,12 +359,13 @@ internal sealed partial class LegacyImportService(
             {
                 maps.TryGetValue((row.Entity, row.SourceId), out var existingCustomerMap);
                 if (existingCustomerMap is not null && string.Equals(existingCustomerMap.SourceSha256,
-                        row.SourceSha256, StringComparison.OrdinalIgnoreCase))
+                        row.SourceSha256, StringComparison.OrdinalIgnoreCase) && !command.FinancialRebaseline)
                 {
                     Increment(skipped, "customers");
                     continue;
                 }
-                if (existingCustomerMap is not null && !command.FinancialIncrementalSync)
+                if (existingCustomerMap is not null && !command.FinancialIncrementalSync &&
+                    !command.FinancialRebaseline)
                     throw new InvalidOperationException($"来源记录已变化，拒绝覆盖：{row.Entity}/{row.SourceId}");
                 var name = CleanText(Field(row, "member_name"), 100);
                 var mobile = Field(row, "member_hand");
@@ -374,11 +416,15 @@ internal sealed partial class LegacyImportService(
                         protectedMobile.LastFour, ParseGender(Field(row, "member_sex")), birthDate,
                         CleanCode(Field(row, "member_source"), 40), false, false,
                         DateOnly.FromDateTime(DateTime.UtcNow));
-                    var previousStoredValue = await LoadPreviousStoredValueAsync(tenant.Id, row.SourceId,
-                        cancellationToken);
+                    var previousStoredValue = command.FinancialRebaseline
+                        ? rebaselineBalances.GetValueOrDefault(customer.Id,
+                            new LegacyStoredValue(0, 0, false))
+                        : await LoadPreviousStoredValueAsync(tenant.Id, row.SourceId, cancellationToken);
                     var currentStoredValue = StoredValue(row);
-                    await AddRevisionAsync(runId, tenant.Id, row, existingCustomerMap!, maps,
-                        cancellationToken);
+                    if (!string.Equals(existingCustomerMap!.SourceSha256, row.SourceSha256,
+                            StringComparison.OrdinalIgnoreCase))
+                        await AddRevisionAsync(runId, tenant.Id, row, existingCustomerMap, maps,
+                            cancellationToken);
                     financialRevisions.Add(new LegacyFinancialRevisionPlan(customer.Id, row,
                         previousStoredValue.PrincipalMinor, previousStoredValue.BonusMinor,
                         currentStoredValue.PrincipalMinor, currentStoredValue.BonusMinor));
@@ -391,7 +437,8 @@ internal sealed partial class LegacyImportService(
                                 "缺少旧系统储值卡类型"));
                         storedValuePlans.Add(new LegacyStoredValuePlan(row, customer.Id, homeStoreId, cardTypeId,
                             currentStoredValue.PrincipalMinor, currentStoredValue.BonusMinor, true,
-                            previousStoredValue.PrincipalMinor, previousStoredValue.BonusMinor, true));
+                            previousStoredValue.PrincipalMinor, previousStoredValue.BonusMinor, true,
+                            command.FinancialRebaseline));
                     }
                     Increment(created, "customer-updates");
                     continue;
@@ -427,7 +474,7 @@ internal sealed partial class LegacyImportService(
                         fallbackStoredValueCardTypeId ?? throw new InvalidOperationException("缺少旧系统储值卡类型"));
                     storedValuePlans.Add(new LegacyStoredValuePlan(row, customer.Id, homeStoreId, cardTypeId,
                         storedValue.PrincipalMinor, storedValue.BonusMinor, reconcilesExistingCustomer,
-                        0, 0, false));
+                        0, 0, false, false));
                 }
             }
 
@@ -471,7 +518,7 @@ internal sealed partial class LegacyImportService(
                     if (!string.Equals(existingCardMap.SourceSha256, cardSource.SourceSha256,
                             StringComparison.OrdinalIgnoreCase))
                     {
-                        if (!plan.IsIncremental)
+                        if (!plan.IsIncremental && !plan.IsRebaseline)
                             throw new InvalidOperationException(
                                 $"来源记录已变化，拒绝覆盖：{cardSource.Entity}/{cardSource.SourceId}");
                         await AddRevisionAsync(runId, tenant.Id, cardSource, existingCardMap, maps,
@@ -508,7 +555,14 @@ internal sealed partial class LegacyImportService(
             foreach (var item in cardPlans)
             {
                 var businessId = DeterministicGuid($"{tenant.Id:N}:legacy-stored-value:{item.Plan.Row.SourceId}");
-                if (item.Plan.IsIncremental)
+                if (item.Plan.IsRebaseline)
+                {
+                    ReconcileRebaseline(accountsByCardAndType[(item.Card.Id, MemberAccountType.Principal)],
+                        item.Plan.PrincipalMinor, "Principal", businessId, item.Plan.Row, created);
+                    ReconcileRebaseline(accountsByCardAndType[(item.Card.Id, MemberAccountType.Bonus)],
+                        item.Plan.BonusMinor, "Bonus", businessId, item.Plan.Row, created);
+                }
+                else if (item.Plan.IsIncremental)
                 {
                     ApplyBalanceDelta(accountsByCardAndType[(item.Card.Id, MemberAccountType.Principal)],
                         item.Plan.PrincipalMinor - item.Plan.PreviousPrincipalMinor, "Principal", businessId,
@@ -533,7 +587,7 @@ internal sealed partial class LegacyImportService(
             foreach (var revision in financialRevisions)
                 await InsertFinancialRevisionAsync(runId, tenant.Id, revision, cancellationToken);
 
-            if (!command.FinancialIncrementalSync)
+            if (!command.FinancialIncrementalSync && !command.FinancialRebaseline)
             {
                 var photosByCustomer = dataset.Photos.GroupBy(x => x.SourceCustomerId, StringComparer.Ordinal)
                     .ToDictionary(x => x.Key, x => x.OrderBy(photo => photo.Slot).ToArray(), StringComparer.Ordinal);
@@ -707,12 +761,21 @@ internal sealed partial class LegacyImportService(
             throw new InvalidOperationException("迁移数据超过安全上限");
         if (dataset.Rows.Any(row => row.SourceSha256.Length != 64 || !row.SourceSha256.All(Uri.IsHexDigit)))
             throw new InvalidOperationException("来源记录摘要无效");
-        if (command.FinancialIncrementalSync && dataset.Rows.Any(row =>
+        if ((command.FinancialIncrementalSync || command.FinancialRebaseline) && dataset.Rows.Any(row =>
                 row.Entity is not ("stores" or "customers")))
-            throw new InvalidOperationException("金额增量同步只允许门店和顾客模块");
-        if (command.FinancialIncrementalSync && (dataset.Photos.Count > 0 ||
+            throw new InvalidOperationException("金额同步只允许门店和顾客模块");
+        if ((command.FinancialIncrementalSync || command.FinancialRebaseline) && (dataset.Photos.Count > 0 ||
                 (dataset.CarePhotos?.Count ?? 0) > 0))
-            throw new InvalidOperationException("金额增量同步不接收护理或顾客图片");
+            throw new InvalidOperationException("金额同步不接收护理或顾客图片");
+        if (command.FinancialRebaseline && (command.ExpectedCurrentPrincipalMinor is null ||
+                command.ExpectedCurrentBonusMinor is null || command.ExpectedMappedCustomers is null))
+            throw new InvalidOperationException("金额重建缺少当前金额或映射数量护栏");
+        if (!command.FinancialRebaseline && (command.ExpectedCurrentPrincipalMinor is not null ||
+                command.ExpectedCurrentBonusMinor is not null || command.ExpectedMappedCustomers is not null))
+            throw new InvalidOperationException("金额护栏只能用于金额重建");
+        if (command.FinancialRebaseline && (command.FinancialIncrementalSync ||
+                command.SyncMappedStores || command.ReconcileExistingCustomers))
+            throw new InvalidOperationException("金额重建不能与其他迁移模式同时使用");
     }
 
     private static LegacySourceRow[] Rows(
@@ -1117,6 +1180,23 @@ internal sealed partial class LegacyImportService(
             : "stored-value-bonus-sync-ledgers");
     }
 
+    private void ReconcileRebaseline(MemberAccount account, long targetBalance, string accountLabel,
+        Guid businessId, LegacySourceRow row, Dictionary<string, int> created)
+    {
+        if (account.BalanceUnits == targetBalance) return;
+        var delta = targetBalance - account.BalanceUnits;
+        var commandId = DeterministicGuid(
+            $"{account.TenantId:N}:legacy-balance-rebaseline-v1:{row.SourceId}:{accountLabel}:{targetBalance}");
+        var ledger = delta > 0
+            ? account.Credit("LegacyBalanceRebaseline", businessId, delta, commandId, DateTimeOffset.UtcNow)
+            : account.Debit("LegacyBalanceRebaseline", businessId, checked(-delta), commandId,
+                DateTimeOffset.UtcNow);
+        db.MemberAccountLedgers.Add(ledger);
+        Increment(created, accountLabel == "Principal"
+            ? "stored-value-principal-rebaseline-ledgers"
+            : "stored-value-bonus-rebaseline-ledgers");
+    }
+
     private static LegacyStoredValue StoredValue(LegacySourceRow row)
     {
         var principal = Math.Max(ParseMinor(Field(row, "member_store")) ?? 0, 0);
@@ -1150,7 +1230,7 @@ internal sealed partial class LegacyImportService(
     private sealed record LegacyStoredValue(long PrincipalMinor, long BonusMinor, bool HasEvidence);
     private sealed record LegacyStoredValuePlan(LegacySourceRow Row, Guid CustomerId, Guid StoreId,
         Guid CardTypeId, long PrincipalMinor, long BonusMinor, bool ReconcilesExistingCustomer,
-        long PreviousPrincipalMinor, long PreviousBonusMinor, bool IsIncremental);
+        long PreviousPrincipalMinor, long PreviousBonusMinor, bool IsIncremental, bool IsRebaseline);
     private sealed record LegacyFinancialRevisionPlan(Guid CustomerId, LegacySourceRow Row,
         long PreviousPrincipalMinor, long PreviousBonusMinor, long CurrentPrincipalMinor, long CurrentBonusMinor);
 }

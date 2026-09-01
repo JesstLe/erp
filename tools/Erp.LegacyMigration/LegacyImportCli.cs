@@ -37,7 +37,11 @@ public static class LegacyImportCli
                 options.ConfirmedTargetTenantCode,
                 options.SyncMappedStores,
                 options.ReconcileExistingCustomers,
-                options.FinancialIncrementalSync), cancellationToken);
+                options.FinancialIncrementalSync,
+                options.FinancialRebaseline,
+                options.ExpectedCurrentPrincipalMinor,
+                options.ExpectedCurrentBonusMinor,
+                options.ExpectedMappedCustomers), cancellationToken);
             await output.WriteLineAsync($"迁移运行：{result.RunId}，已完成={result.AlreadyCompleted}，模式={(result.DryRun ? "干跑" : "执行")}。");
             foreach (var item in result.Created.OrderBy(x => x.Key, StringComparer.Ordinal))
                 await output.WriteLineAsync($"创建 {item.Key}: {item.Value}");
@@ -78,7 +82,11 @@ public sealed record LegacyImportOptions(
     string? ConfirmedTargetTenantCode = null,
     bool SyncMappedStores = false,
     bool ReconcileExistingCustomers = false,
-    bool FinancialIncrementalSync = false)
+    bool FinancialIncrementalSync = false,
+    bool FinancialRebaseline = false,
+    long? ExpectedCurrentPrincipalMinor = null,
+    long? ExpectedCurrentBonusMinor = null,
+    int? ExpectedMappedCustomers = null)
 {
     public static LegacyImportOptions Parse(string[] args)
     {
@@ -92,6 +100,10 @@ public sealed record LegacyImportOptions(
         var syncMappedStores = false;
         var reconcileExistingCustomers = false;
         var financialIncrementalSync = false;
+        var financialRebaseline = false;
+        long? expectedCurrentPrincipalMinor = null;
+        long? expectedCurrentBonusMinor = null;
+        int? expectedMappedCustomers = null;
         var storeMappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         for (var index = 1; index < args.Length; index++)
         {
@@ -115,6 +127,16 @@ public sealed record LegacyImportOptions(
                 case "--sync-mapped-stores": syncMappedStores = true; break;
                 case "--reconcile-existing-customers": reconcileExistingCustomers = true; break;
                 case "--financial-incremental": financialIncrementalSync = true; break;
+                case "--financial-rebaseline": financialRebaseline = true; break;
+                case "--expected-current-principal-minor":
+                    expectedCurrentPrincipalMinor = ParseNonNegativeLong(Next(args, ref index));
+                    break;
+                case "--expected-current-bonus-minor":
+                    expectedCurrentBonusMinor = ParseNonNegativeLong(Next(args, ref index));
+                    break;
+                case "--expected-mapped-customers":
+                    expectedMappedCustomers = ParsePositiveInt(Next(args, ref index));
+                    break;
                 case "--apply": apply = true; break;
                 default: throw new LegacyMigrationException($"不支持的导入参数：{args[index]}");
             }
@@ -129,6 +151,15 @@ public sealed record LegacyImportOptions(
             throw new LegacyMigrationException("同步映射门店时必须提供门店映射。");
         if (financialIncrementalSync && (syncMappedStores || reconcileExistingCustomers))
             throw new LegacyMigrationException("金额增量同步不能与首次迁移开关同时使用。");
+        if (financialRebaseline && (financialIncrementalSync || syncMappedStores || reconcileExistingCustomers))
+            throw new LegacyMigrationException("金额重建不能与增量同步或首次迁移开关同时使用。");
+        if (financialRebaseline && (expectedCurrentPrincipalMinor is null ||
+                expectedCurrentBonusMinor is null || expectedMappedCustomers is null))
+            throw new LegacyMigrationException(
+                "金额重建必须同时提供当前本金、赠送金和已映射顾客数量护栏。");
+        if (!financialRebaseline && (expectedCurrentPrincipalMinor is not null ||
+                expectedCurrentBonusMinor is not null || expectedMappedCustomers is not null))
+            throw new LegacyMigrationException("金额护栏参数只能用于金额重建。");
         if (inputs.Count is 0 or > 20) throw new LegacyMigrationException("导入必须提供1到20个来源目录。");
         var fullInputs = inputs.Select(path =>
         {
@@ -140,7 +171,9 @@ public sealed record LegacyImportOptions(
         if (version.Length is < 3 or > 40 || version.Any(char.IsControl))
             throw new LegacyMigrationException("导入版本格式无效。");
         return new LegacyImportOptions(fullInputs, tenant, apply, version, storeMappings,
-            confirmedTarget, syncMappedStores, reconcileExistingCustomers, financialIncrementalSync);
+            confirmedTarget, syncMappedStores, reconcileExistingCustomers, financialIncrementalSync,
+            financialRebaseline, expectedCurrentPrincipalMinor, expectedCurrentBonusMinor,
+            expectedMappedCustomers);
     }
 
     private static string Next(string[] args, ref int index)
@@ -149,6 +182,16 @@ public sealed record LegacyImportOptions(
         if (index >= args.Length) throw new LegacyMigrationException("导入参数缺少值。");
         return args[index];
     }
+
+    private static long ParseNonNegativeLong(string value) =>
+        long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0
+            ? parsed
+            : throw new LegacyMigrationException("金额护栏必须是非负的最小货币单位整数。");
+
+    private static int ParsePositiveInt(string value) =>
+        int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) && parsed > 0
+            ? parsed
+            : throw new LegacyMigrationException("已映射顾客数量护栏必须是正整数。");
 }
 
 public sealed class LegacyImportDatasetLoader(EncryptedPayloadStore payloadStore)
@@ -230,6 +273,10 @@ public sealed class LegacyImportDatasetLoader(EncryptedPayloadStore payloadStore
                         .Select(item => $"store-map:{item.Key}:{item.Value}"))
                     .Append($"import-version:{options.ImportVersion}")
                     .Append($"financial-incremental:{options.FinancialIncrementalSync}")
+                    .Append($"financial-rebaseline:{options.FinancialRebaseline}")
+                    .Append($"expected-current-principal-minor:{options.ExpectedCurrentPrincipalMinor}")
+                    .Append($"expected-current-bonus-minor:{options.ExpectedCurrentBonusMinor}")
+                    .Append($"expected-mapped-customers:{options.ExpectedMappedCustomers}")
                     .Order(StringComparer.Ordinal)))));
             return new LegacyImportDataset(options.TenantCode, "siweicloud-swshop", fingerprint,
                 options.ImportVersion, rows, photos, carePhotos, options.StoreMappings);
