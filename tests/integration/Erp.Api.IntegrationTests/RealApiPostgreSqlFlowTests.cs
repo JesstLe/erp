@@ -54,7 +54,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             Row("customers", "906", ("member_name", "旧系统顾客"), ("member_hand", "13900001111"),
                 ("member_shop", "旧系统演练店"), ("member_sex", "女"), ("member_memo", "旧系统服务备注"),
                 ("member_time2", "2026-08-20 12:00:00"), ("member_money", "123.45"),
-                ("member_bonus", "10"), ("member_score", "5")),
+                ("member_store", "123.45"), ("member_bonus", "10"), ("member_score", "5")),
             Row("care-records", "907", ("bill_member", "906"), ("bill_shop", "旧系统演练店"),
                 ("bill_time1", "2026-08-20 13:00:00"), ("bill_date", "2026-08-20"),
                 ("bill_intro", "旧系统症状"), ("bill_plan", "旧系统处理方案"),
@@ -99,7 +99,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
                 Row("stores", "9901", '7', ("shop_code", "9901"), ("shop_name", "金额增量店")),
                 Row("customers", "9906", '8', ("member_name", "金额增量顾客"),
                     ("member_hand", "13900001996"), ("member_shop", "金额增量店"),
-                    ("member_money", "100.00"), ("member_bonus", "20.00"), ("member_store", "100.00")),
+                    ("member_money", "1000.00"), ("member_bonus", "20.00"), ("member_store", "100.00")),
             ], []);
         await fixture.RunLegacyImportAsync(new LegacyImportCommand(initial, DryRun: false));
 
@@ -109,7 +109,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
                 Row("stores", "9901", '7', ("shop_code", "9901"), ("shop_name", "金额增量店")),
                 Row("customers", "9906", 'a', ("member_name", "金额增量顾客"),
                     ("member_hand", "13900001996"), ("member_shop", "金额增量店"),
-                    ("member_money", "85.00"), ("member_bonus", "25.00"), ("member_store", "100.00")),
+                    ("member_money", "1200.00"), ("member_bonus", "25.00"), ("member_store", "85.00")),
             ], []);
         var result = await fixture.RunLegacyImportAsync(new LegacyImportCommand(changed, DryRun: false,
             FinancialIncrementalSync: true));
