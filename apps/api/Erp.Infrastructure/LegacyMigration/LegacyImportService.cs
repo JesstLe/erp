@@ -134,7 +134,7 @@ internal sealed partial class LegacyImportService(
                     if (!string.Equals(existingStoreMap.SourceSha256, row.SourceSha256,
                             StringComparison.OrdinalIgnoreCase))
                     {
-                        if (!command.FinancialIncrementalSync)
+                        if (!command.FinancialIncrementalSync && !command.FinancialRebaseline)
                             throw new InvalidOperationException($"来源记录已变化，拒绝覆盖：{row.Entity}/{row.SourceId}");
                         var mappedStore = await db.Stores.SingleAsync(x => x.TenantId == tenant.Id &&
                             x.Id == mappedStoreId, cancellationToken);
