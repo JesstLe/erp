@@ -12,7 +12,8 @@ public sealed record ServiceOrderLineDto(Guid Id, string LineType, Guid? Service
     string ItemCode, string ItemName, string? UnitName, int Quantity, int ReturnedQuantity,
     int? ActualSeconds, long ReferencePriceMinor, long EnteredPriceMinor,
     long LineAmountMinor, string? PriceOverrideReason, Guid? ServiceEmployeeId, string? EmployeeNo,
-    string? EmployeeName);
+    string? EmployeeName, string PricingSource, int? MemberDiscountBasisPoints,
+    Guid? MemberCardTypeId, string? MemberCardTypeName);
 public sealed record ServiceOrderDto(Guid Id, string OrderNo, Guid VisitId, Guid? CustomerId,
     Guid? ConsultantEmployeeId, string? ConsultantEmployeeNo, string? ConsultantEmployeeName, string Status,
     string? SourceChannel, string? ManualTicketNo, int MaleGuestCount, string? MaleAgeBand,
@@ -30,7 +31,7 @@ public sealed record PriceOverrideApprovalDto(Guid Id, Guid ServiceOrderId, stri
     string? DecisionNote, uint Version);
 public sealed record CreateServiceOrderLineCommand(string? LineType, Guid? ServiceItemId, Guid? ProductItemId,
     Guid? ServiceEmployeeId, int Quantity, int? ActualSeconds, long EnteredPriceMinor,
-    string? PriceOverrideReason);
+    string? PriceOverrideReason, string? PricingSource = null);
 public sealed record CreateServiceOrderCommand(Guid StoreId, Guid? VisitId, Guid? CustomerId, string? Note,
     Guid? ConsultantEmployeeId, string? SourceChannel, string? ManualTicketNo, int MaleGuestCount,
     string? MaleAgeBand, int FemaleGuestCount, string? FemaleAgeBand,

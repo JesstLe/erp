@@ -54,10 +54,14 @@ export function applySettlementDiscount(lines: ClassicCashierDraftLine[], discou
     throw new Error('优惠金额必须在0与消费原价之间')
 
   let remaining = discountMinor
-  const result = lines.map((line) => ({
+  const result: ClassicCashierDraftLine[] = lines.map((line) => ({
     ...line,
     enteredPriceMinor: line.referencePriceMinor,
     priceOverrideReason: undefined as string | undefined,
+    pricingSource: 'ListPrice' as const,
+    memberDiscountBasisPoints: undefined,
+    memberCardTypeId: undefined,
+    memberCardTypeName: undefined,
   }))
   const order = result.map((line, index) => ({ line, index }))
     .sort((left, right) => (left.line.quantity === 1 ? 1 : 0) - (right.line.quantity === 1 ? 1 : 0))
@@ -75,7 +79,10 @@ export function applySettlementDiscount(lines: ClassicCashierDraftLine[], discou
     throw new Error('当前明细数量无法精确分摊该优惠金额，请先调整某一行成交价或数量')
   for (const line of result) {
     if (line.enteredPriceMinor !== line.referencePriceMinor)
+    {
       line.priceOverrideReason = '结算窗口覆盖优惠金额'
+      line.pricingSource = 'ManualOverride'
+    }
   }
   return result
 }

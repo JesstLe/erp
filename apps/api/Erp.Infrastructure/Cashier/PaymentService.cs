@@ -334,6 +334,11 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                 .ToDictionaryAsync(x => x.Id, cancellationToken);
             if (methods.Count != methodIds.Count)
                 return await FailureAndRollback<PaymentDto>(transaction, "PAYMENT_METHOD_NOT_FOUND", "支付方式不存在或已停用", cancellationToken);
+            if (order.Lines.Any(x => x.PricingSource == ServiceOrderLinePricingSource.MemberDiscount) &&
+                methods.Values.Any(x => x.Code == "GROUP_BUY_MANUAL"))
+                return await FailureAndRollback<PaymentDto>(transaction,
+                    "MEMBER_PRICE_GROUP_BUY_NOT_STACKABLE",
+                    "会员折扣不能与团购核销叠加；请取消会员价或移除团购支付", cancellationToken);
             if (methods.Values.Any(x => x.Category == PaymentMethodCategory.ChannelExternal))
                 return await FailureAndRollback<PaymentDto>(transaction, "CHANNEL_PAYMENT_REQUIRES_INITIATION",
                     "微信或支付宝必须先发起渠道订单并等待验签结果，不能直接登记为已付款", cancellationToken);

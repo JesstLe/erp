@@ -87,6 +87,32 @@ public sealed class CustomerMembershipTests
     }
 
     [Fact]
+    public void CardTypeKeepsIndependentServiceAndProductDiscounts()
+    {
+        var cardType = new MemberCardType(TenantId, "VIP", "会员储值卡", 365, 9_500, 8_800);
+
+        Assert.Equal(9_500, cardType.ServiceDiscountBasisPoints);
+        Assert.Equal(8_800, cardType.ProductDiscountBasisPoints);
+
+        cardType.UpdateTerms("升级会员储值卡", 730, 8_000, 7_500);
+
+        Assert.Equal("升级会员储值卡", cardType.Name);
+        Assert.Equal(8_000, cardType.ServiceDiscountBasisPoints);
+        Assert.Equal(7_500, cardType.ProductDiscountBasisPoints);
+    }
+
+    [Theory]
+    [InlineData(999, 10_000)]
+    [InlineData(10_001, 10_000)]
+    [InlineData(10_000, 999)]
+    [InlineData(10_000, 10_001)]
+    public void CardTypeRejectsDiscountOutsideOneToTenZhe(int serviceDiscount, int productDiscount)
+    {
+        Assert.Throws<DomainRuleException>(() => new MemberCardType(TenantId, "VIP", "会员卡", 365,
+            serviceDiscount, productDiscount));
+    }
+
+    [Fact]
     public void MemberCardRejectsInvalidValidityRange()
     {
         var today = new DateOnly(2026, 8, 18);

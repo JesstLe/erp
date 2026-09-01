@@ -5,6 +5,7 @@ namespace Erp.Domain.Cashier;
 
 public enum ServiceOrderStatus { Draft, PendingPayment, PaymentProcessing, Settled, PartiallyRefunded, Refunded, Voided }
 public enum ServiceOrderLineType { Service, Product }
+public enum ServiceOrderLinePricingSource { ListPrice, MemberDiscount, ManualOverride }
 
 public sealed class ServiceOrder : Entity
 {
@@ -58,10 +59,14 @@ public sealed class ServiceOrder : Entity
     public Guid? PriceAuthorizedBy { get; private set; }
     public DateTimeOffset? PriceAuthorizedAtUtc { get; private set; }
     public IReadOnlyCollection<ServiceOrderLine> Lines => _lines;
-    public bool HasPriceOverride => _lines.Any(x => x.EnteredPriceMinor != x.ReferencePriceMinor);
+    public bool HasPriceOverride => _lines.Any(x => x.PricingSource == ServiceOrderLinePricingSource.ManualOverride);
     public long TotalDiscountMinor => _lines.Sum(x => Math.Max(0, x.ReferenceAmountMinor - x.LineAmountMinor));
+    public long ManualPriceOverrideDiscountMinor => _lines
+        .Where(x => x.PricingSource == ServiceOrderLinePricingSource.ManualOverride)
+        .Sum(x => Math.Max(0, x.ReferenceAmountMinor - x.LineAmountMinor));
     public int MaximumLineDiscountBasisPoints => _lines
-        .Where(x => x.EnteredPriceMinor < x.ReferencePriceMinor && x.ReferencePriceMinor > 0)
+        .Where(x => x.PricingSource == ServiceOrderLinePricingSource.ManualOverride &&
+            x.EnteredPriceMinor < x.ReferencePriceMinor && x.ReferencePriceMinor > 0)
         .Select(x => (int)Math.Ceiling((x.ReferencePriceMinor - x.EnteredPriceMinor) * 10_000m /
             x.ReferencePriceMinor)).DefaultIfEmpty(0).Max();
 
@@ -256,7 +261,10 @@ public sealed record ServiceOrderLineDraft
         int? actualSeconds, long referencePriceMinor, long enteredPriceMinor, string? priceOverrideReason,
         Guid? serviceEmployeeId = null, string? employeeNo = null, string? employeeName = null,
         CommissionMode commissionMode = CommissionMode.None, int? commissionRateBasisPoints = null,
-        long? commissionFixedMinor = null)
+        long? commissionFixedMinor = null,
+        ServiceOrderLinePricingSource? pricingSource = null,
+        int? memberDiscountBasisPoints = null, Guid? memberCardTypeId = null,
+        string? memberCardTypeName = null)
     {
         LineType = ServiceOrderLineType.Service;
         ServiceItemId = serviceItemId;
@@ -273,11 +281,19 @@ public sealed record ServiceOrderLineDraft
         CommissionMode = commissionMode;
         CommissionRateBasisPoints = commissionRateBasisPoints;
         CommissionFixedMinor = commissionFixedMinor;
+        PricingSource = pricingSource ?? (enteredPriceMinor == referencePriceMinor
+            ? ServiceOrderLinePricingSource.ListPrice
+            : ServiceOrderLinePricingSource.ManualOverride);
+        MemberDiscountBasisPoints = memberDiscountBasisPoints;
+        MemberCardTypeId = memberCardTypeId;
+        MemberCardTypeName = memberCardTypeName;
     }
 
     private ServiceOrderLineDraft(Guid productItemId, string itemCode, string itemName, string unitName,
         int quantity, long referencePriceMinor, long enteredPriceMinor, string? priceOverrideReason,
-        Guid? addedByEmployeeId, string? employeeNo, string? employeeName)
+        Guid? addedByEmployeeId, string? employeeNo, string? employeeName,
+        ServiceOrderLinePricingSource? pricingSource, int? memberDiscountBasisPoints,
+        Guid? memberCardTypeId, string? memberCardTypeName)
     {
         LineType = ServiceOrderLineType.Product;
         ProductItemId = productItemId;
@@ -291,14 +307,23 @@ public sealed record ServiceOrderLineDraft
         ServiceEmployeeId = addedByEmployeeId;
         EmployeeNo = employeeNo;
         EmployeeName = employeeName;
+        PricingSource = pricingSource ?? (enteredPriceMinor == referencePriceMinor
+            ? ServiceOrderLinePricingSource.ListPrice
+            : ServiceOrderLinePricingSource.ManualOverride);
+        MemberDiscountBasisPoints = memberDiscountBasisPoints;
+        MemberCardTypeId = memberCardTypeId;
+        MemberCardTypeName = memberCardTypeName;
     }
 
     public static ServiceOrderLineDraft Product(Guid productItemId, string itemCode, string itemName,
         string unitName, int quantity, long referencePriceMinor, long enteredPriceMinor,
         string? priceOverrideReason, Guid? addedByEmployeeId = null, string? employeeNo = null,
-        string? employeeName = null) => new(productItemId, itemCode, itemName, unitName, quantity,
+        string? employeeName = null,
+        ServiceOrderLinePricingSource? pricingSource = null,
+        int? memberDiscountBasisPoints = null, Guid? memberCardTypeId = null,
+        string? memberCardTypeName = null) => new(productItemId, itemCode, itemName, unitName, quantity,
         referencePriceMinor, enteredPriceMinor, priceOverrideReason, addedByEmployeeId, employeeNo,
-        employeeName);
+        employeeName, pricingSource, memberDiscountBasisPoints, memberCardTypeId, memberCardTypeName);
 
     public ServiceOrderLineType LineType { get; }
     public Guid? ServiceItemId { get; }
@@ -317,6 +342,10 @@ public sealed record ServiceOrderLineDraft
     public CommissionMode CommissionMode { get; }
     public int? CommissionRateBasisPoints { get; }
     public long? CommissionFixedMinor { get; }
+    public ServiceOrderLinePricingSource PricingSource { get; }
+    public int? MemberDiscountBasisPoints { get; }
+    public Guid? MemberCardTypeId { get; }
+    public string? MemberCardTypeName { get; }
 }
 
 public sealed class ServiceOrderLine : Entity
@@ -343,6 +372,17 @@ public sealed class ServiceOrderLine : Entity
         var reason = string.IsNullOrWhiteSpace(overrideReason) ? null : overrideReason.Trim();
         if (enteredPriceMinor != referencePriceMinor && reason?.Length is not (>= 2 and <= 500))
             throw new DomainRuleException("VALIDATION_FAILED", "成交价与标准价不同时必须填写2到500字的改价原因");
+        if (draft.PricingSource == ServiceOrderLinePricingSource.ListPrice &&
+            enteredPriceMinor != referencePriceMinor)
+            throw new DomainRuleException("VALIDATION_FAILED", "目录价明细的成交价必须等于标准价");
+        if (draft.PricingSource == ServiceOrderLinePricingSource.MemberDiscount &&
+            (draft.MemberDiscountBasisPoints is < 1_000 or >= 10_000 ||
+             !draft.MemberCardTypeId.HasValue || string.IsNullOrWhiteSpace(draft.MemberCardTypeName)))
+            throw new DomainRuleException("VALIDATION_FAILED", "会员价格快照无效");
+        if (draft.PricingSource != ServiceOrderLinePricingSource.MemberDiscount &&
+            (draft.MemberDiscountBasisPoints.HasValue || draft.MemberCardTypeId.HasValue ||
+             !string.IsNullOrWhiteSpace(draft.MemberCardTypeName)))
+            throw new DomainRuleException("VALIDATION_FAILED", "非会员价明细不能包含会员价格快照");
         OrderId = orderId;
         LineType = draft.LineType;
         ServiceItemId = draft.ServiceItemId;
@@ -359,6 +399,13 @@ public sealed class ServiceOrderLine : Entity
         ReferencePriceMinor = referencePriceMinor;
         EnteredPriceMinor = enteredPriceMinor;
         PriceOverrideReason = reason;
+        PricingSource = draft.PricingSource;
+        MemberDiscountBasisPoints = draft.MemberDiscountBasisPoints;
+        MemberCardTypeId = draft.MemberCardTypeId;
+        MemberCardTypeNameSnapshot = string.IsNullOrWhiteSpace(draft.MemberCardTypeName)
+            ? null : draft.MemberCardTypeName.Trim();
+        if (MemberCardTypeNameSnapshot?.Length > 80)
+            throw new DomainRuleException("VALIDATION_FAILED", "会员卡类型名称快照无效");
         ReferenceAmountMinor = checked(referencePriceMinor * quantity);
         LineAmountMinor = checked(enteredPriceMinor * quantity);
         SetCommissionSnapshot(draft);
@@ -378,6 +425,10 @@ public sealed class ServiceOrderLine : Entity
     public long ReferenceAmountMinor { get; private set; }
     public long LineAmountMinor { get; private set; }
     public string? PriceOverrideReason { get; private set; }
+    public ServiceOrderLinePricingSource PricingSource { get; private set; }
+    public int? MemberDiscountBasisPoints { get; private set; }
+    public Guid? MemberCardTypeId { get; private set; }
+    public string? MemberCardTypeNameSnapshot { get; private set; }
     public int ReturnedQuantity { get; private set; }
     public Guid? ServiceEmployeeId { get; private set; }
     public string? EmployeeNoSnapshot { get; private set; }

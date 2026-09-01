@@ -100,7 +100,7 @@ public static class CashierEndpoints
                     request.MaleGuestCount, request.MaleAgeBand, request.FemaleGuestCount, request.FemaleAgeBand,
                     (request.Lines ?? []).Select(x => new CreateServiceOrderLineCommand(x.LineType, x.ServiceItemId,
                         x.ProductItemId, x.ServiceEmployeeId, x.Quantity, x.ActualSeconds, x.EnteredPriceMinor,
-                        x.PriceOverrideReason)).ToList(), request.CommandId,
+                        x.PriceOverrideReason, x.PricingSource)).ToList(), request.CommandId,
                     current.Id, current.Roles), cancellationToken));
         });
 
@@ -116,7 +116,7 @@ public static class CashierEndpoints
                     request.MaleGuestCount, request.MaleAgeBand, request.FemaleGuestCount, request.FemaleAgeBand,
                     (request.Lines ?? []).Select(x => new CreateServiceOrderLineCommand(x.LineType,
                         x.ServiceItemId, x.ProductItemId, x.ServiceEmployeeId, x.Quantity, x.ActualSeconds,
-                        x.EnteredPriceMinor, x.PriceOverrideReason)).ToList(), request.ExpectedVersion,
+                        x.EnteredPriceMinor, x.PriceOverrideReason, x.PricingSource)).ToList(), request.ExpectedVersion,
                     request.CommandId, current.Id, current.Roles), cancellationToken));
         });
 
@@ -231,7 +231,7 @@ public static class CashierEndpoints
         Enum.TryParse<ServiceOrderStatus>(value, true, out _);
     private sealed record CreateOrderLineRequest(string? LineType, Guid? ServiceItemId, Guid? ProductItemId,
         Guid? ServiceEmployeeId, int Quantity, int? ActualSeconds, long EnteredPriceMinor,
-        string? PriceOverrideReason);
+        string? PriceOverrideReason, string? PricingSource = null);
     private sealed record CreateOrderRequest(Guid StoreId, Guid? VisitId, Guid? CustomerId, string? Note,
         Guid? ConsultantEmployeeId, string? SourceChannel, string? ManualTicketNo, int MaleGuestCount,
         string? MaleAgeBand, int FemaleGuestCount, string? FemaleAgeBand,

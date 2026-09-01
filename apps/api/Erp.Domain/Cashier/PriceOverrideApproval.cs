@@ -62,7 +62,7 @@ public sealed class PriceOverridePolicy : Entity
             return true;
         if (order.MaximumLineDiscountBasisPoints > ManagerLineDiscountBasisPoints)
             return true;
-        return order.TotalDiscountMinor > ManagerOrderDiscountMinor;
+        return order.ManualPriceOverrideDiscountMinor > ManagerOrderDiscountMinor;
     }
 
     public static PriceOverridePolicy Default(Guid tenantId, Guid createdBy, DateTimeOffset now) =>
