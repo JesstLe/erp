@@ -25,6 +25,20 @@ public static class CustomerEndpoints
                 cancellationToken));
         }).RequireRateLimiting("customer-search");
 
+        group.MapPost("/cashier-search", async (CustomerSearchRequest request, HttpResponse response,
+            IIdentityService identity, ICustomerService customers, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, request.StoreId)) return Results.Forbid();
+            if (!Pagination.TryNormalize(request.Page, request.PageSize, out var page, out var pageSize))
+                return InvalidPagination();
+            response.Headers.CacheControl = "private, no-store";
+            return Results.Ok(await customers.SearchForCashierAsync(current.TenantId, request.StoreId,
+                request.Query, page, pageSize, cancellationToken));
+        }).RequireAuthorization(SystemPermissions.CashierCheckout)
+            .RequireRateLimiting("customer-search");
+
         group.MapGet("/{customerId:guid}", async (Guid customerId, Guid storeId, IIdentityService identity,
             ICustomerService customers, CancellationToken cancellationToken) =>
         {

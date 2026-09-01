@@ -4,6 +4,9 @@ namespace Erp.Application.Customers;
 
 public sealed record CustomerSummaryDto(Guid Id, string DisplayName, string MaskedMobile, string Status,
     Guid HomeStoreId, string HomeStoreName, int ActiveCardCount, DateTimeOffset CreatedAtUtc);
+public sealed record CashierCustomerSummaryDto(Guid Id, string DisplayName, string Mobile, string Status,
+    Guid HomeStoreId, string HomeStoreName, int ActiveCardCount, DateOnly? BirthDate, string? Residence,
+    long PrincipalBalanceMinor, long BonusBalanceMinor, DateTimeOffset CreatedAtUtc);
 
 public sealed record MemberCardTypeDto(Guid Id, string Code, string Name, int? ValidityDays, string Status);
 public sealed record MemberAccountDto(Guid Id, string AccountType, long BalanceUnits, string Status);
@@ -50,6 +53,8 @@ public interface ICustomerService
 {
     Task<PageResult<CustomerSummaryDto>> SearchAsync(Guid tenantId, Guid storeId, string? query, int page,
         int pageSize, CancellationToken cancellationToken);
+    Task<PageResult<CashierCustomerSummaryDto>> SearchForCashierAsync(Guid tenantId, Guid storeId, string? query,
+        int page, int pageSize, CancellationToken cancellationToken);
     Task<Result<CustomerDetailDto>> GetAsync(Guid tenantId, Guid storeId, Guid customerId,
         bool includeFinancialDetails, CancellationToken cancellationToken);
     Task<Result<CustomerDetailDto>> CreateAsync(Guid tenantId, CreateCustomerCommand command, CancellationToken cancellationToken);
