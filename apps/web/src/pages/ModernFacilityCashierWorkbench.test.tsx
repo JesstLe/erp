@@ -40,7 +40,7 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
       if (path.startsWith('/api/v1/inventory/balances')) return Promise.resolve([{ productItemId: 'product-1', availableQuantity: 8 }])
       if (path.startsWith('/api/v1/cashier/service-employees')) return Promise.resolve([{ id: 'employee-1', employeeNo: 'E001', displayName: '李店员', positionCode: 'STAFF', positionName: '员工' }])
       if (path.startsWith('/api/v1/payments/methods')) return Promise.resolve([])
-      if (path === '/api/v1/customers/search') return Promise.resolve({ items: [], total: 0, page: 1, pageSize: 30 })
+      if (path === '/api/v1/customers/cashier-search') return Promise.resolve({ items: [], total: 0, page: 1, pageSize: 30 })
       return Promise.reject(new Error(`unexpected request ${path}`))
     })
   })
@@ -92,15 +92,14 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
   it('previews birthday, age, residence and remaining stored value before linking a member', async () => {
     const baseImplementation = apiRequestMock.getMockImplementation()
     apiRequestMock.mockImplementation((path: string, options?: unknown) => {
-      if (path === '/api/v1/customers/search') return Promise.resolve({ items: [{ id: 'customer-1', displayName: '王女士', maskedMobile: '136****5138', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', activeCardCount: 1, createdAtUtc: '2026-01-01T00:00:00Z' }], total: 1, page: 1, pageSize: 30 })
-      if (path.startsWith('/api/v1/customers/customer-1?')) return Promise.resolve({ id: 'customer-1', displayName: '王女士', maskedMobile: '136****5138', gender: 'Female', birthDate: '1990-05-06', residence: '水木清华小区', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', version: 1, serviceNotificationConsent: false, marketingConsent: false, cards: [{ id: 'card-1', cardTypeName: '储值卡', maskedCardNo: '****1001', status: 'Active', validFrom: '2026-01-01', accounts: [{ id: 'account-1', accountType: 'Principal', balanceUnits: 12_000, status: 'Active' }, { id: 'account-2', accountType: 'Bonus', balanceUnits: 3_000, status: 'Active' }] }], mergedAliases: [] })
+      if (path === '/api/v1/customers/cashier-search') return Promise.resolve({ items: [{ id: 'customer-1', displayName: '王女士', mobile: '13615345138', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', activeCardCount: 1, birthDate: '1990-05-06', residence: '水木清华小区', principalBalanceMinor: 12_000, bonusBalanceMinor: 3_000, createdAtUtc: '2026-01-01T00:00:00Z' }], total: 1, page: 1, pageSize: 30 })
       return baseImplementation?.(path, options)
     })
 
     render(<MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ModernFacilityCashierWorkbench facility={facility} availableFacilities={[]} onFacilityChanged={vi.fn()} onExit={vi.fn()} onCompleted={vi.fn()} /></QueryClientProvider></MemoryRouter>)
 
     fireEvent.click(screen.getByRole('button', { name: /会员.*刷卡/s }))
-    fireEvent.click(await screen.findByRole('button', { name: /王女士.*136\*\*\*\*5138/s }))
+    fireEvent.click(await screen.findByRole('button', { name: /王女士.*13615345138/s }))
     expect(await screen.findByText('1990-05-06')).toBeTruthy()
     expect(screen.getByText('水木清华小区')).toBeTruthy()
     expect(screen.getByText('¥150.00')).toBeTruthy()
@@ -119,7 +118,7 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
         { id: 'cash', code: 'CASH', name: '现金', category: 'Cash', isEnabled: true },
         { id: 'group-buy', code: 'GROUP_BUY_MANUAL', name: '团购平台核销', category: 'ManualExternal', isEnabled: true },
       ])
-      if (path === '/api/v1/customers/search') return Promise.resolve({ items: [], total: 0, page: 1, pageSize: 30 })
+      if (path === '/api/v1/customers/cashier-search') return Promise.resolve({ items: [], total: 0, page: 1, pageSize: 30 })
       if (path === '/api/v1/cashier/visits/visit-1/draft') return Promise.resolve({
         id: 'order-1', orderNo: 'SO-001', visitId: 'visit-1', status: 'Draft', version: 1,
         referenceTotalMinor: 5_000, receivableMinor: 5_000,

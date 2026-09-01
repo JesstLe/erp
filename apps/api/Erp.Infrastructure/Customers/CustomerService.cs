@@ -43,6 +43,36 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         return new PageResult<CustomerSummaryDto>(items, total, page, pageSize);
     }
 
+    public async Task<PageResult<CashierCustomerSummaryDto>> SearchForCashierAsync(Guid tenantId, Guid storeId,
+        string? query, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var customers = BuildCustomerQuery(tenantId, query);
+        if (customers is null) return new PageResult<CashierCustomerSummaryDto>([], 0, page, pageSize);
+
+        var total = await customers.CountAsync(cancellationToken);
+        var rows = await customers.OrderByDescending(x => x.CreatedAtUtc).ThenByDescending(x => x.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(x => new
+            {
+                Customer = x,
+                HomeStoreName = db.Stores.Where(store => store.TenantId == tenantId && store.Id == x.HomeStoreId)
+                    .Select(store => store.Name).Single(),
+                ActiveCards = db.MemberCards.Count(card => card.CustomerId == x.Id && card.Status == MemberCardStatus.Active),
+                PrincipalBalance = db.MemberAccounts.Where(account => account.CustomerId == x.Id &&
+                        account.AccountType == MemberAccountType.Principal && account.Status == MemberAccountStatus.Active)
+                    .Sum(account => (long?)account.BalanceUnits) ?? 0,
+                BonusBalance = db.MemberAccounts.Where(account => account.CustomerId == x.Id &&
+                        account.AccountType == MemberAccountType.Bonus && account.Status == MemberAccountStatus.Active)
+                    .Sum(account => (long?)account.BalanceUnits) ?? 0,
+            })
+            .ToListAsync(cancellationToken);
+        var items = rows.Select(x => new CashierCustomerSummaryDto(x.Customer.Id, x.Customer.Name,
+            privacy.RevealProtectedMobile(x.Customer.MobileCiphertext), x.Customer.Status.ToString(),
+            x.Customer.HomeStoreId, x.HomeStoreName, x.ActiveCards, x.Customer.BirthDate, x.Customer.Residence,
+            x.PrincipalBalance, x.BonusBalance, x.Customer.CreatedAtUtc)).ToList();
+        return new PageResult<CashierCustomerSummaryDto>(items, total, page, pageSize);
+    }
+
     public async Task<Result<CustomerDetailDto>> GetAsync(Guid tenantId, Guid storeId, Guid customerId,
         bool includeFinancialDetails, CancellationToken cancellationToken)
     {

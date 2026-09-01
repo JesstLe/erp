@@ -37,6 +37,7 @@ export interface EmployeeShift { id: string; storeId: string; employeeId: string
 export interface SchedulingResource { id: string; code: string; name: string }
 
 export interface CustomerSummary { id: string; displayName: string; maskedMobile: string; status: string; homeStoreId: string; homeStoreName: string; activeCardCount: number; createdAtUtc: string }
+export interface CashierCustomerSummary { id: string; displayName: string; mobile: string; status: string; homeStoreId: string; homeStoreName: string; activeCardCount: number; birthDate?: string; residence?: string; principalBalanceMinor: number; bonusBalanceMinor: number; createdAtUtc: string }
 export interface MemberCardType { id: string; code: string; name: string; validityDays?: number; status: string }
 export interface MemberAccount { id: string; accountType: string; balanceUnits: number; status: string }
 export interface MemberCard { id: string; cardTypeName: string; maskedCardNo: string; status: string; validFrom: string; validTo?: string; accounts: MemberAccount[] }
