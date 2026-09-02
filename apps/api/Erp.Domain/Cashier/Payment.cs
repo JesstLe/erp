@@ -120,7 +120,17 @@ public sealed class Payment : Entity
     public DateTimeOffset? PaidAtUtc { get; private set; }
     public long? CashTenderedMinor { get; private set; }
     public long? CashChangeMinor { get; private set; }
+    public long? MemberPrincipalBalanceAfterMinor { get; private set; }
+    public long? MemberBonusBalanceAfterMinor { get; private set; }
     public IReadOnlyCollection<PaymentAllocation> Allocations => _allocations;
+
+    public void CaptureMemberBalanceAfter(long principalMinor, long bonusMinor)
+    {
+        if (BusinessType != PaymentBusinessType.ServiceOrder || principalMinor < 0 || bonusMinor < 0)
+            throw new DomainRuleException("VALIDATION_FAILED", "会员余额快照无效");
+        MemberPrincipalBalanceAfterMinor = principalMinor;
+        MemberBonusBalanceAfterMinor = bonusMinor;
+    }
 
     public void ApplyRefund(long amountMinor)
     {

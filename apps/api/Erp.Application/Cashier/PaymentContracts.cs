@@ -24,6 +24,7 @@ public sealed record PaymentReceiptDto(Guid PaymentId, string PaymentNo, string 
     string OperatorName, DateTimeOffset PaidAtUtc, DateTimeOffset PrintedAtUtc,
     int PrintSequence, string PrintLabel, long ReferenceAmountMinor, long DiscountMinor, long ReceivableMinor,
     long GroupBuyAmountMinor, string? GroupBuyPlatform, long? CashTenderedMinor, long? CashChangeMinor,
+    long? MemberPrincipalBalanceAfterMinor, long? MemberBonusBalanceAfterMinor,
     IReadOnlyList<PaymentReceiptLineDto> Lines, IReadOnlyList<PaymentAllocationDto> Allocations);
 public sealed record SettleAllocationCommand(Guid MethodId, long AmountMinor, string? ExternalReference,
     Guid? MemberAccountId = null);

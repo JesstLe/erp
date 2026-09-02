@@ -880,6 +880,10 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.PaidAtUtc).HasColumnName("paid_at_utc");
             entity.Property(x => x.CashTenderedMinor).HasColumnName("cash_tendered_minor");
             entity.Property(x => x.CashChangeMinor).HasColumnName("cash_change_minor");
+            entity.Property(x => x.MemberPrincipalBalanceAfterMinor)
+                .HasColumnName("member_principal_balance_after_minor");
+            entity.Property(x => x.MemberBonusBalanceAfterMinor)
+                .HasColumnName("member_bonus_balance_after_minor");
             entity.HasMany(x => x.Allocations).WithOne().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
             entity.Navigation(x => x.Allocations).UsePropertyAccessMode(PropertyAccessMode.Field);
             entity.HasIndex(x => new { x.TenantId, x.PaymentNo }).IsUnique();
@@ -1457,8 +1461,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.Action).HasColumnName("action").HasMaxLength(128);
             entity.Property(x => x.EntityType).HasColumnName("entity_type").HasMaxLength(80);
             entity.Property(x => x.EntityId).HasColumnName("entity_id");
-            entity.Property(x => x.PreviousState).HasColumnName("previous_state").HasMaxLength(40);
-            entity.Property(x => x.CurrentState).HasColumnName("current_state").HasMaxLength(40);
+            entity.Property(x => x.PreviousState).HasColumnName("previous_state").HasColumnType("text");
+            entity.Property(x => x.CurrentState).HasColumnName("current_state").HasColumnType("text");
             entity.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500);
             entity.Property(x => x.TraceId).HasColumnName("trace_id").HasMaxLength(64);
             entity.Property(x => x.RequestId).HasColumnName("request_id");

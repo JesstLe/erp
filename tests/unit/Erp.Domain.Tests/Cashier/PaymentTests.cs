@@ -103,6 +103,19 @@ public sealed class PaymentTests
     }
 
     [Fact]
+    public void ServicePaymentKeepsPostSettlementMemberBalanceSnapshot()
+    {
+        var payment = CreatePayment(8_000,
+            [new(Guid.CreateVersion7(), "MEMBER_PRINCIPAL", "会员储值本金",
+                PaymentMethodCategory.InternalAccount, 8_000, null, null, Guid.CreateVersion7())]);
+
+        payment.CaptureMemberBalanceAfter(41_000, 8_000);
+
+        Assert.Equal(41_000, payment.MemberPrincipalBalanceAfterMinor);
+        Assert.Equal(8_000, payment.MemberBonusBalanceAfterMinor);
+    }
+
+    [Fact]
     public void RefundTotalsAdvancePaymentWithoutOverwritingOriginalPaidAmount()
     {
         var payment = CreatePayment(10_000,

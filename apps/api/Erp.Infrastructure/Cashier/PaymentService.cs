@@ -142,6 +142,7 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                 order.TotalDiscountMinor, payment.ReceivableMinor, groupBuyAllocation?.AmountMinor ?? 0,
                 string.IsNullOrWhiteSpace(groupBuyPlatform) ? null : groupBuyPlatform,
                 payment.CashTenderedMinor, payment.CashChangeMinor,
+                payment.MemberPrincipalBalanceAfterMinor, payment.MemberBonusBalanceAfterMinor,
                 order.Lines.OrderBy(x => x.CreatedAtUtc).Select(x => new PaymentReceiptLineDto(
                     x.LineType.ToString(), x.ItemCodeSnapshot, x.ItemNameSnapshot, x.UnitNameSnapshot,
                     x.Quantity, x.EnteredPriceMinor,
@@ -452,6 +453,7 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                     account.BalanceUnits.ToString(CultureInfo.InvariantCulture), command.CommandId,
                     $"消费单 {order.OrderNo}", now);
             }
+            await CaptureMemberBalanceAfterAsync(payment, order.CustomerId, tenantId, cancellationToken);
             await inventory.ConsumeOrderAsync(order, command.CommandId, command.OperatorId, now,
                 cancellationToken);
             order.Settle(now);
@@ -518,6 +520,23 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
         var zone = await db.Stores.Where(x => x.Id == storeId && x.TenantId == tenantId).Select(x => x.TimeZoneId)
             .SingleOrDefaultAsync(cancellationToken);
         return zone is null ? null : TimeZoneInfo.ConvertTime(now, TimeZoneInfo.FindSystemTimeZoneById(zone));
+    }
+
+    private async Task CaptureMemberBalanceAfterAsync(Payment payment, Guid? customerId, Guid tenantId,
+        CancellationToken cancellationToken)
+    {
+        if (!customerId.HasValue) return;
+        var customerIds = await db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                (x.Id == customerId.Value || x.MergedIntoCustomerId == customerId.Value))
+            .Select(x => x.Id).ToListAsync(cancellationToken);
+        var accounts = await db.MemberAccounts.Where(x => x.TenantId == tenantId &&
+                customerIds.Contains(x.CustomerId) && x.Status == MemberAccountStatus.Active &&
+                (x.AccountType == MemberAccountType.Principal || x.AccountType == MemberAccountType.Bonus))
+            .ToListAsync(cancellationToken);
+        if (accounts.Count == 0) return;
+        payment.CaptureMemberBalanceAfter(
+            accounts.Where(x => x.AccountType == MemberAccountType.Principal).Sum(x => x.BalanceUnits),
+            accounts.Where(x => x.AccountType == MemberAccountType.Bonus).Sum(x => x.BalanceUnits));
     }
 
     private void AddReceipt(Guid tenantId, Guid commandId, Guid operatorId, byte[] requestHash, Guid entityId, DateTimeOffset now) =>
