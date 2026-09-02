@@ -223,6 +223,11 @@ function openReceiptPrint(receipt: PaymentReceipt, popup: Window) {
   receipt.allocations.forEach((line) =>
     row(line.methodName, money(line.amountMinor)),
   );
+  if (receipt.memberPrincipalBalanceAfterMinor != null &&
+      receipt.memberBonusBalanceAfterMinor != null) {
+    row("结算后储值余额", money(receipt.memberPrincipalBalanceAfterMinor +
+      receipt.memberBonusBalanceAfterMinor));
+  }
   if (receipt.cashTenderedMinor !== undefined)
     row("现金实收", money(receipt.cashTenderedMinor));
   if (receipt.cashChangeMinor !== undefined)

@@ -92,8 +92,9 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
   it('previews birthday, age, residence and remaining stored value before linking a member', async () => {
     const baseImplementation = apiRequestMock.getMockImplementation()
     apiRequestMock.mockImplementation((path: string, options?: unknown) => {
+      if (path === '/api/v1/catalog/price-books') return Promise.resolve([{ id: 'book-1', name: '当前价目', status: 'PUBLISHED', effectiveFrom: '2026-01-01', version: 1, lines: [{ serviceItemId: 'service-1', serviceItemName: '基础服务', unitPriceMinor: 5_900 }], productLines: [] }])
       if (path === '/api/v1/customers/cashier-search') return Promise.resolve({ items: [{ id: 'customer-1', displayName: '王女士', mobile: '13615345138', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', activeCardCount: 1, birthDate: '1990-05-06', residence: '水木清华小区', principalBalanceMinor: 12_000, bonusBalanceMinor: 3_000, createdAtUtc: '2026-01-01T00:00:00Z' }], total: 1, page: 1, pageSize: 30 })
-      if (path.startsWith('/api/v1/customers/customer-1?')) return Promise.resolve({ id: 'customer-1', displayName: '王女士', maskedMobile: '13615345138', gender: 'Unknown', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', version: 1, cards: [{ id: 'card-1', cardTypeId: 'card-type-1', cardTypeName: '八折储值卡', maskedCardNo: 'CARD-001', status: 'Active', validFrom: '2026-01-01', serviceDiscountBasisPoints: 8_000, productDiscountBasisPoints: 9_000, accounts: [{ id: 'account-1', accountType: 'Principal', balanceUnits: 12_000, status: 'Active' }] }], mergedAliases: [] })
+      if (path.startsWith('/api/v1/customers/customer-1?')) return Promise.resolve({ id: 'customer-1', displayName: '王女士', maskedMobile: '13615345138', gender: 'Unknown', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', version: 1, cards: [{ id: 'card-1', cardTypeId: 'card-type-1', cardTypeName: '金卡', maskedCardNo: 'CARD-001', status: 'Active', validFrom: '2026-01-01', serviceDiscountBasisPoints: 8_305, productDiscountBasisPoints: 9_000, accounts: [{ id: 'account-1', accountType: 'Principal', balanceUnits: 12_000, status: 'Active' }] }], mergedAliases: [] })
       return baseImplementation?.(path, options)
     })
 
@@ -108,8 +109,8 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     expect(screen.getByText(/岁$/)).toBeTruthy()
     await waitFor(() => expect(screen.getByRole('button', { name: '确认关联本次消费' })).toBeTruthy())
     fireEvent.click(screen.getByRole('button', { name: '确认关联本次消费' }))
-    expect(await screen.findByText(/8折会员价/)).toBeTruthy()
-    expect(screen.getByText('合计 ¥80.00')).toBeTruthy()
+    expect(await screen.findByText(/8\.305折会员价/)).toBeTruthy()
+    expect(screen.getByText('合计 ¥49.00')).toBeTruthy()
     fireEvent.change(screen.getByRole('spinbutton', { name: /本次成交价/ }), { target: { value: '70' } })
     expect(await screen.findByText('人工改价')).toBeTruthy()
     expect(screen.getByDisplayValue('现场调整成交价')).toBeTruthy()

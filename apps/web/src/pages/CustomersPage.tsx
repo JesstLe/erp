@@ -288,6 +288,8 @@ export function CustomersPage() {
       setEditingCardType(undefined);
       cardTypeForm.resetFields();
       await queryClient.invalidateQueries({ queryKey: ["member-card-types"] });
+      await queryClient.invalidateQueries({ queryKey: ["customer-detail"] });
+      await queryClient.invalidateQueries({ queryKey: ["customer"] });
     },
     onError,
   });
@@ -1516,7 +1518,7 @@ export function CustomersPage() {
             cardTypeForm.setFieldsValue({ name: cardType.name, validityDays: cardType.validityDays,
               serviceDiscount: cardType.serviceDiscountBasisPoints / 1000,
               productDiscount: cardType.productDiscountBasisPoints / 1000 });
-          }}>{cardType.name} · 服务 {(cardType.serviceDiscountBasisPoints / 1000).toFixed(1)} 折 · 产品 {(cardType.productDiscountBasisPoints / 1000).toFixed(1)} 折</Button>)}
+          }}>{cardType.name} · 服务 {(cardType.serviceDiscountBasisPoints / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')} 折 · 产品 {(cardType.productDiscountBasisPoints / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')} 折</Button>)}
           {editingCardType && <Button type="link" onClick={() => { setEditingCardType(undefined); cardTypeForm.resetFields(); cardTypeForm.setFieldsValue({ serviceDiscount: 10, productDiscount: 10 }); }}>新建其他卡类</Button>}
         </Space>
         <Form
@@ -1539,12 +1541,14 @@ export function CustomersPage() {
           </Form.Item>
           <div className="two-column-form">
             <Form.Item name="serviceDiscount" label="服务项目折扣" initialValue={10}
+              extra="按行业习惯填写：9.5 表示原价的 95%，10 表示不打折"
               rules={[{ required: true }, { type: "number", min: 1, max: 10 }]}>
-              <InputNumber min={1} max={10} step={0.1} precision={2} suffix="折" className="full-width" />
+              <InputNumber min={1} max={10} step={0.001} precision={3} suffix="折" className="full-width" />
             </Form.Item>
             <Form.Item name="productDiscount" label="产品折扣" initialValue={10}
+              extra="可与服务折扣不同；9 表示原价的 90%"
               rules={[{ required: true }, { type: "number", min: 1, max: 10 }]}>
-              <InputNumber min={1} max={10} step={0.1} precision={2} suffix="折" className="full-width" />
+              <InputNumber min={1} max={10} step={0.001} precision={3} suffix="折" className="full-width" />
             </Form.Item>
           </div>
           <Form.Item

@@ -205,7 +205,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202609010043", ready?.SchemaVersion);
+        Assert.Equal("202609020044", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {
@@ -454,6 +454,12 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             code = "SVC01", name = "测试服务", standardDurationMinutes = 30, commissionMode = "NONE",
         }, HttpStatusCode.Created);
         Assert.Matches("^SV[0-9]{6}$", service.Code);
+        service = await PutAsync<ServiceItemDto>(client, $"/api/v1/catalog/service-items/{service.Id}", new
+        {
+            name = service.Name, standardDurationMinutes = 45, status = "ENABLED",
+            commissionMode = "NONE", expectedVersion = service.Version,
+        });
+        Assert.Equal(45, service.StandardDurationMinutes);
         var memberCard = Assert.Single(customer.Cards);
         var issuedPass = await PostAsync<ServicePassDto>(client,
             "/api/v1/membership-benefits/service-passes", new
@@ -923,6 +929,8 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal(2, reprintedReceipt.PrintSequence);
         Assert.StartsWith("补打联", reprintedReceipt.PrintLabel);
         Assert.Equal(1_000L, reprintedReceipt.CashChangeMinor);
+        Assert.Equal(30_000L, reprintedReceipt.MemberPrincipalBalanceAfterMinor);
+        Assert.Equal(6_000L, reprintedReceipt.MemberBonusBalanceAfterMinor);
 
         var afterSale = await client.GetFromJsonAsync<IReadOnlyList<InventoryBalanceDto>>(
             $"/api/v1/inventory/balances?storeId={storeId}");

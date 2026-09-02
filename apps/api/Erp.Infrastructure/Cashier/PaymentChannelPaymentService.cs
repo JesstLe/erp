@@ -6,6 +6,7 @@ using Erp.Application.Cashier;
 using Erp.Application.Common;
 using Erp.Domain.Cashier;
 using Erp.Domain.Common;
+using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
 using Erp.Infrastructure.Persistence;
 using Erp.Infrastructure.Inventory;
@@ -423,6 +424,7 @@ internal sealed class PaymentChannelPaymentService(ErpDbContext db, PaymentChann
         var paidAt = paidAtUtc ?? clock.GetUtcNow();
         channelOrder.MarkPaid(providerTradeNo, paidAt);
         payment.ConfirmChannelAllocation(allocation.Id, providerTradeNo, paidAt);
+        await CaptureMemberBalanceAfterAsync(payment, order.CustomerId, cancellationToken);
         if (order.Status == ServiceOrderStatus.PaymentProcessing)
         {
             await inventory.ConsumeOrderAsync(order, channelEvent.Id, operatorId, paidAt,
@@ -447,6 +449,23 @@ internal sealed class PaymentChannelPaymentService(ErpDbContext db, PaymentChann
             "Payment", payment.Id, PaymentStatus.Processing.ToString(), payment.Status.ToString(), null,
             clock.GetUtcNow());
         return null;
+    }
+
+    private async Task CaptureMemberBalanceAfterAsync(Payment payment, Guid? customerId,
+        CancellationToken cancellationToken)
+    {
+        if (!customerId.HasValue) return;
+        var customerIds = await db.Customers.AsNoTracking().Where(x => x.TenantId == payment.TenantId &&
+                (x.Id == customerId.Value || x.MergedIntoCustomerId == customerId.Value))
+            .Select(x => x.Id).ToListAsync(cancellationToken);
+        var accounts = await db.MemberAccounts.Where(x => x.TenantId == payment.TenantId &&
+                customerIds.Contains(x.CustomerId) && x.Status == MemberAccountStatus.Active &&
+                (x.AccountType == MemberAccountType.Principal || x.AccountType == MemberAccountType.Bonus))
+            .ToListAsync(cancellationToken);
+        if (accounts.Count == 0) return;
+        payment.CaptureMemberBalanceAfter(
+            accounts.Where(x => x.AccountType == MemberAccountType.Principal).Sum(x => x.BalanceUnits),
+            accounts.Where(x => x.AccountType == MemberAccountType.Bonus).Sum(x => x.BalanceUnits));
     }
 
     private async Task<Result<PaymentChannelOrderDto>> CloseLocalAsync(Guid tenantId,

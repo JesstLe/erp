@@ -1298,7 +1298,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             if (!explicitManualOverride && (enteredPriceMinor == referencePriceMinor || enteredPriceMinor == memberPrice ||
                 inheritedMemberPrice))
             {
-                var discountText = (basisPoints / 1_000m).ToString("0.##",
+                var discountText = (basisPoints / 1_000m).ToString("0.###",
                     CultureInfo.InvariantCulture);
                 return new LinePricingDecision(memberPrice,
                     $"会员折扣：{option.Name} {discountText}折",
