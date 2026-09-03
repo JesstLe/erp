@@ -268,6 +268,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, [role="button"]:focu
 .modern-member-preview-grid > span { min-width: 0; padding: 11px 12px; display: grid; grid-template-columns: 20px 1fr; gap: 2px 7px; border: 1px solid #e2ecee; border-radius: 11px; background: #fff; color: #7b8994; }
 .modern-member-preview-grid > span > .anticon { grid-row: 1 / 3; color: #1b9b90; margin-top: 2px; }
 .modern-member-preview-grid strong { overflow-wrap: anywhere; color: #263945; }
+.modern-member-preview-grid > span.is-money { border-color: #bfe5db; background: #f4fcf9; }
+.modern-member-preview-grid > span.is-money > .anticon,
+.modern-member-preview-grid > span.is-money strong { color: #13856f; }
+.modern-member-preview-grid > span.is-bonus { border-color: #ded4f4; background: #faf8ff; }
+.modern-member-preview-grid > span.is-bonus > .anticon,
+.modern-member-preview-grid > span.is-bonus strong { color: #7654b5; }
+.modern-member-preview-actions { display: flex; align-items: center; gap: 10px; }
+.modern-member-preview-actions .ant-btn-primary { margin-left: auto; }
 .two-column-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .card-type-config-list { width: 100%; margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid #edf0f2; }
 .facilities-orders-page { display: grid; gap: 14px; }
