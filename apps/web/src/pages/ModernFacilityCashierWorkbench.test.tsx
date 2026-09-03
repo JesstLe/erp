@@ -105,6 +105,9 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /基础服务/ }))
     fireEvent.click(screen.getByRole('button', { name: /会员.*刷卡/s }))
+    expect(screen.getByText('请输入姓名、完整手机号或卡号后查询会员')).toBeTruthy()
+    expect(apiRequestMock.mock.calls.some(([path]) => path === '/api/v1/customers/cashier-search')).toBe(false)
+    fireEvent.change(screen.getByPlaceholderText('输入姓名、完整手机号或卡号自动查询'), { target: { value: '13615345138' } })
     fireEvent.click(await screen.findByRole('button', { name: /王女士.*13615345138/s }))
     expect(await screen.findByText('1990-05-06')).toBeTruthy()
     expect(screen.getByText('水木清华小区')).toBeTruthy()
@@ -153,9 +156,9 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
 
     await screen.findByText(/1\. 护理用品/)
     await screen.findByText('会员：王女士')
+    expect(apiRequestMock.mock.calls.some(([path]) => path === '/api/v1/customers/cashier-search')).toBe(false)
     fireEvent.click(screen.getByRole('button', { name: '结算' }))
     expect(await screen.findByText('收银结算')).toBeTruthy()
-    expect(screen.getByText('王女士 · 13615345138')).toBeTruthy()
     expect(screen.getByText('CARD-001 · 储值卡')).toBeTruthy()
     expect(screen.getByText('已沿用主单会员：王女士')).toBeTruthy()
     expect(screen.queryByText(/显示团购|更多支付/)).toBeNull()
