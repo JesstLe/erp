@@ -2,8 +2,11 @@ import {
   AppstoreOutlined,
   CalendarOutlined,
   ClockCircleOutlined,
+  CreditCardOutlined,
   DeleteOutlined,
+  DollarOutlined,
   FileTextOutlined,
+  GiftOutlined,
   HomeOutlined,
   PrinterOutlined,
   SearchOutlined,
@@ -18,6 +21,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiRequest, ApiError } from '../api/client'
 import type {
+  CashierShift,
   CustomerDetail,
   CashierCustomerSummary,
   FacilityBoardItem,
@@ -35,6 +39,8 @@ import type {
 } from '../api/types'
 import { useAuth } from '../auth/useAuth'
 import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { Permission } from '../security/permissions'
+import { useAuthorization } from '../security/useAuthorization'
 import {
   applyClassicOrderDiscount,
   classicCashierLineAmount,
@@ -47,6 +53,8 @@ import { groupBuyPlatforms } from './modernFacilityCashierPayments'
 import { applySettlementDiscount, buildSettlementAllocations, type SettlementValues } from './modernFacilitySettlement'
 import { normalizeExpectedDurationMinutes } from './modernFacilityReception'
 import { buildCashierProductCatalog, buildCashierServiceCatalog } from './cashierCatalog'
+import { MemberTopupModal } from './MemberTopupModal'
+import { ServiceRecordsSection } from './ServiceRecordsSection'
 
 type WorkbenchTab = 'main' | 'member' | 'service' | 'product'
 interface DiscountValues { percent: number; reason: string }
@@ -137,6 +145,7 @@ function fromOrder(order: ServiceOrder): ClassicCashierDraftLine[] {
 
 export function ModernFacilityCashierWorkbench({ facility, availableFacilities, onFacilityChanged, onExit, onCompleted }: Props) {
   const auth = useAuth(); const storeId = auth.store?.id; const navigate = useNavigate(); const queryClient = useQueryClient()
+  const { can } = useAuthorization(); const canTopup = can(Permission.MembershipTopup); const canGrantBonus = can(Permission.MembershipGrantBonus); const canManageCare = can(Permission.ServiceRecordManage)
   const [modal, modalContextHolder] = Modal.useModal()
   const isBeforeStart = facility.status === 'AVAILABLE' && !facility.sessionId && !facility.visitId
   const [tick, setTick] = useState(Date.now()); const [tab, setTab] = useState<WorkbenchTab>('service'); const [catalogSearch, setCatalogSearch] = useState('')
@@ -145,6 +154,7 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   const [consultantEmployeeId, setConsultantEmployeeId] = useState<string>()
   const [productToAddId, setProductToAddId] = useState<string>(); const [productAddedByEmployeeId, setProductAddedByEmployeeId] = useState<string>()
   const [memberSearch, setMemberSearch] = useState(''); const [discountOpen, setDiscountOpen] = useState(false); const [employeeOpen, setEmployeeOpen] = useState(false); const [consultantOpen, setConsultantOpen] = useState(false)
+  const [memberTopupOpen, setMemberTopupOpen] = useState(false); const [memberCareOpen, setMemberCareOpen] = useState(false)
   const [switchOpen, setSwitchOpen] = useState(false); const [mergeOpen, setMergeOpen] = useState(false); const [mergeOrderId, setMergeOrderId] = useState<string>(); const [settleOpen, setSettleOpen] = useState(false); const [prebill, setPrebill] = useState<ServiceOrderPrebill>()
   const [completedPayment, setCompletedPayment] = useState<Payment>(); const [completedReceipt, setCompletedReceipt] = useState<PaymentReceipt>(); const [autoPrintReceipt, setAutoPrintReceipt] = useState(false)
   const [serviceEnded, setServiceEnded] = useState(!isBeforeStart && (!facility.sessionId || !['IN_USE', 'PAUSED'].includes(facility.status)))
@@ -183,6 +193,7 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   const inventory = useQuery({ queryKey: ['inventory-balances', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<InventoryBalance[]>(`/api/v1/inventory/balances?storeId=${storeId}`) })
   const employees = useQuery({ queryKey: ['service-employees', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<ServiceEmployee[]>(`/api/v1/cashier/service-employees?storeId=${storeId}`) })
   const paymentMethods = useQuery({ queryKey: ['payment-methods', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<PaymentMethod[]>(`/api/v1/payments/methods?storeId=${storeId}`) })
+  const currentShift = useQuery({ queryKey: ['cashier-shift', storeId], enabled: Boolean(storeId && memberTopupOpen && canTopup), queryFn: () => apiRequest<CashierShift | undefined>(`/api/v1/payments/shifts/current?storeId=${storeId}`) })
   const customers = useQuery({ queryKey: ['modern-cashier-customers', storeId, debouncedMemberSearch], enabled: Boolean(storeId), queryFn: () => apiRequest<PageResult<CashierCustomerSummary>>('/api/v1/customers/cashier-search', { method: 'POST', body: JSON.stringify({ storeId, query: debouncedMemberSearch, page: 1, pageSize: 30 }) }), select: (result) => result.items })
   const effectiveCustomerId = settleOpen ? settlementCustomerId || customerId : customerId
   const customerDetail = useQuery({ queryKey: ['customer-detail', storeId, effectiveCustomerId], enabled: Boolean(storeId && effectiveCustomerId), queryFn: () => apiRequest<CustomerDetail>(`/api/v1/customers/${effectiveCustomerId}?storeId=${storeId}`) })
@@ -401,7 +412,50 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
       </section>
       <section className="modern-catalog-pane">
         {tab === 'main' && <div className="modern-main-order"><h2>主单信息</h2><div className="modern-order-facts"><span>消费单号<strong>{draft.data?.orderNo ?? '开始后自动生成'}</strong></span><span>接待编号<strong>{facility.visitNo ?? '开始后自动生成'}</strong></span><span>整单顾问<strong>{draft.data?.consultantEmployeeName ?? employees.data?.find((employee) => employee.id === consultantEmployeeId)?.displayName ?? '未选择'}</strong></span><span>草稿状态<strong>{isBeforeStart ? '待开始计时' : draft.data?.priceAuthorizationStatus === 'PendingApproval' ? '改价待审批' : draft.data?.status}</strong></span></div><label>关联顾客<Select allowClear showSearch optionFilterProp="label" value={customerId} disabled={!editable} placeholder="可暂不识别顾客" options={customers.data?.map((item) => ({ value: item.id, label: `${item.displayName} · ${item.mobile}` }))} onChange={async (value) => { setCustomerId(value); if (isBeforeStart) { const detail = value && storeId ? await apiRequest<CustomerDetail>(`/api/v1/customers/${value}?storeId=${storeId}`) : undefined; if (detail) queryClient.setQueryData(['customer-detail', storeId, value], detail); setLocalLines(applyMembershipPricing(linesRef.current, detail)) } else { const saved = await saveDraft.mutateAsync({ customerId: value }); setLocalLines(fromOrder(saved)) } }} /></label><div className="modern-reception-grid"><label>来店渠道<Input value={sourceChannel} disabled={!editable} maxLength={80} placeholder="可自定义，例如朋友介绍、线上平台" onChange={(event) => setSourceChannel(event.target.value)} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ sourceChannel }) }} /></label><label>手工票号<Input value={manualTicketNo} disabled={!editable} maxLength={80} placeholder="可选" onChange={(event) => setManualTicketNo(event.target.value)} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ manualTicketNo }) }} /></label><label>男客人数<InputNumber min={0} max={99} value={maleGuestCount} disabled={!editable} onChange={(value) => setMaleGuestCount(Number(value ?? 0))} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ maleGuestCount }) }} /></label><label>男客年龄段<Select allowClear options={ageBands} value={maleAgeBand} disabled={!editable || maleGuestCount === 0} onChange={setMaleAgeBand} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ maleAgeBand }) }} /></label><label>女客人数<InputNumber min={0} max={99} value={femaleGuestCount} disabled={!editable} onChange={(value) => setFemaleGuestCount(Number(value ?? 0))} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ femaleGuestCount }) }} /></label><label>女客年龄段<Select allowClear options={ageBands} value={femaleAgeBand} disabled={!editable || femaleGuestCount === 0} onChange={setFemaleAgeBand} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ femaleAgeBand }) }} /></label></div><label>接待备注<Input.TextArea rows={3} value={note} disabled={!editable} maxLength={1000} showCount onChange={(event) => setNote(event.target.value)} onBlur={() => { if (!isBeforeStart) void saveDraft.mutateAsync({ note }) }} /></label><Alert type="info" showIcon title={isBeforeStart ? '当前尚未计时。选好顾客、项目、产品和员工后，请点击“开始计时”。' : '设施占用时长仅作运营记录；收费金额只由当前项目、产品和店长确认的成交价决定。'} /></div>}
-        {tab === 'member' && <div className="modern-member-search"><div className="modern-catalog-search"><Input prefix={<SearchOutlined />} value={memberSearch} onChange={(event) => { setMemberSearch(event.target.value); setPreviewCustomerId(undefined) }} placeholder="输入姓名、完整手机号或卡号自动查询" allowClear /></div><div className="modern-member-results">{customers.isFetching && <Spin size="small" />}{customers.data?.map((customer) => <button type="button" key={customer.id} className={customer.id === previewCustomerId || customer.id === customerId ? 'active' : ''} disabled={!editable} onClick={() => setPreviewCustomerId(customer.id)}><UserOutlined /><b>{customer.displayName}</b><span>{customer.mobile}</span><small>{customer.homeStoreName} · {customer.activeCardCount} 张有效卡</small></button>)}</div>{previewCustomer && <section className="modern-member-preview"><header><div><b>{previewCustomer.displayName}</b><span>{previewCustomer.mobile}</span></div><Tag color={previewCustomer.activeCardCount > 0 ? 'green' : 'default'}>{previewCustomer.activeCardCount > 0 ? '储值用户' : '普通顾客'}</Tag></header><div className="modern-member-preview-grid"><span><CalendarOutlined />生日<strong>{previewCustomer.birthDate ?? '未填写'}</strong></span><span><UserOutlined />年龄<strong>{ageFromBirthDate(previewCustomer.birthDate) === undefined ? '未填写' : `${ageFromBirthDate(previewCustomer.birthDate)} 岁`}</strong></span><span><HomeOutlined />住宅<strong>{previewCustomer.residence ?? '未填写'}</strong></span><span><WalletOutlined />储值余额<strong>{money(previewCustomer.principalBalanceMinor + previewCustomer.bonusBalanceMinor)}</strong></span></div><Typography.Text type="secondary">归属门店：{previewCustomer.homeStoreName}；余额为当前有效卡本金与赠送金额合计。</Typography.Text><Button type="primary" disabled={!editable} loading={previewCustomerDetail.isLoading} onClick={async () => { const detail = previewCustomerDetail.data ?? (storeId ? await apiRequest<CustomerDetail>(`/api/v1/customers/${previewCustomer.id}?storeId=${storeId}`) : undefined); if (detail) queryClient.setQueryData(['customer-detail', storeId, previewCustomer.id], detail); setCustomerId(previewCustomer.id); if (isBeforeStart) setLocalLines(applyMembershipPricing(linesRef.current, detail)); else { const saved = await saveDraft.mutateAsync({ customerId: previewCustomer.id }); setLocalLines(fromOrder(saved)) } setTab('service') }}>确认关联本次消费</Button></section>}</div>}
+        {tab === 'member' && <div className="modern-member-search">
+          <div className="modern-catalog-search"><Input prefix={<SearchOutlined />} value={memberSearch}
+            onChange={(event) => { setMemberSearch(event.target.value); setPreviewCustomerId(undefined) }}
+            placeholder="输入姓名、完整手机号或卡号自动查询" allowClear /></div>
+          <div className="modern-member-results">{customers.isFetching && <Spin size="small" />}
+            {customers.data?.map((customer) => <button type="button" key={customer.id}
+              className={customer.id === previewCustomerId || customer.id === customerId ? 'active' : ''}
+              disabled={!editable} onClick={() => setPreviewCustomerId(customer.id)}>
+              <UserOutlined /><b>{customer.displayName}</b><span>{customer.mobile}</span>
+              <small>{customer.homeStoreName} · {customer.activeCardCount} 张有效卡</small>
+            </button>)}
+          </div>
+          {previewCustomer && <section className="modern-member-preview">
+            <header><div><b>{previewCustomer.displayName}</b><span>{previewCustomer.mobile}</span></div>
+              <Tag color={previewCustomer.activeCardCount > 0 ? 'green' : 'default'}>
+                {previewCustomer.activeCardCount > 0 ? '储值用户' : '普通顾客'}
+              </Tag>
+            </header>
+            <div className="modern-member-preview-grid">
+              <span><CreditCardOutlined />会员卡号<strong>{previewCustomerDetail.data?.cards.filter((card) => card.status.toUpperCase() === 'ACTIVE').map((card) => card.maskedCardNo).join('、') || '未开卡'}</strong></span>
+              <span><UserOutlined />会员卡类<strong>{previewCustomerDetail.data?.cards.filter((card) => card.status.toUpperCase() === 'ACTIVE').map((card) => card.cardTypeName).join('、') || '未开卡'}</strong></span>
+              <span><CalendarOutlined />生日<strong>{previewCustomer.birthDate ?? '未填写'}</strong></span>
+              <span><UserOutlined />年龄<strong>{ageFromBirthDate(previewCustomer.birthDate) === undefined ? '未填写' : `${ageFromBirthDate(previewCustomer.birthDate)} 岁`}</strong></span>
+              <span><HomeOutlined />住宅<strong>{previewCustomer.residence ?? '未填写'}</strong></span>
+              <span className="is-money"><WalletOutlined />储值本金<strong>{money(previewCustomer.principalBalanceMinor)}</strong></span>
+              <span className="is-bonus"><GiftOutlined />赠送金额<strong>{money(previewCustomer.bonusBalanceMinor)}</strong></span>
+            </div>
+            <Typography.Text type="secondary">办卡/归属门店：{previewCustomer.homeStoreName}。本金和赠金为品牌内全部有效会员卡的当前可用余额。</Typography.Text>
+            <div className="modern-member-preview-actions">
+              <Button icon={<DollarOutlined />} disabled={!canTopup || previewCustomerDetail.isLoading || !previewCustomerDetail.data?.cards.some((card) => card.status.toUpperCase() === 'ACTIVE')}
+                title={!canTopup ? '当前账号没有会员储值权限' : undefined} onClick={() => setMemberTopupOpen(true)}>储值</Button>
+              <Button icon={<FileTextOutlined />} disabled={!canManageCare}
+                title={!canManageCare ? '当前账号没有护理记录权限' : undefined} onClick={() => setMemberCareOpen(true)}>护理记录</Button>
+              <Button type="primary" disabled={!editable} loading={previewCustomerDetail.isLoading} onClick={async () => {
+                const detail = previewCustomerDetail.data ?? (storeId ? await apiRequest<CustomerDetail>(`/api/v1/customers/${previewCustomer.id}?storeId=${storeId}`) : undefined)
+                if (detail) queryClient.setQueryData(['customer-detail', storeId, previewCustomer.id], detail)
+                setCustomerId(previewCustomer.id)
+                if (isBeforeStart) setLocalLines(applyMembershipPricing(linesRef.current, detail))
+                else { const saved = await saveDraft.mutateAsync({ customerId: previewCustomer.id }); setLocalLines(fromOrder(saved)) }
+                setTab('service')
+              }}>确认关联本次消费</Button>
+            </div>
+          </section>}
+        </div>}
         {(tab === 'service' || tab === 'product') && <><div className="modern-catalog-search"><Select value="all" options={[{ value: 'all', label: '全部分类' }]} /><Select className="modern-catalog-quick-select" showSearch optionFilterProp="label" value={undefined} placeholder={tab === 'service' ? '下拉快速选择项目' : '下拉快速选择产品'} disabled={!editable || saveDraft.isPending} options={(tab === 'service' ? serviceCatalog : productCatalog).map((item) => ({ value: item.id, label: `${item.code} · ${item.name}` }))} onChange={(id) => { if (tab === 'service') { const item = serviceCatalog.find((entry) => entry.id === id); if (item) void addService(item) } else { const item = productCatalog.find((entry) => entry.id === id); if (item) openAddProduct(item) } }} /><Input prefix={<SearchOutlined />} value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder="输入编号或名称自动查询" allowClear /></div><div className="modern-catalog-grid">{tab === 'service' ? serviceCatalog.map((item) => <button type="button" key={item.id} disabled={!editable || saveDraft.isPending} onClick={() => addService(item)}><small>No.{item.code}</small><b>{item.name}</b><span>{item.hasPublishedPrice ? money(item.priceMinor) : '未设置目录价'} / {item.duration ?? '-'} 分钟</span></button>) : productCatalog.map((item) => <button type="button" key={item.id} disabled={!editable || saveDraft.isPending} onClick={() => openAddProduct(item)}><small>No.{item.code}</small><b>{item.name}</b><span>{item.hasPublishedPrice ? money(item.priceMinor) : '未设置目录价'} / 库存 {item.stock ?? '-'} {item.unitName}</span></button>)}</div></>}
       </section>
     </div>
@@ -420,6 +474,32 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
       <button type="button" className="is-return" onClick={onExit}>返回房台</button>
     </footer>
 
+    {storeId && previewCustomer && previewCustomerDetail.data && <MemberTopupModal
+      open={memberTopupOpen}
+      storeId={storeId}
+      customerId={previewCustomer.id}
+      customerName={previewCustomer.displayName}
+      cards={previewCustomerDetail.data.cards.filter((card) => card.status.toUpperCase() === 'ACTIVE')}
+      methods={paymentMethods.data ?? []}
+      shiftOpen={currentShift.data?.status === 'Open'}
+      shiftLoading={currentShift.isLoading}
+      canGrantBonus={canGrantBonus}
+      onClose={() => setMemberTopupOpen(false)}
+      onSuccess={async () => {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['modern-cashier-customers', storeId] }),
+          queryClient.invalidateQueries({ queryKey: ['customer-detail', storeId, previewCustomer.id] }),
+          queryClient.invalidateQueries({ queryKey: ['customer', storeId, previewCustomer.id] }),
+          queryClient.invalidateQueries({ queryKey: ['payments', storeId] }),
+          queryClient.invalidateQueries({ queryKey: ['cashier-shift', storeId] }),
+        ])
+      }}
+    />}
+    <Modal title={`护理记录${previewCustomer ? ` · ${previewCustomer.displayName}` : ''}`} width={980}
+      open={memberCareOpen} onCancel={() => setMemberCareOpen(false)}
+      footer={<Button onClick={() => setMemberCareOpen(false)}>关闭</Button>} destroyOnHidden>
+      {storeId && previewCustomer && <ServiceRecordsSection customerId={previewCustomer.id} storeId={storeId} />}
+    </Modal>
     <Modal title={`添加产品 · ${productCatalog.find((item) => item.id === productToAddId)?.name ?? ''}`} open={Boolean(productToAddId)} onCancel={() => { setProductToAddId(undefined); setProductAddedByEmployeeId(undefined) }} onOk={() => confirmAddProduct()} okText="添加到本单" confirmLoading={saveDraft.isPending} destroyOnHidden><Alert type="info" showIcon title="添加人用于记录是谁将该产品加入本次消费，可选；后续仍可在左侧产品明细中修改。" className="modal-alert" /><label>添加人（可选）<Select allowClear showSearch optionFilterProp="label" className="full-width" value={productAddedByEmployeeId} placeholder="请选择当前门店员工" options={employees.data?.map((employee) => ({ value: employee.id, label: `${employee.displayName} · ${employee.positionName}` }))} onChange={setProductAddedByEmployeeId} /></label></Modal>
     <Modal title="整单员工" open={employeeOpen} onCancel={() => setEmployeeOpen(false)} footer={null}><div className="modern-employee-picker">{employees.data?.map((employee) => <button type="button" key={employee.id} onClick={() => assignEmployee(employee.id)}><b>{employee.displayName}</b><span>{employee.employeeNo} · {employee.positionName}</span></button>)}</div></Modal>
     <Modal title="整单顾问" open={consultantOpen} onCancel={() => setConsultantOpen(false)} footer={null}><div className="modern-employee-picker"><button type="button" onClick={() => assignConsultant(undefined)}><b>不设置顾问</b><span>清除当前整单顾问归属</span></button>{employees.data?.map((employee) => <button type="button" key={employee.id} onClick={() => assignConsultant(employee.id)}><b>{employee.displayName}</b><span>{employee.employeeNo} · {employee.positionName}</span></button>)}</div></Modal>
