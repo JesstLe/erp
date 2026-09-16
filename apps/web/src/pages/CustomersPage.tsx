@@ -29,6 +29,7 @@ import {
   Select,
   Space,
   Table,
+  Tabs,
   Tag,
   Typography,
   message,
@@ -46,7 +47,9 @@ import type {
   MemberTopup,
   PageResult,
   PaymentMethod,
+  ProductItem,
   Refund,
+  ServiceItem,
 } from "../api/types";
 import { useAuth } from "../auth/useAuth";
 import { ServiceRecordsSection } from "./ServiceRecordsSection";
@@ -131,6 +134,10 @@ export function CustomersPage() {
   const [membershipOpen, setMembershipOpen] = useState(false);
   const [cardTypeOpen, setCardTypeOpen] = useState(false);
   const [editingCardType, setEditingCardType] = useState<MemberCardType>();
+  const [serviceItemDiscounts, setServiceItemDiscounts] = useState<Record<string, number | undefined>>({});
+  const [productItemDiscounts, setProductItemDiscounts] = useState<Record<string, number | undefined>>({});
+  const [serviceBulkDiscount, setServiceBulkDiscount] = useState<number>(10);
+  const [productBulkDiscount, setProductBulkDiscount] = useState<number>(10);
   const [topupCard, setTopupCard] = useState<MemberCard>();
   const [refundTopup, setRefundTopup] = useState<MemberTopup>();
   const [revealOpen, setRevealOpen] = useState(false);
@@ -193,6 +200,16 @@ export function CustomersPage() {
     queryKey: ["member-card-types"],
     queryFn: () =>
       apiRequest<MemberCardType[]>("/api/v1/customers/membership/card-types"),
+  });
+  const discountServiceItems = useQuery({
+    queryKey: ["service-items", "card-discounts"],
+    enabled: cardTypeOpen,
+    queryFn: () => apiRequest<ServiceItem[]>("/api/v1/catalog/service-items"),
+  });
+  const discountProductItems = useQuery({
+    queryKey: ["product-items", "card-discounts"],
+    enabled: cardTypeOpen,
+    queryFn: () => apiRequest<ProductItem[]>("/api/v1/catalog/products"),
   });
   const paymentMethods = useQuery({
     queryKey: ["payment-methods", storeId],
@@ -280,6 +297,8 @@ export function CustomersPage() {
         body: JSON.stringify({ name: values.name, validityDays: values.validityDays,
           serviceDiscountBasisPoints: Math.round(values.serviceDiscount * 1000),
           productDiscountBasisPoints: Math.round(values.productDiscount * 1000),
+          serviceItemDiscounts: Object.entries(serviceItemDiscounts).filter((entry): entry is [string, number] => entry[1] !== undefined).map(([catalogItemId, discount]) => ({ catalogItemId, discountBasisPoints: Math.round(discount * 1000) })),
+          productItemDiscounts: Object.entries(productItemDiscounts).filter((entry): entry is [string, number] => entry[1] !== undefined).map(([catalogItemId, discount]) => ({ catalogItemId, discountBasisPoints: Math.round(discount * 1000) })),
           expectedVersion: editingCardType?.version, commandId: commandId() }),
       }),
     onSuccess: async (cardType) => {
@@ -515,9 +534,9 @@ export function CustomersPage() {
       );
     if (!first) return message.error("没有可用的储值收款方式");
     topupForm.setFieldsValue({
-      principalYuan: 100,
+      principalYuan: 0,
       bonusYuan: 0,
-      allocations: [{ methodId: first.id, amountYuan: 100 }],
+      allocations: [{ methodId: first.id, amountYuan: 0 }],
     });
     setTopupCard(card);
   };
@@ -620,7 +639,7 @@ export function CustomersPage() {
           {canManageCardTypes && (
             <Button
               icon={<SettingOutlined />}
-              onClick={() => { setEditingCardType(undefined); cardTypeForm.setFieldsValue({ serviceDiscount: 10, productDiscount: 10 }); setCardTypeOpen(true); }}
+              onClick={() => { setEditingCardType(undefined); setServiceItemDiscounts({}); setProductItemDiscounts({}); cardTypeForm.setFieldsValue({ serviceDiscount: 10, productDiscount: 10 }); setCardTypeOpen(true); }}
             >
               卡类配置
             </Button>
@@ -1504,9 +1523,9 @@ export function CustomersPage() {
       </Modal>
       <Modal
         title={editingCardType ? `编辑卡类 · ${editingCardType.code}` : "新建并发布卡类"}
-        width={760}
+        width={1060}
         open={cardTypeOpen}
-        onCancel={() => { setCardTypeOpen(false); setEditingCardType(undefined); cardTypeForm.resetFields(); }}
+        onCancel={() => { setCardTypeOpen(false); setEditingCardType(undefined); setServiceItemDiscounts({}); setProductItemDiscounts({}); cardTypeForm.resetFields(); }}
         onOk={() => cardTypeForm.submit()}
         confirmLoading={saveCardType.isPending}
         okText={editingCardType ? "保存折扣配置" : "发布卡类"}
@@ -1518,8 +1537,10 @@ export function CustomersPage() {
             cardTypeForm.setFieldsValue({ name: cardType.name, validityDays: cardType.validityDays,
               serviceDiscount: cardType.serviceDiscountBasisPoints / 1000,
               productDiscount: cardType.productDiscountBasisPoints / 1000 });
+            setServiceItemDiscounts(Object.fromEntries((cardType.serviceItemDiscounts ?? []).map((item) => [item.catalogItemId, item.discountBasisPoints / 1000])));
+            setProductItemDiscounts(Object.fromEntries((cardType.productItemDiscounts ?? []).map((item) => [item.catalogItemId, item.discountBasisPoints / 1000])));
           }}>{cardType.name} · 服务 {(cardType.serviceDiscountBasisPoints / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')} 折 · 产品 {(cardType.productDiscountBasisPoints / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')} 折</Button>)}
-          {editingCardType && <Button type="link" onClick={() => { setEditingCardType(undefined); cardTypeForm.resetFields(); cardTypeForm.setFieldsValue({ serviceDiscount: 10, productDiscount: 10 }); }}>新建其他卡类</Button>}
+          {editingCardType && <Button type="link" onClick={() => { setEditingCardType(undefined); setServiceItemDiscounts({}); setProductItemDiscounts({}); cardTypeForm.resetFields(); cardTypeForm.setFieldsValue({ serviceDiscount: 10, productDiscount: 10 }); }}>新建其他卡类</Button>}
         </Space>
         <Form
           form={cardTypeForm}
@@ -1564,6 +1585,18 @@ export function CustomersPage() {
               placeholder="留空表示长期有效"
             />
           </Form.Item>
+          <Tabs items={[
+            { key: "services", label: `服务项目单独折扣（${Object.values(serviceItemDiscounts).filter((value) => value !== undefined).length}）`, children: <>
+              <Alert type="info" showIcon title="单独设置的项目优先；留空则沿用上面的服务默认折扣。" className="modal-alert" />
+              <Space wrap style={{ marginBottom: 12 }}><InputNumber min={1} max={10} step={0.001} precision={3} suffix="折" value={serviceBulkDiscount} onChange={(value) => setServiceBulkDiscount(Number(value ?? 10))} /><Button onClick={() => setServiceItemDiscounts(Object.fromEntries((discountServiceItems.data ?? []).map((item) => [item.id, serviceBulkDiscount])))}>应用到全部服务</Button><Button onClick={() => setServiceItemDiscounts({})}>全部改为沿用默认</Button></Space>
+              <Table<ServiceItem> rowKey="id" size="small" loading={discountServiceItems.isLoading} dataSource={discountServiceItems.data ?? []} pagination={{ pageSize: 8, showSizeChanger: false }} columns={[{ title: "项目编码", dataIndex: "code", width: 130 }, { title: "服务项目", dataIndex: "name" }, { title: "状态", dataIndex: "status", width: 80, render: (value: string) => value === "ENABLED" ? "启用" : "停用" }, { title: "本卡折扣", width: 190, render: (_: unknown, item) => <InputNumber min={1} max={10} step={0.001} precision={3} suffix="折" placeholder="沿用默认" value={serviceItemDiscounts[item.id]} onChange={(value) => setServiceItemDiscounts((current) => ({ ...current, [item.id]: value === null ? undefined : Number(value) }))} /> }]} />
+            </> },
+            { key: "products", label: `产品单独折扣（${Object.values(productItemDiscounts).filter((value) => value !== undefined).length}）`, children: <>
+              <Alert type="info" showIcon title="单独设置的产品优先；留空则沿用上面的产品默认折扣。" className="modal-alert" />
+              <Space wrap style={{ marginBottom: 12 }}><InputNumber min={1} max={10} step={0.001} precision={3} suffix="折" value={productBulkDiscount} onChange={(value) => setProductBulkDiscount(Number(value ?? 10))} /><Button onClick={() => setProductItemDiscounts(Object.fromEntries((discountProductItems.data ?? []).map((item) => [item.id, productBulkDiscount])))}>应用到全部产品</Button><Button onClick={() => setProductItemDiscounts({})}>全部改为沿用默认</Button></Space>
+              <Table<ProductItem> rowKey="id" size="small" loading={discountProductItems.isLoading} dataSource={discountProductItems.data ?? []} pagination={{ pageSize: 8, showSizeChanger: false }} columns={[{ title: "产品编码", dataIndex: "code", width: 130 }, { title: "产品", dataIndex: "name" }, { title: "单位", dataIndex: "unitName", width: 80 }, { title: "状态", dataIndex: "status", width: 80, render: (value: string) => value === "ENABLED" ? "启用" : "停用" }, { title: "本卡折扣", width: 190, render: (_: unknown, item) => <InputNumber min={1} max={10} step={0.001} precision={3} suffix="折" placeholder="沿用默认" value={productItemDiscounts[item.id]} onChange={(value) => setProductItemDiscounts((current) => ({ ...current, [item.id]: value === null ? undefined : Number(value) }))} /> }]} />
+            </> },
+          ]} />
         </Form>
       </Modal>
       <Modal

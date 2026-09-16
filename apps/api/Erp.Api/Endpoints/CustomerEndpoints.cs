@@ -160,7 +160,9 @@ public static class CustomerEndpoints
             return current is null ? Results.Unauthorized() : EndpointResults.From(await customers.CreateCardTypeAsync(current.TenantId,
                 new CreateMemberCardTypeCommand(request.Name ?? string.Empty,
                     request.ValidityDays, request.ServiceDiscountBasisPoints ?? 10_000,
-                    request.ProductDiscountBasisPoints ?? 10_000, request.CommandId, current.Id), cancellationToken));
+                    request.ProductDiscountBasisPoints ?? 10_000,
+                    request.ServiceItemDiscounts ?? [], request.ProductItemDiscounts ?? [],
+                    request.CommandId, current.Id), cancellationToken));
         }).RequireAuthorization(SystemPermissions.MembershipCardTypeManage);
 
         group.MapPut("/membership/card-types/{cardTypeId:guid}", async (Guid cardTypeId,
@@ -172,7 +174,8 @@ public static class CustomerEndpoints
                 await customers.UpdateCardTypeAsync(current.TenantId,
                     new UpdateMemberCardTypeCommand(cardTypeId, request.Name ?? string.Empty,
                         request.ValidityDays, request.ServiceDiscountBasisPoints,
-                        request.ProductDiscountBasisPoints, request.ExpectedVersion,
+                        request.ProductDiscountBasisPoints, request.ServiceItemDiscounts ?? [],
+                        request.ProductItemDiscounts ?? [], request.ExpectedVersion,
                         request.CommandId, current.Id), cancellationToken));
         }).RequireAuthorization(SystemPermissions.MembershipCardTypeManage);
 
@@ -261,6 +264,15 @@ public static class CustomerEndpoints
                 cancellationToken));
         }).RequireAuthorization(SystemPermissions.ServiceRecordManage);
 
+        group.MapGet("/service-record-caregivers", async (Guid storeId, IIdentityService identity,
+            IServiceRecordService records, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (!HasStore(current, storeId)) return Results.Forbid();
+            return Results.Ok(await records.ListCaregiversAsync(current.TenantId, storeId, cancellationToken));
+        }).RequireAuthorization(SystemPermissions.ServiceRecordManage);
+
         group.MapPost("/{customerId:guid}/service-records", async (Guid customerId, HttpRequest request,
             IIdentityService identity, IServiceRecordService records, CancellationToken cancellationToken) =>
         {
@@ -279,6 +291,12 @@ public static class CustomerEndpoints
                     statusCode: StatusCodes.Status422UnprocessableEntity);
             Guid? serviceOrderId = Guid.TryParse(form["serviceOrderId"], out var parsedOrderId) ? parsedOrderId : null;
             Guid? categoryId = Guid.TryParse(form["categoryId"], out var parsedCategoryId) ? parsedCategoryId : null;
+            Guid? caregiverEmployeeId = Guid.TryParse(form["caregiverEmployeeId"], out var parsedCaregiverId)
+                ? parsedCaregiverId : null;
+            DateTimeOffset? followUpAtUtc = DateTimeOffset.TryParse(form["followUpAtUtc"],
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind, out var parsedFollowUpAtUtc)
+                ? parsedFollowUpAtUtc : null;
             if (form.Files.Count > 6)
                 return Results.Json(new { error = new { code = "VALIDATION_FAILED", message = "每条服务记录最多上传6张图片" } },
                     statusCode: StatusCodes.Status422UnprocessableEntity);
@@ -293,8 +311,8 @@ public static class CustomerEndpoints
                 }).ToList();
                 return EndpointResults.From(await records.CreateAsync(current.TenantId,
                     new CreateServiceRecordCommand(storeId, customerId, serviceOrderId, categoryId, occurredAtUtc,
-                        form["conditionNotes"], form["serviceContent"], form["followUpNotes"], commandId,
-                        current.Id, images), cancellationToken),
+                        form["conditionNotes"], form["serviceContent"], form["followUpNotes"],
+                        caregiverEmployeeId, followUpAtUtc, commandId, current.Id, images), cancellationToken),
                     value => Results.Created($"/api/v1/customers/{customerId}/service-records/{value.Id}", value));
             }
             finally
@@ -314,8 +332,9 @@ public static class CustomerEndpoints
             if (!HasStore(current, request.StoreId)) return Results.Forbid();
             return EndpointResults.From(await records.CorrectAsync(current.TenantId,
                 new CorrectServiceRecordCommand(request.StoreId, customerId, recordId,
-                    request.Reason ?? string.Empty, request.ConditionNotes, request.ServiceContent,
-                    request.FollowUpNotes, request.CommandId, current.Id), cancellationToken));
+                    request.Reason, request.ConditionNotes, request.ServiceContent,
+                    request.FollowUpNotes, request.CaregiverEmployeeId, request.FollowUpAtUtc,
+                    request.CommandId, current.Id), cancellationToken));
         }).RequireAuthorization(SystemPermissions.ServiceRecordManage);
 
         group.MapGet("/{customerId:guid}/service-record-files/{fileId:guid}", async (Guid customerId, Guid fileId,
@@ -344,7 +363,8 @@ public static class CustomerEndpoints
 
     private sealed record CustomerSearchRequest(Guid StoreId, string? Query, int? Page, int? PageSize);
     private sealed record CorrectServiceRecordRequest(Guid StoreId, string? Reason, string? ConditionNotes,
-        string? ServiceContent, string? FollowUpNotes, Guid CommandId);
+        string? ServiceContent, string? FollowUpNotes, Guid? CaregiverEmployeeId,
+        DateTimeOffset? FollowUpAtUtc, Guid CommandId);
     private sealed record CreateServiceRecordCategoryRequest(string? Name, int SortOrder);
     private sealed record UpdateServiceRecordCategoryRequest(string? Name, int SortOrder, bool IsEnabled,
         uint ExpectedVersion);
@@ -359,9 +379,13 @@ public static class CustomerEndpoints
     private sealed record MergeCustomerRequest(Guid StoreId, Guid TargetCustomerId,
         uint ExpectedSourceVersion, uint ExpectedTargetVersion, string? Reason, Guid CommandId);
     private sealed record CreateCardTypeRequest(string? Name, int? ValidityDays,
-        int? ServiceDiscountBasisPoints, int? ProductDiscountBasisPoints, Guid CommandId);
+        int? ServiceDiscountBasisPoints, int? ProductDiscountBasisPoints,
+        IReadOnlyList<MemberCardItemDiscountDto>? ServiceItemDiscounts,
+        IReadOnlyList<MemberCardItemDiscountDto>? ProductItemDiscounts, Guid CommandId);
     private sealed record UpdateCardTypeRequest(string? Name, int? ValidityDays,
-        int ServiceDiscountBasisPoints, int ProductDiscountBasisPoints, uint ExpectedVersion, Guid CommandId);
+        int ServiceDiscountBasisPoints, int ProductDiscountBasisPoints,
+        IReadOnlyList<MemberCardItemDiscountDto>? ServiceItemDiscounts,
+        IReadOnlyList<MemberCardItemDiscountDto>? ProductItemDiscounts, uint ExpectedVersion, Guid CommandId);
     private sealed record OpenMembershipRequest(Guid StoreId, Guid CardTypeId, string? CardNo, string? Note, Guid CommandId);
     private sealed record RevealCustomerMobileRequest(Guid StoreId, string? Purpose, Guid CommandId);
     private sealed record ExportCustomersRequest(Guid StoreId, string? Query, bool IncludeFullMobile,

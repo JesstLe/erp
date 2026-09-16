@@ -4,6 +4,7 @@ using Erp.Application.Customers;
 using Erp.Domain.Cashier;
 using Erp.Domain.Common;
 using Erp.Domain.Customers;
+using Erp.Domain.Organization;
 using Erp.Infrastructure.Files;
 using Erp.Infrastructure.Identity;
 using Erp.Infrastructure.Organization;
@@ -98,7 +99,8 @@ internal sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileSto
                 x.record.CategoryId, category?.Code, category?.Name, x.record.ServiceOrderId,
                 x.record.ServiceOrderId.HasValue ? orderNos.GetValueOrDefault(x.record.ServiceOrderId.Value) : null,
                 x.record.ServiceOccurredAtUtc, x.record.ConditionNotes, x.record.ServiceContent,
-                x.record.FollowUpNotes, x.record.CreatedBy,
+                x.record.FollowUpNotes, x.record.CaregiverEmployeeId, x.record.CaregiverNameSnapshot,
+                x.record.FollowUpAtUtc, x.record.CreatedBy,
                 users.GetValueOrDefault(x.record.CreatedBy, "未知人员"), x.record.CreatedAtUtc,
                 attachmentCounts.GetValueOrDefault(x.record.Id), correctionCounts.GetValueOrDefault(x.record.Id));
         }).ToList();
@@ -208,6 +210,15 @@ internal sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileSto
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<ServiceRecordCaregiverOptionDto>> ListCaregiversAsync(Guid tenantId,
+        Guid storeId, CancellationToken cancellationToken) => await dbContext.Employees.AsNoTracking()
+        .Where(employee => employee.TenantId == tenantId && employee.Status == EmployeeStatus.Active &&
+            dbContext.EmployeeStores.Any(assignment => assignment.TenantId == tenantId &&
+                assignment.StoreId == storeId && assignment.EmployeeId == employee.Id))
+        .OrderBy(employee => employee.DisplayName).ThenBy(employee => employee.EmployeeNo)
+        .Select(employee => new ServiceRecordCaregiverOptionDto(employee.Id, employee.EmployeeNo,
+            employee.DisplayName)).ToListAsync(cancellationToken);
+
     public async Task<Result<ServiceRecordDto>> CreateAsync(Guid tenantId, CreateServiceRecordCommand command,
         CancellationToken cancellationToken)
     {
@@ -239,12 +250,19 @@ internal sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileSto
             return ResultFactory.Failure<ServiceRecordDto>("SERVICE_RECORD_CATEGORY_NOT_FOUND",
                 "服务记录分类不存在或已停用");
 
+        var caregiver = await ResolveCaregiverAsync(tenantId, command.StoreId, command.CaregiverEmployeeId,
+            cancellationToken);
+        if (command.CaregiverEmployeeId.HasValue && caregiver is null)
+            return ResultFactory.Failure<ServiceRecordDto>("CAREGIVER_NOT_ELIGIBLE",
+                "所选护理老师不存在、已停用或不属于当前门店");
+
         var storedFiles = new List<StoredFileRecord>();
         try
         {
             var record = new ServiceRecord(tenantId, command.StoreId, command.CustomerId, command.ServiceOrderId,
                 command.ServiceOccurredAtUtc, command.ConditionNotes, command.ServiceContent, command.FollowUpNotes,
-                command.CommandId, command.OperatorId, DateTimeOffset.UtcNow, command.CategoryId);
+                command.CommandId, command.OperatorId, DateTimeOffset.UtcNow, command.CategoryId,
+                caregiver?.Id, caregiver?.DisplayName, command.FollowUpAtUtc);
             foreach (var image in command.Images)
             {
                 var stored = await fileStorage.StoreImageAsync(tenantId, command.StoreId,
@@ -314,11 +332,18 @@ internal sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileSto
             return ResultFactory.Failure<ServiceRecordDto>("SERVICE_RECORD_NOT_FOUND", "服务档案不存在");
         if (existingCorrection is not null)
             return ResultFactory.Success((await MapAsync([record], cancellationToken)).Single());
+        var caregiver = await ResolveCaregiverAsync(tenantId, command.StoreId, command.CaregiverEmployeeId,
+            cancellationToken);
+        if (command.CaregiverEmployeeId.HasValue && caregiver is null)
+            return ResultFactory.Failure<ServiceRecordDto>("CAREGIVER_NOT_ELIGIBLE",
+                "所选护理老师不存在、已停用或不属于当前门店");
+        if (command.FollowUpAtUtc.HasValue && command.FollowUpAtUtc.Value < record.ServiceOccurredAtUtc)
+            return ResultFactory.Failure<ServiceRecordDto>("VALIDATION_FAILED", "回访提醒时间不能早于服务时间");
         try
         {
             var correction = new ServiceRecordCorrection(tenantId, record.Id, command.Reason,
-                command.ConditionNotes, command.ServiceContent, command.FollowUpNotes, command.CommandId,
-                command.OperatorId);
+                command.ConditionNotes, command.ServiceContent, command.FollowUpNotes, caregiver?.Id,
+                caregiver?.DisplayName, command.FollowUpAtUtc, command.CommandId, command.OperatorId);
             dbContext.ServiceRecordCorrections.Add(correction);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "customer.service_record.correct",
                 "ServiceRecord", record.Id);
@@ -370,6 +395,7 @@ internal sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileSto
             record.CategoryId, category?.Code, category?.Name, record.ServiceOrderId,
             record.ServiceOrderId.HasValue ? orderNos.GetValueOrDefault(record.ServiceOrderId.Value) : null,
             record.ServiceOccurredAtUtc, record.ConditionNotes, record.ServiceContent, record.FollowUpNotes,
+            record.CaregiverEmployeeId, record.CaregiverNameSnapshot, record.FollowUpAtUtc,
             record.CreatedBy, userNames.GetValueOrDefault(record.CreatedBy, "未知人员"), record.CreatedAtUtc,
             record.Attachments.OrderBy(x => x.SortOrder).Where(x => files.ContainsKey(x.FileId)).Select(x =>
             {
@@ -377,10 +403,22 @@ internal sealed class ServiceRecordService(ErpDbContext dbContext, SecureFileSto
                 return new ServiceRecordAttachmentDto(file.Id, file.OriginalFileName, file.ContentType, file.SizeBytes);
             }).ToList(), corrections.Where(x => x.ServiceRecordId == record.Id).Select(correction =>
                 new ServiceRecordCorrectionDto(correction.Id, correction.Reason, correction.ConditionNotes,
-                    correction.ServiceContent, correction.FollowUpNotes, correction.CorrectedBy,
+                    correction.ServiceContent, correction.FollowUpNotes, correction.CaregiverEmployeeId,
+                    correction.CaregiverNameSnapshot, correction.FollowUpAtUtc, correction.CorrectedBy,
                     userNames.GetValueOrDefault(correction.CorrectedBy, "未知人员"), correction.CreatedAtUtc))
                 .ToList());
         }).ToList();
+    }
+
+    private async Task<Employee?> ResolveCaregiverAsync(Guid tenantId, Guid storeId, Guid? employeeId,
+        CancellationToken cancellationToken)
+    {
+        if (!employeeId.HasValue) return null;
+        return await dbContext.Employees.AsNoTracking().SingleOrDefaultAsync(employee =>
+            employee.Id == employeeId.Value && employee.TenantId == tenantId &&
+            employee.Status == EmployeeStatus.Active && dbContext.EmployeeStores.Any(assignment =>
+                assignment.TenantId == tenantId && assignment.StoreId == storeId &&
+                assignment.EmployeeId == employee.Id), cancellationToken);
     }
 
     private async Task<List<Guid>> CustomerGroupIdsAsync(Guid tenantId, Guid customerId,

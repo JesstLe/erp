@@ -104,17 +104,16 @@ function applyMembershipPricing(lines: ClassicCashierDraftLine[], customer?: Cus
     if (line.pricingSource === 'ManualOverride' ||
         (line.enteredPriceMinor !== line.referencePriceMinor && line.pricingSource !== 'MemberDiscount'))
       return line
-    const card = activeCards.filter((item) => (line.lineType === 'Service'
-      ? item.serviceDiscountBasisPoints : item.productDiscountBasisPoints) < 10_000)
-      .sort((left, right) => (line.lineType === 'Service'
-        ? left.serviceDiscountBasisPoints - right.serviceDiscountBasisPoints
-        : left.productDiscountBasisPoints - right.productDiscountBasisPoints))[0]
+    const effectiveBasis = (card: CustomerDetail['cards'][number]) => (line.lineType === 'Service'
+      ? card.serviceItemDiscounts?.find((item) => item.catalogItemId === line.itemId)?.discountBasisPoints ?? card.serviceDiscountBasisPoints
+      : card.productItemDiscounts?.find((item) => item.catalogItemId === line.itemId)?.discountBasisPoints ?? card.productDiscountBasisPoints)
+    const card = activeCards.filter((item) => effectiveBasis(item) < 10_000)
+      .sort((left, right) => effectiveBasis(left) - effectiveBasis(right))[0]
     if (!card || line.referencePriceMinor <= 0)
       return { ...line, enteredPriceMinor: line.referencePriceMinor, priceOverrideReason: undefined,
         pricingSource: 'ListPrice' as const, memberDiscountBasisPoints: undefined,
         memberCardTypeId: undefined, memberCardTypeName: undefined }
-    const basisPoints = line.lineType === 'Service' ? card.serviceDiscountBasisPoints :
-      card.productDiscountBasisPoints
+    const basisPoints = effectiveBasis(card)
     return { ...line, enteredPriceMinor: Math.round(line.referencePriceMinor * basisPoints / 10_000),
       priceOverrideReason: `会员折扣：${card.cardTypeName} ${(basisPoints / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}折`,
       pricingSource: 'MemberDiscount' as const, memberDiscountBasisPoints: basisPoints,

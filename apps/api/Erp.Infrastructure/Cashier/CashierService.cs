@@ -292,7 +292,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                         throw new DomainRuleException("SERVICE_EMPLOYEE_REQUIRED", "已设置提成的服务项目必须选择服务员工");
                     var referencePrice = prices.GetValueOrDefault(id);
                     var pricing = ResolveLinePricing(referencePrice, line.EnteredPriceMinor,
-                        line.PriceOverrideReason, line.PricingSource, false, memberPricing);
+                        line.PriceOverrideReason, line.PricingSource, id, false, memberPricing);
                     return new ServiceOrderLineDraft(id, items[id].Code, items[id].Name, line.Quantity,
                         line.ActualSeconds, referencePrice, pricing.EnteredPriceMinor, pricing.Reason,
                         employee?.Id, employee?.EmployeeNo, employee?.DisplayName, item.CommissionMode,
@@ -306,7 +306,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                     : null;
                 var productReferencePrice = productPrices.GetValueOrDefault(productId);
                 var productPricing = ResolveLinePricing(productReferencePrice, line.EnteredPriceMinor,
-                    line.PriceOverrideReason, line.PricingSource, true, memberPricing);
+                    line.PriceOverrideReason, line.PricingSource, productId, true, memberPricing);
                 return ServiceOrderLineDraft.Product(productId, product.Code, product.Name, product.UnitName,
                     line.Quantity, productReferencePrice, productPricing.EnteredPriceMinor, productPricing.Reason,
                     addedByEmployee?.Id, addedByEmployee?.EmployeeNo, addedByEmployee?.DisplayName,
@@ -1030,7 +1030,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                         "已设置提成的服务项目必须选择服务员工");
                 var referencePrice = prices.GetValueOrDefault(id);
                 var pricing = ResolveLinePricing(referencePrice, line.EnteredPriceMinor,
-                    line.PriceOverrideReason, line.PricingSource, false, memberPricing);
+                    line.PriceOverrideReason, line.PricingSource, id, false, memberPricing);
                 return new ServiceOrderLineDraft(id, item.Code, item.Name, line.Quantity,
                     line.ActualSeconds, referencePrice, pricing.EnteredPriceMinor, pricing.Reason,
                     employee?.Id, employee?.EmployeeNo, employee?.DisplayName, item.CommissionMode,
@@ -1044,7 +1044,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                 : null;
             var productReferencePrice = productPrices.GetValueOrDefault(productId);
             var productPricing = ResolveLinePricing(productReferencePrice, line.EnteredPriceMinor,
-                line.PriceOverrideReason, line.PricingSource, true, memberPricing);
+                line.PriceOverrideReason, line.PricingSource, productId, true, memberPricing);
             return ServiceOrderLineDraft.Product(productId, product.Code, product.Name, product.UnitName,
                 line.Quantity, productReferencePrice, productPricing.EnteredPriceMinor, productPricing.Reason,
                 addedByEmployee?.Id, addedByEmployee?.EmployeeNo, addedByEmployee?.DisplayName,
@@ -1258,19 +1258,30 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
         Guid? customerId, DateOnly localDate, CancellationToken cancellationToken)
     {
         if (!customerId.HasValue) return [];
-        return await (from card in db.MemberCards.AsNoTracking()
+        var rows = await (from card in db.MemberCards.AsNoTracking()
             join cardType in db.MemberCardTypes.AsNoTracking() on card.CardTypeId equals cardType.Id
             where card.TenantId == tenantId && card.CustomerId == customerId.Value &&
                   card.Status == MemberCardStatus.Active && card.ValidFrom <= localDate &&
                   (!card.ValidTo.HasValue || card.ValidTo.Value >= localDate) &&
                   cardType.TenantId == tenantId && cardType.Status == MemberCardTypeStatus.Published
-            select new MemberPricingOption(cardType.Id, cardType.Name,
-                cardType.ServiceDiscountBasisPoints, cardType.ProductDiscountBasisPoints))
+            select new { cardType.Id, cardType.Name, cardType.ServiceDiscountBasisPoints,
+                cardType.ProductDiscountBasisPoints })
             .ToListAsync(cancellationToken);
+        var options = rows.Select(x => new MemberPricingOption(x.Id, x.Name,
+            x.ServiceDiscountBasisPoints, x.ProductDiscountBasisPoints,
+            new Dictionary<(MemberCardPricingTargetType, Guid), int>())).ToList();
+        var cardTypeIds = options.Select(x => x.Id).Distinct().ToArray();
+        var rules = await db.MemberCardItemDiscounts.AsNoTracking().Where(x => x.TenantId == tenantId &&
+            cardTypeIds.Contains(x.CardTypeId)).ToListAsync(cancellationToken);
+        return options.Select(option => option with
+        {
+            ItemDiscounts = rules.Where(x => x.CardTypeId == option.Id).ToDictionary(
+                x => (x.TargetType, x.CatalogItemId), x => x.DiscountBasisPoints),
+        }).ToList();
     }
 
     private static LinePricingDecision ResolveLinePricing(long referencePriceMinor,
-        long enteredPriceMinor, string? reason, string? requestedPricingSource, bool product,
+        long enteredPriceMinor, string? reason, string? requestedPricingSource, Guid catalogItemId, bool product,
         IReadOnlyList<MemberPricingOption> memberPricing)
     {
         var normalizedReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
@@ -1286,14 +1297,17 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             requestedSource is null && normalizedReason?.StartsWith("会员折扣：",
                 StringComparison.Ordinal) == true;
         var explicitManualOverride = requestedSource == ServiceOrderLinePricingSource.ManualOverride;
-        var option = memberPricing.Where(x => (product ? x.ProductDiscountBasisPoints :
-                x.ServiceDiscountBasisPoints) < 10_000)
-            .OrderBy(x => product ? x.ProductDiscountBasisPoints : x.ServiceDiscountBasisPoints)
-            .ThenBy(x => x.Name).FirstOrDefault();
+        var targetType = product ? MemberCardPricingTargetType.Product : MemberCardPricingTargetType.Service;
+        var option = memberPricing.Select(x => new
+            {
+                CardType = x,
+                BasisPoints = x.ItemDiscounts.GetValueOrDefault((targetType, catalogItemId),
+                    product ? x.ProductDiscountBasisPoints : x.ServiceDiscountBasisPoints),
+            }).Where(x => x.BasisPoints < 10_000).OrderBy(x => x.BasisPoints)
+            .ThenBy(x => x.CardType.Name).FirstOrDefault();
         if (referencePriceMinor > 0 && option is not null)
         {
-            var basisPoints = product ? option.ProductDiscountBasisPoints :
-                option.ServiceDiscountBasisPoints;
+            var basisPoints = option.BasisPoints;
             var memberPrice = checked((referencePriceMinor * basisPoints + 5_000) / 10_000);
             if (!explicitManualOverride && (enteredPriceMinor == referencePriceMinor || enteredPriceMinor == memberPrice ||
                 inheritedMemberPrice))
@@ -1301,8 +1315,9 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                 var discountText = (basisPoints / 1_000m).ToString("0.###",
                     CultureInfo.InvariantCulture);
                 return new LinePricingDecision(memberPrice,
-                    $"会员折扣：{option.Name} {discountText}折",
-                    ServiceOrderLinePricingSource.MemberDiscount, basisPoints, option.Id, option.Name);
+                    $"会员折扣：{option.CardType.Name} {discountText}折",
+                    ServiceOrderLinePricingSource.MemberDiscount, basisPoints, option.CardType.Id,
+                    option.CardType.Name);
             }
         }
         if (!explicitManualOverride && (inheritedMemberPrice || enteredPriceMinor == referencePriceMinor))
@@ -1313,7 +1328,8 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
     }
 
     private sealed record MemberPricingOption(Guid Id, string Name, int ServiceDiscountBasisPoints,
-        int ProductDiscountBasisPoints);
+        int ProductDiscountBasisPoints,
+        IReadOnlyDictionary<(MemberCardPricingTargetType TargetType, Guid CatalogItemId), int> ItemDiscounts);
     private sealed record LinePricingDecision(long EnteredPriceMinor, string? Reason,
         ServiceOrderLinePricingSource Source, int? DiscountBasisPoints, Guid? CardTypeId,
         string? CardTypeName);

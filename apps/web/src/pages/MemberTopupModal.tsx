@@ -76,9 +76,9 @@ export function MemberTopupModal({ open, storeId, customerId, customerName, card
     const firstMethod = allowedMethods.find((method) => method.code === 'CASH') ?? allowedMethods[0]
     form.setFieldsValue({
       cardId: cards[0]?.id,
-      principalYuan: 100,
+      principalYuan: 0,
       bonusYuan: 0,
-      allocations: [{ methodId: firstMethod?.id, amountYuan: 100 }],
+      allocations: [{ methodId: firstMethod?.id, amountYuan: 0 }],
     })
   }
 

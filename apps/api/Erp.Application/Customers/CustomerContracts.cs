@@ -8,12 +8,16 @@ public sealed record CashierCustomerSummaryDto(Guid Id, string DisplayName, stri
     Guid HomeStoreId, string HomeStoreName, int ActiveCardCount, DateOnly? BirthDate, string? Residence,
     long PrincipalBalanceMinor, long BonusBalanceMinor, DateTimeOffset CreatedAtUtc);
 
+public sealed record MemberCardItemDiscountDto(Guid CatalogItemId, int DiscountBasisPoints);
 public sealed record MemberCardTypeDto(Guid Id, string Code, string Name, int? ValidityDays,
-    int ServiceDiscountBasisPoints, int ProductDiscountBasisPoints, string Status, uint Version);
+    int ServiceDiscountBasisPoints, int ProductDiscountBasisPoints,
+    IReadOnlyList<MemberCardItemDiscountDto> ServiceItemDiscounts,
+    IReadOnlyList<MemberCardItemDiscountDto> ProductItemDiscounts, string Status, uint Version);
 public sealed record MemberAccountDto(Guid Id, string AccountType, long BalanceUnits, string Status);
 public sealed record MemberCardDto(Guid Id, Guid CardTypeId, string CardTypeName, string MaskedCardNo,
     string Status, DateOnly ValidFrom, DateOnly? ValidTo, int ServiceDiscountBasisPoints,
-    int ProductDiscountBasisPoints, IReadOnlyList<MemberAccountDto> Accounts);
+    int ProductDiscountBasisPoints, IReadOnlyList<MemberCardItemDiscountDto> ServiceItemDiscounts,
+    IReadOnlyList<MemberCardItemDiscountDto> ProductItemDiscounts, IReadOnlyList<MemberAccountDto> Accounts);
 public sealed record MergedCustomerAliasDto(Guid Id, string DisplayName, string MaskedMobile,
     DateTimeOffset? MergedAtUtc);
 public sealed record CustomerDetailDto(Guid Id, string DisplayName, string MaskedMobile, string Gender,
@@ -42,10 +46,14 @@ public sealed record MergeCustomerCommand(Guid StoreId, Guid SourceCustomerId, G
     uint ExpectedSourceVersion, uint ExpectedTargetVersion, string Reason, Guid CommandId, Guid OperatorId);
 
 public sealed record CreateMemberCardTypeCommand(string Name, int? ValidityDays,
-    int ServiceDiscountBasisPoints, int ProductDiscountBasisPoints, Guid CommandId, Guid OperatorId);
+    int ServiceDiscountBasisPoints, int ProductDiscountBasisPoints,
+    IReadOnlyList<MemberCardItemDiscountDto> ServiceItemDiscounts,
+    IReadOnlyList<MemberCardItemDiscountDto> ProductItemDiscounts, Guid CommandId, Guid OperatorId);
 public sealed record UpdateMemberCardTypeCommand(Guid CardTypeId, string Name, int? ValidityDays,
-    int ServiceDiscountBasisPoints, int ProductDiscountBasisPoints, uint ExpectedVersion,
-    Guid CommandId, Guid OperatorId);
+    int ServiceDiscountBasisPoints, int ProductDiscountBasisPoints,
+    IReadOnlyList<MemberCardItemDiscountDto> ServiceItemDiscounts,
+    IReadOnlyList<MemberCardItemDiscountDto> ProductItemDiscounts, uint ExpectedVersion, Guid CommandId,
+    Guid OperatorId);
 
 public sealed record OpenMembershipCommand(Guid StoreId, Guid CustomerId, Guid CardTypeId,
     string? CardNo, string? Note, Guid CommandId, Guid OperatorId);

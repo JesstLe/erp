@@ -4,8 +4,9 @@ namespace Erp.Application.Customers;
 
 public sealed record ServiceRecordAttachmentDto(Guid FileId, string FileName, string ContentType, long SizeBytes);
 public sealed record ServiceRecordCorrectionDto(Guid Id, string Reason, string? ConditionNotes,
-    string? ServiceContent, string? FollowUpNotes, Guid CorrectedBy, string CorrectedByName,
-    DateTimeOffset CreatedAtUtc);
+    string? ServiceContent, string? FollowUpNotes, Guid? CaregiverEmployeeId,
+    string? CaregiverName, DateTimeOffset? FollowUpAtUtc, Guid CorrectedBy,
+    string CorrectedByName, DateTimeOffset CreatedAtUtc);
 
 public sealed record ServiceRecordCategoryDto(Guid Id, string Code, string Name, int SortOrder, string Status,
     uint Version);
@@ -13,24 +14,28 @@ public sealed record ServiceRecordCategoryDto(Guid Id, string Code, string Name,
 public sealed record ServiceRecordOverviewDto(Guid Id, Guid StoreId, Guid CustomerId, string CustomerName,
     string MaskedMobile, string HomeStoreName, Guid? CategoryId, string? CategoryCode, string? CategoryName,
     Guid? ServiceOrderId, string? ServiceOrderNo, DateTimeOffset ServiceOccurredAtUtc, string? ConditionNotes,
-    string? ServiceContent, string? FollowUpNotes, Guid CreatedBy, string CreatedByName,
+    string? ServiceContent, string? FollowUpNotes, Guid? CaregiverEmployeeId, string? CaregiverName,
+    DateTimeOffset? FollowUpAtUtc, Guid CreatedBy, string CreatedByName,
     DateTimeOffset CreatedAtUtc, int AttachmentCount, int CorrectionCount);
 
 public sealed record ServiceRecordDto(Guid Id, Guid StoreId, Guid CustomerId, Guid? CategoryId,
     string? CategoryCode, string? CategoryName, Guid? ServiceOrderId, string? ServiceOrderNo,
     DateTimeOffset ServiceOccurredAtUtc, string? ConditionNotes, string? ServiceContent,
-    string? FollowUpNotes, Guid CreatedBy, string CreatedByName, DateTimeOffset CreatedAtUtc,
+    string? FollowUpNotes, Guid? CaregiverEmployeeId, string? CaregiverName,
+    DateTimeOffset? FollowUpAtUtc, Guid CreatedBy, string CreatedByName, DateTimeOffset CreatedAtUtc,
     IReadOnlyList<ServiceRecordAttachmentDto> Attachments,
     IReadOnlyList<ServiceRecordCorrectionDto> Corrections);
 
 public sealed record ServiceRecordOrderOptionDto(Guid Id, string OrderNo, string Status, DateTimeOffset CreatedAtUtc);
+public sealed record ServiceRecordCaregiverOptionDto(Guid Id, string EmployeeNo, string DisplayName);
 
 public sealed record CreateServiceRecordCommand(Guid StoreId, Guid CustomerId, Guid? ServiceOrderId,
     Guid? CategoryId, DateTimeOffset ServiceOccurredAtUtc, string? ConditionNotes, string? ServiceContent,
-    string? FollowUpNotes, Guid CommandId, Guid OperatorId, IReadOnlyList<FileUploadInput> Images);
+    string? FollowUpNotes, Guid? CaregiverEmployeeId, DateTimeOffset? FollowUpAtUtc,
+    Guid CommandId, Guid OperatorId, IReadOnlyList<FileUploadInput> Images);
 public sealed record CorrectServiceRecordCommand(Guid StoreId, Guid CustomerId, Guid ServiceRecordId,
-    string Reason, string? ConditionNotes, string? ServiceContent, string? FollowUpNotes, Guid CommandId,
-    Guid OperatorId);
+    string? Reason, string? ConditionNotes, string? ServiceContent, string? FollowUpNotes,
+    Guid? CaregiverEmployeeId, DateTimeOffset? FollowUpAtUtc, Guid CommandId, Guid OperatorId);
 
 public interface IServiceRecordService
 {
@@ -49,6 +54,8 @@ public interface IServiceRecordService
         Guid operatorId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ServiceRecordOrderOptionDto>> ListOrderOptionsAsync(Guid tenantId, Guid storeId,
         Guid customerId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ServiceRecordCaregiverOptionDto>> ListCaregiversAsync(Guid tenantId, Guid storeId,
+        CancellationToken cancellationToken);
     Task<Result<ServiceRecordDto>> CreateAsync(Guid tenantId, CreateServiceRecordCommand command,
         CancellationToken cancellationToken);
     Task<Result<ServiceRecordDto>> CorrectAsync(Guid tenantId, CorrectServiceRecordCommand command,

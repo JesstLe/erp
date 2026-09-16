@@ -113,6 +113,21 @@ public sealed class CustomerMembershipTests
     }
 
     [Fact]
+    public void CardItemDiscountTargetsOneCatalogItemWithoutChangingTheCardDefault()
+    {
+        var cardTypeId = Guid.CreateVersion7();
+        var itemId = Guid.CreateVersion7();
+
+        var rule = new MemberCardItemDiscount(TenantId, cardTypeId,
+            MemberCardPricingTargetType.Service, itemId, 4_900);
+
+        Assert.Equal(cardTypeId, rule.CardTypeId);
+        Assert.Equal(itemId, rule.CatalogItemId);
+        Assert.Equal(MemberCardPricingTargetType.Service, rule.TargetType);
+        Assert.Equal(4_900, rule.DiscountBasisPoints);
+    }
+
+    [Fact]
     public void MemberCardRejectsInvalidValidityRange()
     {
         var today = new DateOnly(2026, 8, 18);

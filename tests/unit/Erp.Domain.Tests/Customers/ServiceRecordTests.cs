@@ -50,12 +50,22 @@ public sealed class ServiceRecordTests
     public void CorrectionStoresAFullAppendOnlyNarrativeSnapshot()
     {
         var correction = new ServiceRecordCorrection(Guid.CreateVersion7(), Guid.CreateVersion7(),
-            " 服务描述录入有误 ", " 更正情况 ", " 更正服务 ", null, Guid.CreateVersion7(),
-            Guid.CreateVersion7());
+            " 服务描述录入有误 ", " 更正情况 ", " 更正服务 ", null, null, null, null,
+            Guid.CreateVersion7(), Guid.CreateVersion7());
 
         Assert.Equal("服务描述录入有误", correction.Reason);
         Assert.Equal("更正情况", correction.ConditionNotes);
         Assert.Equal("更正服务", correction.ServiceContent);
         Assert.Null(correction.FollowUpNotes);
+    }
+
+    [Fact]
+    public void CorrectionDoesNotRequireStaffToEnterAReason()
+    {
+        var correction = new ServiceRecordCorrection(Guid.CreateVersion7(), Guid.CreateVersion7(),
+            null, null, "新增护理项目", null, null, null, null, Guid.CreateVersion7(),
+            Guid.CreateVersion7());
+
+        Assert.Equal("日常补充更新", correction.Reason);
     }
 }
