@@ -8,6 +8,7 @@ public enum MemberAccountType { Principal, Bonus, Points }
 public enum MemberAccountStatus { Active, Frozen, Closed }
 public enum LedgerDirection { Credit, Debit }
 public enum MemberTopupStatus { Paid, Cancelled, PartiallyRefunded, Refunded }
+public enum MemberCardPricingTargetType { Service, Product }
 
 public static class MemberDeductionPolicy
 {
@@ -97,6 +98,29 @@ public sealed class MemberCardType : Entity
         if (normalized.Length is 0 || normalized.Length > max) throw new DomainRuleException("VALIDATION_FAILED", $"{field}长度不正确");
         return normalized;
     }
+}
+
+public sealed class MemberCardItemDiscount : Entity
+{
+    private MemberCardItemDiscount() { }
+
+    public MemberCardItemDiscount(Guid tenantId, Guid cardTypeId, MemberCardPricingTargetType targetType,
+        Guid catalogItemId, int discountBasisPoints) : base(tenantId)
+    {
+        if (cardTypeId == Guid.Empty || catalogItemId == Guid.Empty)
+            throw new DomainRuleException("VALIDATION_FAILED", "卡类和目录项目不能为空");
+        if (discountBasisPoints is < 1000 or > 10000)
+            throw new DomainRuleException("VALIDATION_FAILED", "项目折扣必须为1到10折");
+        CardTypeId = cardTypeId;
+        TargetType = targetType;
+        CatalogItemId = catalogItemId;
+        DiscountBasisPoints = discountBasisPoints;
+    }
+
+    public Guid CardTypeId { get; private set; }
+    public MemberCardPricingTargetType TargetType { get; private set; }
+    public Guid CatalogItemId { get; private set; }
+    public int DiscountBasisPoints { get; private set; }
 }
 
 public sealed class MemberCard : Entity

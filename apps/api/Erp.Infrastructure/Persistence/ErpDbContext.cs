@@ -54,6 +54,7 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
     public DbSet<IdempotencyCommandRecord> IdempotencyCommands => Set<IdempotencyCommandRecord>();
     public DbSet<Customer> Customers => Set<Customer>();
     public DbSet<MemberCardType> MemberCardTypes => Set<MemberCardType>();
+    public DbSet<MemberCardItemDiscount> MemberCardItemDiscounts => Set<MemberCardItemDiscount>();
     public DbSet<MemberCard> MemberCards => Set<MemberCard>();
     public DbSet<MemberAccount> MemberAccounts => Set<MemberAccount>();
     public DbSet<MemberAccountLedger> MemberAccountLedgers => Set<MemberAccountLedger>();
@@ -502,6 +503,18 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.ProductDiscountBasisPoints).HasColumnName("product_discount_basis_points");
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
             entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        });
+        builder.Entity<MemberCardItemDiscount>(entity =>
+        {
+            entity.ToTable("membership_card_item_discounts");
+            ConfigureBase(entity);
+            entity.Property(x => x.CardTypeId).HasColumnName("card_type_id");
+            entity.Property(x => x.TargetType).HasColumnName("target_type").HasConversion<string>().HasMaxLength(16);
+            entity.Property(x => x.CatalogItemId).HasColumnName("catalog_item_id");
+            entity.Property(x => x.DiscountBasisPoints).HasColumnName("discount_basis_points");
+            entity.HasIndex(x => new { x.TenantId, x.CardTypeId, x.TargetType, x.CatalogItemId }).IsUnique();
+            entity.HasOne<MemberCardType>().WithMany().HasForeignKey(x => x.CardTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<MemberCard>(entity =>
         {
@@ -1620,6 +1633,9 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.ConditionNotes).HasColumnName("condition_notes").HasMaxLength(2000);
             entity.Property(x => x.ServiceContent).HasColumnName("service_content").HasMaxLength(4000);
             entity.Property(x => x.FollowUpNotes).HasColumnName("follow_up_notes").HasMaxLength(2000);
+            entity.Property(x => x.CaregiverEmployeeId).HasColumnName("caregiver_employee_id");
+            entity.Property(x => x.CaregiverNameSnapshot).HasColumnName("caregiver_name_snapshot").HasMaxLength(100);
+            entity.Property(x => x.FollowUpAtUtc).HasColumnName("follow_up_at_utc");
             entity.Property(x => x.CommandId).HasColumnName("command_id");
             entity.Property(x => x.CreatedBy).HasColumnName("created_by");
             entity.HasIndex(x => x.CommandId).IsUnique();
@@ -1631,6 +1647,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasOne<ServiceRecordCategory>().WithMany().HasForeignKey(x => x.CategoryId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CreatedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Employee>().WithMany().HasForeignKey(x => x.CaregiverEmployeeId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasMany(x => x.Attachments).WithOne().HasForeignKey(x => x.ServiceRecordId)
                 .OnDelete(DeleteBehavior.Restrict);
@@ -1657,6 +1675,9 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.ConditionNotes).HasColumnName("condition_notes").HasMaxLength(2000);
             entity.Property(x => x.ServiceContent).HasColumnName("service_content").HasMaxLength(4000);
             entity.Property(x => x.FollowUpNotes).HasColumnName("follow_up_notes").HasMaxLength(2000);
+            entity.Property(x => x.CaregiverEmployeeId).HasColumnName("caregiver_employee_id");
+            entity.Property(x => x.CaregiverNameSnapshot).HasColumnName("caregiver_name_snapshot").HasMaxLength(100);
+            entity.Property(x => x.FollowUpAtUtc).HasColumnName("follow_up_at_utc");
             entity.Property(x => x.CommandId).HasColumnName("command_id");
             entity.Property(x => x.CorrectedBy).HasColumnName("corrected_by");
             entity.HasIndex(x => x.CommandId).IsUnique();
@@ -1664,6 +1685,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.HasOne<ServiceRecord>().WithMany().HasForeignKey(x => x.ServiceRecordId)
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne<ApplicationUser>().WithMany().HasForeignKey(x => x.CorrectedBy)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne<Employee>().WithMany().HasForeignKey(x => x.CaregiverEmployeeId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

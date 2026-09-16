@@ -485,24 +485,28 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             orders, records, blockers, blockers.Count == 0);
     }
 
-    public async Task<IReadOnlyList<MemberCardTypeDto>> ListCardTypesAsync(Guid tenantId, CancellationToken cancellationToken) =>
-        await db.MemberCardTypes.AsNoTracking().Where(x => x.TenantId == tenantId && x.Status == MemberCardTypeStatus.Published)
-            .OrderBy(x => x.Name).Select(x => new MemberCardTypeDto(x.Id, x.Code, x.Name, x.ValidityDays,
-                x.ServiceDiscountBasisPoints, x.ProductDiscountBasisPoints, x.Status.ToString(), x.Version))
-            .ToListAsync(cancellationToken);
+    public async Task<IReadOnlyList<MemberCardTypeDto>> ListCardTypesAsync(Guid tenantId,
+        CancellationToken cancellationToken)
+    {
+        var cardTypes = await db.MemberCardTypes.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                x.Status == MemberCardTypeStatus.Published).OrderBy(x => x.Name).ToListAsync(cancellationToken);
+        return await MapCardTypesAsync(tenantId, cardTypes, cancellationToken);
+    }
 
     public async Task<Result<MemberCardTypeDto>> CreateCardTypeAsync(Guid tenantId, CreateMemberCardTypeCommand command,
         CancellationToken cancellationToken)
     {
         if (command.CommandId == Guid.Empty) return ResultFactory.Failure<MemberCardTypeDto>("VALIDATION_FAILED", "缺少幂等请求号");
-        var requestHash = RequestHash($"CARD_TYPE_CREATE|{command.Name}|{command.ValidityDays}|{command.ServiceDiscountBasisPoints}|{command.ProductDiscountBasisPoints}");
+        var validation = await ValidateCardItemDiscountsAsync(tenantId, command.ServiceItemDiscounts,
+            command.ProductItemDiscounts, cancellationToken);
+        if (validation is not null) return ResultFactory.Failure<MemberCardTypeDto>("VALIDATION_FAILED", validation);
+        var requestHash = RequestHash(JsonSerializer.Serialize(command with { OperatorId = Guid.Empty }));
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
         var replay = await ReplayAsync<MemberCardTypeDto>(tenantId, command.CommandId, requestHash, async id =>
         {
             var item = await db.MemberCardTypes.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id && x.TenantId == tenantId, cancellationToken);
             return item is null ? ResultFactory.Failure<MemberCardTypeDto>("MEMBER_CARD_TYPE_NOT_FOUND", "卡类不存在")
-                : ResultFactory.Success(new MemberCardTypeDto(item.Id, item.Code, item.Name, item.ValidityDays,
-                    item.ServiceDiscountBasisPoints, item.ProductDiscountBasisPoints, item.Status.ToString(), item.Version));
+                : ResultFactory.Success((await MapCardTypesAsync(tenantId, [item], cancellationToken)).Single());
         }, cancellationToken);
         if (replay is not null) return replay;
 
@@ -513,14 +517,14 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             var cardType = new MemberCardType(tenantId, code, command.Name, command.ValidityDays,
                 command.ServiceDiscountBasisPoints, command.ProductDiscountBasisPoints);
             db.MemberCardTypes.Add(cardType);
+            db.MemberCardItemDiscounts.AddRange(BuildCardItemDiscounts(tenantId, cardType.Id,
+                command.ServiceItemDiscounts, command.ProductItemDiscounts));
             AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, cardType.Id, now);
             AddAudit(tenantId, null, command.OperatorId, "membership.card_type.create", "MemberCardType", cardType.Id,
                 null, cardType.Status.ToString(), command.CommandId, now);
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return ResultFactory.Success(new MemberCardTypeDto(cardType.Id, cardType.Code, cardType.Name,
-                cardType.ValidityDays, cardType.ServiceDiscountBasisPoints,
-                cardType.ProductDiscountBasisPoints, cardType.Status.ToString(), cardType.Version));
+            return ResultFactory.Success((await MapCardTypesAsync(tenantId, [cardType], cancellationToken)).Single());
         }
         catch (DomainRuleException exception)
         {
@@ -539,7 +543,10 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
     {
         if (command.CommandId == Guid.Empty)
             return ResultFactory.Failure<MemberCardTypeDto>("VALIDATION_FAILED", "缺少幂等请求号");
-        var requestHash = RequestHash($"CARD_TYPE_UPDATE|{command.CardTypeId}|{command.Name}|{command.ValidityDays}|{command.ServiceDiscountBasisPoints}|{command.ProductDiscountBasisPoints}|{command.ExpectedVersion}");
+        var validation = await ValidateCardItemDiscountsAsync(tenantId, command.ServiceItemDiscounts,
+            command.ProductItemDiscounts, cancellationToken);
+        if (validation is not null) return ResultFactory.Failure<MemberCardTypeDto>("VALIDATION_FAILED", validation);
+        var requestHash = RequestHash(JsonSerializer.Serialize(command with { OperatorId = Guid.Empty }));
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable,
             cancellationToken);
         var replay = await ReplayAsync<MemberCardTypeDto>(tenantId, command.CommandId, requestHash, async id =>
@@ -548,9 +555,7 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
                 x.TenantId == tenantId, cancellationToken);
             return item is null
                 ? ResultFactory.Failure<MemberCardTypeDto>("MEMBER_CARD_TYPE_NOT_FOUND", "卡类不存在")
-                : ResultFactory.Success(new MemberCardTypeDto(item.Id, item.Code, item.Name, item.ValidityDays,
-                    item.ServiceDiscountBasisPoints, item.ProductDiscountBasisPoints, item.Status.ToString(),
-                    item.Version));
+                : ResultFactory.Success((await MapCardTypesAsync(tenantId, [item], cancellationToken)).Single());
         }, cancellationToken);
         if (replay is not null) return replay;
         try
@@ -567,20 +572,25 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
                 await RollbackIfActiveAsync(transaction, cancellationToken);
                 return ResultFactory.Failure<MemberCardTypeDto>("VERSION_CONFLICT", "卡类配置已变化，请刷新后重试");
             }
-            var previous = $"{cardType.Name}|{cardType.ServiceDiscountBasisPoints}|{cardType.ProductDiscountBasisPoints}";
+            var previousRules = await db.MemberCardItemDiscounts.Where(x => x.TenantId == tenantId &&
+                x.CardTypeId == cardType.Id).ToListAsync(cancellationToken);
+            var previous = DescribeCardTypePricing(cardType.Name, cardType.ServiceDiscountBasisPoints,
+                cardType.ProductDiscountBasisPoints, previousRules);
             cardType.UpdateTerms(command.Name, command.ValidityDays, command.ServiceDiscountBasisPoints,
                 command.ProductDiscountBasisPoints);
+            db.MemberCardItemDiscounts.RemoveRange(previousRules);
+            var currentRules = BuildCardItemDiscounts(tenantId, cardType.Id, command.ServiceItemDiscounts,
+                command.ProductItemDiscounts);
+            db.MemberCardItemDiscounts.AddRange(currentRules);
             var now = clock.GetUtcNow();
             AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, cardType.Id, now);
             AddAudit(tenantId, null, command.OperatorId, "membership.card_type.update", "MemberCardType",
-                cardType.Id, previous,
-                $"{cardType.Name}|{cardType.ServiceDiscountBasisPoints}|{cardType.ProductDiscountBasisPoints}",
+                cardType.Id, previous, DescribeCardTypePricing(cardType.Name,
+                    cardType.ServiceDiscountBasisPoints, cardType.ProductDiscountBasisPoints, currentRules),
                 command.CommandId, now);
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return ResultFactory.Success(new MemberCardTypeDto(cardType.Id, cardType.Code, cardType.Name,
-                cardType.ValidityDays, cardType.ServiceDiscountBasisPoints,
-                cardType.ProductDiscountBasisPoints, cardType.Status.ToString(), cardType.Version));
+            return ResultFactory.Success((await MapCardTypesAsync(tenantId, [cardType], cancellationToken)).Single());
         }
         catch (DomainRuleException exception)
         {
@@ -667,6 +677,64 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
         }
     }
 
+    private async Task<IReadOnlyList<MemberCardTypeDto>> MapCardTypesAsync(Guid tenantId,
+        IReadOnlyList<MemberCardType> cardTypes, CancellationToken cancellationToken)
+    {
+        var ids = cardTypes.Select(x => x.Id).ToArray();
+        var discounts = await db.MemberCardItemDiscounts.AsNoTracking().Where(x => x.TenantId == tenantId &&
+            ids.Contains(x.CardTypeId)).ToListAsync(cancellationToken);
+        return cardTypes.Select(cardType => new MemberCardTypeDto(cardType.Id, cardType.Code, cardType.Name,
+            cardType.ValidityDays, cardType.ServiceDiscountBasisPoints, cardType.ProductDiscountBasisPoints,
+            discounts.Where(x => x.CardTypeId == cardType.Id &&
+                    x.TargetType == MemberCardPricingTargetType.Service)
+                .OrderBy(x => x.CatalogItemId).Select(x =>
+                    new MemberCardItemDiscountDto(x.CatalogItemId, x.DiscountBasisPoints)).ToList(),
+            discounts.Where(x => x.CardTypeId == cardType.Id &&
+                    x.TargetType == MemberCardPricingTargetType.Product)
+                .OrderBy(x => x.CatalogItemId).Select(x =>
+                    new MemberCardItemDiscountDto(x.CatalogItemId, x.DiscountBasisPoints)).ToList(),
+            cardType.Status.ToString(), cardType.Version)).ToList();
+    }
+
+    private async Task<string?> ValidateCardItemDiscountsAsync(Guid tenantId,
+        IReadOnlyList<MemberCardItemDiscountDto> serviceDiscounts,
+        IReadOnlyList<MemberCardItemDiscountDto> productDiscounts, CancellationToken cancellationToken)
+    {
+        if (serviceDiscounts.Count > 2_000 || productDiscounts.Count > 2_000)
+            return "单个卡类配置的项目折扣数量过多";
+        if (serviceDiscounts.Any(x => x.CatalogItemId == Guid.Empty || x.DiscountBasisPoints is < 1000 or > 10000) ||
+            productDiscounts.Any(x => x.CatalogItemId == Guid.Empty || x.DiscountBasisPoints is < 1000 or > 10000))
+            return "项目折扣必须为1到10折";
+        if (serviceDiscounts.Select(x => x.CatalogItemId).Distinct().Count() != serviceDiscounts.Count ||
+            productDiscounts.Select(x => x.CatalogItemId).Distinct().Count() != productDiscounts.Count)
+            return "同一项目不能重复配置折扣";
+        var serviceIds = serviceDiscounts.Select(x => x.CatalogItemId).ToArray();
+        var productIds = productDiscounts.Select(x => x.CatalogItemId).ToArray();
+        if (serviceIds.Length > 0 && await db.ServiceItems.AsNoTracking().CountAsync(x =>
+                x.TenantId == tenantId && serviceIds.Contains(x.Id), cancellationToken) != serviceIds.Length)
+            return "部分服务项目不存在或不属于当前品牌";
+        if (productIds.Length > 0 && await db.ProductItems.AsNoTracking().CountAsync(x =>
+                x.TenantId == tenantId && productIds.Contains(x.Id), cancellationToken) != productIds.Length)
+            return "部分产品不存在或不属于当前品牌";
+        return null;
+    }
+
+    private static List<MemberCardItemDiscount> BuildCardItemDiscounts(Guid tenantId,
+        Guid cardTypeId, IReadOnlyList<MemberCardItemDiscountDto> serviceDiscounts,
+        IReadOnlyList<MemberCardItemDiscountDto> productDiscounts) =>
+        serviceDiscounts.Select(x => new MemberCardItemDiscount(tenantId, cardTypeId,
+                MemberCardPricingTargetType.Service, x.CatalogItemId, x.DiscountBasisPoints))
+            .Concat(productDiscounts.Select(x => new MemberCardItemDiscount(tenantId, cardTypeId,
+                MemberCardPricingTargetType.Product, x.CatalogItemId, x.DiscountBasisPoints))).ToList();
+
+    private static string DescribeCardTypePricing(string name, int serviceDiscountBasisPoints,
+        int productDiscountBasisPoints, IEnumerable<MemberCardItemDiscount> itemDiscounts)
+    {
+        var rules = string.Join(',', itemDiscounts.OrderBy(x => x.TargetType).ThenBy(x => x.CatalogItemId)
+            .Select(x => $"{x.TargetType}:{x.CatalogItemId:N}:{x.DiscountBasisPoints}"));
+        return $"{name}|{serviceDiscountBasisPoints}|{productDiscountBasisPoints}|{rules}";
+    }
+
     private async Task<CustomerDetailDto> ToDetailAsync(Customer customer, bool includeFinancialDetails,
         CancellationToken cancellationToken)
     {
@@ -683,6 +751,10 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             .OrderByDescending(x => x.CreatedAtUtc).ToListAsync(cancellationToken);
         var cardTypes = await db.MemberCardTypes.AsNoTracking().Where(x => x.TenantId == customer.TenantId)
             .ToDictionaryAsync(x => x.Id, cancellationToken);
+        var cardTypeIds = cardTypes.Keys.ToArray();
+        var itemDiscounts = await db.MemberCardItemDiscounts.AsNoTracking().Where(x =>
+                x.TenantId == customer.TenantId && cardTypeIds.Contains(x.CardTypeId))
+            .ToListAsync(cancellationToken);
         var cardIds = cards.Select(x => x.Id).ToList();
         var homeStoreName = await db.Stores.AsNoTracking().Where(x => x.TenantId == customer.TenantId &&
                 x.Id == customer.HomeStoreId).Select(x => x.Name).SingleAsync(cancellationToken);
@@ -695,6 +767,12 @@ internal sealed class CustomerService(ErpDbContext db, CustomerPrivacyService pr
             CustomerPrivacyService.MaskCardNo(card.CardNo), card.Status.ToString(), card.ValidFrom, card.ValidTo,
             cardTypes.GetValueOrDefault(card.CardTypeId)?.ServiceDiscountBasisPoints ?? 10_000,
             cardTypes.GetValueOrDefault(card.CardTypeId)?.ProductDiscountBasisPoints ?? 10_000,
+            itemDiscounts.Where(x => x.CardTypeId == card.CardTypeId &&
+                    x.TargetType == MemberCardPricingTargetType.Service)
+                .Select(x => new MemberCardItemDiscountDto(x.CatalogItemId, x.DiscountBasisPoints)).ToList(),
+            itemDiscounts.Where(x => x.CardTypeId == card.CardTypeId &&
+                    x.TargetType == MemberCardPricingTargetType.Product)
+                .Select(x => new MemberCardItemDiscountDto(x.CatalogItemId, x.DiscountBasisPoints)).ToList(),
             accounts.Where(x => x.CardId == card.Id).OrderBy(x => AccountOrder(x.AccountType)).Select(x => new MemberAccountDto(x.Id, x.AccountType.ToString(),
                 x.BalanceUnits, x.Status.ToString())).ToList())).ToList();
         return new CustomerDetailDto(customer.Id, customer.Name,

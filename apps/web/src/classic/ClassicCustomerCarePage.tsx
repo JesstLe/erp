@@ -38,6 +38,7 @@ import type {
   CustomerSummary,
   PageResult,
   ServiceRecord,
+  ServiceRecordCaregiverOption,
   ServiceRecordCategory,
   ServiceRecordOverview,
 } from "../api/types";
@@ -48,6 +49,8 @@ interface CareRecordValues {
   customerId: string;
   categoryId?: string;
   serviceOccurredAt: string;
+  caregiverEmployeeId?: string;
+  followUpAt?: string;
   conditionNotes?: string;
   serviceContent?: string;
   followUpNotes?: string;
@@ -60,15 +63,16 @@ interface CategoryValues {
 }
 
 interface CorrectionValues {
-  reason: string;
+  caregiverEmployeeId?: string;
+  followUpAt?: string;
   conditionNotes?: string;
   serviceContent?: string;
   followUpNotes?: string;
 }
 
 const commandId = () => crypto.randomUUID();
-const localDateTimeValue = () => {
-  const value = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000);
+const localDateTimeValue = (source = new Date()) => {
+  const value = new Date(source.getTime() - source.getTimezoneOffset() * 60_000);
   return value.toISOString().slice(0, 16);
 };
 const formatTime = (value: string) =>
@@ -146,6 +150,12 @@ export function ClassicCustomerCarePage() {
         signal,
       }),
   });
+  const caregivers = useQuery({
+    queryKey: ["service-record-caregivers", storeId],
+    enabled: Boolean(storeId && (createOpen || correctionOpen)),
+    queryFn: () => apiRequest<ServiceRecordCaregiverOption[]>(
+      `/api/v1/customers/service-record-caregivers?storeId=${storeId}`),
+  });
 
   const refresh = async () => {
     await Promise.all([
@@ -168,6 +178,10 @@ export function ClassicCustomerCarePage() {
         new Date(values.serviceOccurredAt).toISOString(),
       );
       if (values.categoryId) data.append("categoryId", values.categoryId);
+      if (values.caregiverEmployeeId)
+        data.append("caregiverEmployeeId", values.caregiverEmployeeId);
+      if (values.followUpAt)
+        data.append("followUpAtUtc", new Date(values.followUpAt).toISOString());
       if (values.conditionNotes?.trim())
         data.append("conditionNotes", values.conditionNotes.trim());
       if (values.serviceContent?.trim())
@@ -198,7 +212,9 @@ export function ClassicCustomerCarePage() {
         `/api/v1/customers/${selected!.customerId}/service-records/${selected!.id}/corrections`,
         {
           method: "POST",
-          body: JSON.stringify({ ...values, storeId, commandId: commandId() }),
+          body: JSON.stringify({ ...values, followUpAt: undefined,
+            followUpAtUtc: values.followUpAt ? new Date(values.followUpAt).toISOString() : null,
+            storeId, commandId: commandId() }),
         },
       ),
     onSuccess: async () => {
@@ -293,10 +309,13 @@ export function ClassicCustomerCarePage() {
     if (!record) return message.info("请先选择一条服务记录");
     setSelected(record);
     correctionForm.setFieldsValue({
-      reason: "",
       conditionNotes: record.conditionNotes,
       serviceContent: record.serviceContent,
       followUpNotes: record.followUpNotes,
+      caregiverEmployeeId: record.caregiverEmployeeId,
+      followUpAt: record.followUpAtUtc
+        ? localDateTimeValue(new Date(record.followUpAtUtc))
+        : undefined,
     });
     setCorrectionOpen(true);
   };
@@ -411,6 +430,8 @@ export function ClassicCustomerCarePage() {
                     "顾客姓名",
                     "手机号",
                     "分类",
+                    "护理老师",
+                    "回访时间",
                     "本次情况/需求",
                     "服务过程与内容",
                     "结果与后续建议",
@@ -427,14 +448,14 @@ export function ClassicCustomerCarePage() {
               <tbody>
                 {records.isLoading && (
                   <tr>
-                    <td colSpan={12}>
+                    <td colSpan={14}>
                       <Spin size="small" />
                     </td>
                   </tr>
                 )}
                 {!records.isLoading && !records.data?.items.length && (
                   <tr>
-                    <td colSpan={12}>
+                    <td colSpan={14}>
                       <Empty
                         image={Empty.PRESENTED_IMAGE_SIMPLE}
                         description="当前条件下暂无服务记录"
@@ -453,6 +474,8 @@ export function ClassicCustomerCarePage() {
                     <td>{item.customerName}</td>
                     <td>{item.maskedMobile}</td>
                     <td>{item.categoryName ?? "未分类"}</td>
+                    <td>{item.caregiverName ?? "—"}</td>
+                    <td>{item.followUpAtUtc ? formatTime(item.followUpAtUtc) : "—"}</td>
                     <td title={item.conditionNotes}>
                       {item.conditionNotes ?? "—"}
                     </td>
@@ -542,6 +565,15 @@ export function ClassicCustomerCarePage() {
               }))}
             />
           </Form.Item>
+          <Space align="start" className="full-width">
+            <Form.Item name="caregiverEmployeeId" label="护理老师（可选）" className="grow">
+              <Select allowClear showSearch optionFilterProp="label" placeholder="选择当前门店员工"
+                options={caregivers.data?.map((item) => ({ value: item.id, label: `${item.displayName} · ${item.employeeNo}` }))} />
+            </Form.Item>
+            <Form.Item name="followUpAt" label="回访提醒时间（可选）" className="grow">
+              <Input type="datetime-local" />
+            </Form.Item>
+          </Space>
           <Form.Item
             name="conditionNotes"
             label="本次情况/需求（可选）"
@@ -598,19 +630,21 @@ export function ClassicCustomerCarePage() {
         confirmLoading={correctRecord.isPending}
         destroyOnHidden
       >
-        <p>服务档案不覆盖原文；本次修改会形成有操作人和时间的更正记录。</p>
+        <p>无需填写更正原因；系统会保留原文、操作人和更新时间。</p>
         <Form<CorrectionValues>
           form={correctionForm}
           layout="vertical"
           onFinish={(values) => correctRecord.mutate(values)}
         >
-          <Form.Item
-            name="reason"
-            label="更正原因"
-            rules={[{ required: true }, { min: 2 }, { max: 500 }]}
-          >
-            <Input.TextArea rows={2} maxLength={500} />
-          </Form.Item>
+          <Space align="start" className="full-width">
+            <Form.Item name="caregiverEmployeeId" label="护理老师（可选）" className="grow">
+              <Select allowClear showSearch optionFilterProp="label" placeholder="选择当前门店员工"
+                options={caregivers.data?.map((item) => ({ value: item.id, label: `${item.displayName} · ${item.employeeNo}` }))} />
+            </Form.Item>
+            <Form.Item name="followUpAt" label="回访提醒时间（可选）" className="grow">
+              <Input type="datetime-local" />
+            </Form.Item>
+          </Space>
           <Form.Item
             name="conditionNotes"
             label="更正后的本次情况/需求（可选）"

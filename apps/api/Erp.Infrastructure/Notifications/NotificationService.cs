@@ -1,8 +1,10 @@
 using Erp.Application.Notifications;
 using Erp.Application.Security;
 using Erp.Domain.Cashier;
+using Erp.Domain.Customers;
 using Erp.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 
 namespace Erp.Infrastructure.Notifications;
 
@@ -52,6 +54,53 @@ internal sealed class NotificationService(ErpDbContext db) : INotificationServic
                 "待复核交班", $"班次 {x.ShiftNo}，现金差额 ¥{(x.CashDifferenceMinor ?? 0) / 100m:F2}，" +
                 $"待核对 ¥{(x.PendingReconciliationMinor ?? 0) / 100m:F2}", "info", "/cashier",
                 x.SubmittedAtUtc ?? DateTimeOffset.MinValue)));
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var followUpRecords = await db.ServiceRecords.AsNoTracking()
+            .Where(record => record.TenantId == tenantId && record.StoreId == storeId &&
+                (record.FollowUpAtUtc.HasValue || db.ServiceRecordCorrections.Any(correction =>
+                    correction.TenantId == tenantId && correction.ServiceRecordId == record.Id)))
+            .Select(record => new { record.Id, record.CustomerId, record.ServiceOccurredAtUtc,
+                record.FollowUpAtUtc }).ToListAsync(cancellationToken);
+        if (followUpRecords.Count > 0)
+        {
+            var recordIds = followUpRecords.Select(x => x.Id).ToArray();
+            var corrections = await db.ServiceRecordCorrections.AsNoTracking()
+                .Where(x => x.TenantId == tenantId && recordIds.Contains(x.ServiceRecordId))
+                .OrderBy(x => x.CreatedAtUtc).ThenBy(x => x.Id)
+                .Select(x => new { x.ServiceRecordId, x.FollowUpAtUtc }).ToListAsync(cancellationToken);
+            var latest = corrections.GroupBy(x => x.ServiceRecordId).ToDictionary(x => x.Key, x => x.Last());
+            var due = followUpRecords.Select(record => new
+                {
+                    record.Id,
+                    record.CustomerId,
+                    FollowUpAtUtc = latest.TryGetValue(record.Id, out var correction)
+                        ? correction.FollowUpAtUtc : record.FollowUpAtUtc,
+                })
+                .Where(x => x.FollowUpAtUtc.HasValue && x.FollowUpAtUtc.Value >= now.AddDays(-30) &&
+                    x.FollowUpAtUtc.Value <= now.AddHours(24)).ToList();
+            if (due.Count > 0)
+            {
+                var customerIds = due.Select(x => x.CustomerId).Distinct().ToArray();
+                var customerNames = await db.Customers.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                        customerIds.Contains(x.Id) && x.Status == CustomerStatus.Active)
+                    .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
+                var latestServices = await db.ServiceRecords.AsNoTracking().Where(x => x.TenantId == tenantId &&
+                        customerIds.Contains(x.CustomerId)).GroupBy(x => x.CustomerId)
+                    .Select(group => new { CustomerId = group.Key,
+                        LatestAtUtc = group.Max(x => x.ServiceOccurredAtUtc) })
+                    .ToDictionaryAsync(x => x.CustomerId, x => x.LatestAtUtc, cancellationToken);
+                items.AddRange(due.Where(x => customerNames.ContainsKey(x.CustomerId) &&
+                        (!latestServices.TryGetValue(x.CustomerId, out var latestService) ||
+                         latestService < x.FollowUpAtUtc!.Value))
+                    .Select(x => new NotificationItemDto($"care-follow-up:{x.Id}", "CareFollowUp",
+                        "顾客护理提醒", $"{customerNames[x.CustomerId]} · 计划回访时间 " +
+                        x.FollowUpAtUtc!.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
+                            CultureInfo.InvariantCulture),
+                        x.FollowUpAtUtc.Value <= now ? "error" : "warning", "/customers",
+                        x.FollowUpAtUtc.Value)));
+            }
         }
 
         var ordered = items.OrderByDescending(x => x.OccurredAtUtc).Take(50).ToList();

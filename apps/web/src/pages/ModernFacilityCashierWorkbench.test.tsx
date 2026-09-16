@@ -96,8 +96,8 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     const baseImplementation = apiRequestMock.getMockImplementation()
     apiRequestMock.mockImplementation((path: string, options?: unknown) => {
       if (path === '/api/v1/catalog/price-books') return Promise.resolve([{ id: 'book-1', name: '当前价目', status: 'PUBLISHED', effectiveFrom: '2026-01-01', version: 1, lines: [{ serviceItemId: 'service-1', serviceItemName: '基础服务', unitPriceMinor: 5_900 }], productLines: [] }])
-      if (path === '/api/v1/customers/cashier-search') return Promise.resolve({ items: [{ id: 'customer-1', displayName: '王女士', mobile: '13615345138', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', activeCardCount: 1, birthDate: '1990-05-06', residence: '水木清华小区', principalBalanceMinor: 12_000, bonusBalanceMinor: 3_000, createdAtUtc: '2026-01-01T00:00:00Z' }], total: 1, page: 1, pageSize: 30 })
-      if (path.startsWith('/api/v1/customers/customer-1?')) return Promise.resolve({ id: 'customer-1', displayName: '王女士', maskedMobile: '13615345138', gender: 'Unknown', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', version: 1, cards: [{ id: 'card-1', cardTypeId: 'card-type-1', cardTypeName: '金卡', maskedCardNo: 'CARD-001', status: 'Active', validFrom: '2026-01-01', serviceDiscountBasisPoints: 8_305, productDiscountBasisPoints: 9_000, accounts: [{ id: 'account-1', accountType: 'Principal', balanceUnits: 12_000, status: 'Active' }, { id: 'account-2', accountType: 'Bonus', balanceUnits: 3_000, status: 'Active' }] }], mergedAliases: [] })
+      if (path === '/api/v1/customers/cashier-search') return Promise.resolve({ items: [{ id: 'customer-1', displayName: '王女士', mobile: '13800001234', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', activeCardCount: 1, birthDate: '1990-05-06', residence: '水木清华小区', principalBalanceMinor: 12_000, bonusBalanceMinor: 3_000, createdAtUtc: '2026-01-01T00:00:00Z' }], total: 1, page: 1, pageSize: 30 })
+      if (path.startsWith('/api/v1/customers/customer-1?')) return Promise.resolve({ id: 'customer-1', displayName: '王女士', maskedMobile: '13800001234', gender: 'Unknown', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', version: 1, cards: [{ id: 'card-1', cardTypeId: 'card-type-1', cardTypeName: '金卡', maskedCardNo: 'CARD-001', status: 'Active', validFrom: '2026-01-01', serviceDiscountBasisPoints: 9_000, productDiscountBasisPoints: 9_000, serviceItemDiscounts: [{ catalogItemId: 'service-1', discountBasisPoints: 8_305 }], productItemDiscounts: [], accounts: [{ id: 'account-1', accountType: 'Principal', balanceUnits: 12_000, status: 'Active' }, { id: 'account-2', accountType: 'Bonus', balanceUnits: 3_000, status: 'Active' }] }], mergedAliases: [] })
       return baseImplementation?.(path, options)
     })
 
@@ -107,8 +107,9 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     fireEvent.click(screen.getByRole('button', { name: /会员.*刷卡/s }))
     expect(screen.getByText('请输入姓名、完整手机号或卡号后查询会员')).toBeTruthy()
     expect(apiRequestMock.mock.calls.some(([path]) => path === '/api/v1/customers/cashier-search')).toBe(false)
-    fireEvent.change(screen.getByPlaceholderText('输入姓名、完整手机号或卡号自动查询'), { target: { value: '13615345138' } })
-    fireEvent.click(await screen.findByRole('button', { name: /王女士.*13615345138/s }))
+    fireEvent.change(screen.getByPlaceholderText('输入姓名、完整手机号或卡号自动查询'), { target: { value: '13800001234' } })
+    await waitFor(() => expect(apiRequestMock.mock.calls.some(([path]) => path === '/api/v1/customers/cashier-search')).toBe(true))
+    fireEvent.click(await screen.findByRole('button', { name: /王女士.*13800001234/s }))
     expect(await screen.findByText('1990-05-06')).toBeTruthy()
     expect(screen.getByText('水木清华小区')).toBeTruthy()
     expect(screen.getByText('储值本金')).toBeTruthy()
