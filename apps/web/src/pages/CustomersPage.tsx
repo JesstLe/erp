@@ -1,7 +1,6 @@
 import {
   CheckCircleOutlined,
   CreditCardOutlined,
-  DeleteOutlined,
   DollarOutlined,
   DownloadOutlined,
   EditOutlined,
@@ -36,6 +35,7 @@ import {
 } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { apiDownload, apiRequest, ApiError } from "../api/client";
 import type {
   CashierShift,
@@ -54,6 +54,7 @@ import type {
 import { useAuth } from "../auth/useAuth";
 import { ServiceRecordsSection } from "./ServiceRecordsSection";
 import { MembershipBenefitsSection } from "./MembershipBenefitsSection";
+import { MemberTopupModal } from "./MemberTopupModal";
 import { buildRemainingRefundLines } from "./membershipRules";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { Permission } from "../security/permissions";
@@ -76,17 +77,6 @@ const genderLabels: Record<string, string> = {
   Male: "男",
   Other: "其他",
 };
-interface TopupAllocationValues {
-  methodId: string;
-  amountYuan: number;
-  externalReference?: string;
-}
-interface TopupValues {
-  principalYuan: number;
-  bonusYuan: number;
-  note?: string;
-  allocations: TopupAllocationValues[];
-}
 interface TopupRefundValues {
   amountYuan: number;
   reason: string;
@@ -123,9 +113,13 @@ export function CustomersPage() {
   const { can } = useAuthorization();
   const storeId = auth.store?.id;
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedCustomerId = searchParams.get("customerId") ?? undefined;
+  const requestedSection = searchParams.get("section");
   const [query, setQuery] = useState("");
   const submittedQuery = useDebouncedValue(query.trim());
   const [selectedId, setSelectedId] = useState<string>();
+  const [detailSection, setDetailSection] = useState<"topups" | "care">("topups");
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const [topupPage, setTopupPage] = useState(1);
@@ -155,7 +149,6 @@ export function CustomersPage() {
   const [mergeForm] = Form.useForm<MergeCustomerValues>();
   const [membershipForm] = Form.useForm();
   const [cardTypeForm] = Form.useForm();
-  const [topupForm] = Form.useForm<TopupValues>();
   const [topupRefundForm] = Form.useForm<TopupRefundValues>();
   const [revealForm] = Form.useForm<SensitivePurposeValues>();
   const [exportForm] = Form.useForm<SensitivePurposeValues>();
@@ -173,6 +166,11 @@ export function CustomersPage() {
   const canCreateCustomer = can(Permission.CustomerWrite);
   useEffect(() => setPage(1), [storeId, submittedQuery]);
   useEffect(() => setTopupPage(1), [storeId, selectedId]);
+  useEffect(() => {
+    if (!requestedCustomerId) return;
+    setSelectedId(requestedCustomerId);
+    setDetailSection(requestedSection === "care" ? "care" : "topups");
+  }, [requestedCustomerId, requestedSection]);
   const customers = useQuery({
     queryKey: ["customers", storeId, submittedQuery, page],
     enabled: Boolean(storeId),
@@ -309,42 +307,6 @@ export function CustomersPage() {
       await queryClient.invalidateQueries({ queryKey: ["member-card-types"] });
       await queryClient.invalidateQueries({ queryKey: ["customer-detail"] });
       await queryClient.invalidateQueries({ queryKey: ["customer"] });
-    },
-    onError,
-  });
-  const createTopup = useMutation({
-    mutationFn: (values: TopupValues) =>
-      apiRequest<MemberTopup>("/api/v1/member-topups", {
-        method: "POST",
-        body: JSON.stringify({
-          storeId,
-          customerId: selectedId,
-          cardId: topupCard?.id,
-          principalMinor: Math.round(values.principalYuan * 100),
-          bonusMinor: Math.round(values.bonusYuan * 100),
-          note: values.note,
-          commandId: commandId(),
-          allocations: values.allocations.map((line) => ({
-            methodId: line.methodId,
-            amountMinor: Math.round(line.amountYuan * 100),
-            externalReference: line.externalReference,
-          })),
-        }),
-      }),
-    onSuccess: async () => {
-      message.success("储值已入账；人工外部收款仍等待对账");
-      setTopupCard(undefined);
-      topupForm.resetFields();
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: ["customer", storeId, selectedId],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["member-topups", storeId, selectedId],
-        }),
-        queryClient.invalidateQueries({ queryKey: ["payments", storeId] }),
-        queryClient.invalidateQueries({ queryKey: ["cashier-shift", storeId] }),
-      ]);
     },
     onError,
   });
@@ -527,18 +489,18 @@ export function CustomersPage() {
     onError,
   });
   const beginTopup = (card: MemberCard) => {
-    const first =
-      paymentMethods.data?.find((method) => method.code === "CASH") ??
-      paymentMethods.data?.find(
-        (method) => method.category !== "InternalAccount",
-      );
-    if (!first) return message.error("没有可用的储值收款方式");
-    topupForm.setFieldsValue({
-      principalYuan: 0,
-      bonusYuan: 0,
-      allocations: [{ methodId: first.id, amountYuan: 0 }],
-    });
+    if (!(paymentMethods.data ?? []).some((method) =>
+      method.category !== "InternalAccount" && method.category !== "ChannelExternal"))
+      return message.error("没有可用的储值收款方式");
     setTopupCard(card);
+  };
+  const closeDetail = () => {
+    setSelectedId(undefined);
+    setRevealedMobile(undefined);
+    const next = new URLSearchParams(searchParams);
+    next.delete("customerId");
+    next.delete("section");
+    setSearchParams(next, { replace: true });
   };
   const beginEdit = () => {
     if (!detail.data) return;
@@ -698,6 +660,7 @@ export function CustomersPage() {
           onRow={(record) => ({
             onClick: () => {
               setRevealedMobile(undefined);
+              setDetailSection("topups");
               setSelectedId(record.id);
             },
             className: "clickable-row",
@@ -709,10 +672,7 @@ export function CustomersPage() {
         title="顾客与会员详情"
       size={560}
         open={Boolean(selectedId)}
-        onClose={() => {
-          setSelectedId(undefined);
-          setRevealedMobile(undefined);
-        }}
+        onClose={closeDetail}
         extra={
           <Space>
             {canManageCustomers && detail.data && (
@@ -874,18 +834,41 @@ export function CustomersPage() {
                   .join("；")}
               />
             )}
-            {canViewServiceRecords ? (
-              <ServiceRecordsSection
-                customerId={detail.data.id}
-                storeId={storeId!}
-              />
-            ) : (
-              <Alert
-                type="info"
-                showIcon
-                title="服务档案仅最高权限和门店店长可查看。"
-              />
-            )}
+            <Tabs
+              activeKey={detailSection}
+              onChange={(key) => setDetailSection(key as "topups" | "care")}
+              items={[
+                {
+                  key: "topups",
+                  label: "会员储值",
+                  children: canViewFinancialDetails ? (
+                    <TopupHistorySection
+                      data={topups.data}
+                      page={topupPage}
+                      pageSize={topupPageSize}
+                      canRequestRefund={canRequestTopupRefund}
+                      onPageChange={setTopupPage}
+                      onRefund={(item) => {
+                        topupRefundForm.resetFields();
+                        topupRefundForm.setFieldValue("amountYuan", item.remainingPrincipalMinor / 100);
+                        setRefundTopup(item);
+                      }}
+                    />
+                  ) : (
+                    <Alert type="info" showIcon title="储值账户与流水仅店长和结算角色可查看。" />
+                  ),
+                },
+                {
+                  key: "care",
+                  label: "服务档案",
+                  children: canViewServiceRecords ? (
+                    <ServiceRecordsSection customerId={detail.data.id} storeId={storeId!} />
+                  ) : (
+                    <Alert type="info" showIcon title="服务档案仅最高权限和门店店长可查看。" />
+                  ),
+                },
+              ]}
+            />
             <div>
               <Typography.Title level={4}>会员卡与账户</Typography.Title>
               {!detail.data.cards.length ? (
@@ -955,106 +938,6 @@ export function CustomersPage() {
                 customerId={detail.data.id}
                 cards={detail.data.cards}
               />
-            )}
-            {canViewFinancialDetails && (
-              <div>
-                <Typography.Title level={4}>储值记录</Typography.Title>
-                {!topups.data?.items.length ? (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="还没有储值记录"
-                  />
-                ) : (
-                  <>
-                    {topups.data.items.map((item) => {
-                      const originalRouteAvailable = item.allocations.every(
-                        (line) => line.category === "Cash",
-                      );
-                      return (
-                        <Card
-                          key={item.id}
-                          size="small"
-                          className="topup-history"
-                        >
-                          <div>
-                            <strong>{item.topupNo}</strong>
-                            <Space>
-                              <Tag
-                                color={
-                                  item.status === "Refunded"
-                                    ? "default"
-                                    : item.status === "PartiallyRefunded" ? "gold" : "green"
-                                }
-                              >
-                                {item.status === "Refunded"
-                                  ? "已全部退款"
-                                  : item.status === "PartiallyRefunded" ? "部分已退" : "已入账"}
-                              </Tag>
-                              {canRequestTopupRefund &&
-                                (item.status === "Paid" || item.status === "PartiallyRefunded") &&
-                                item.remainingPrincipalMinor > 0 && (
-                                  <Button
-                                    size="small"
-                                    danger
-                                    disabled={!originalRouteAvailable}
-                                    title={
-                                      originalRouteAvailable
-                                        ? "提交后由最高权限审批"
-                                        : "人工外部登记暂不支持原路冲正"
-                                    }
-                                    onClick={() => {
-                                      topupRefundForm.resetFields();
-                                      topupRefundForm.setFieldValue("amountYuan", item.remainingPrincipalMinor / 100);
-                                      setRefundTopup(item);
-                                    }}
-                                  >
-                                    申请退款
-                                  </Button>
-                                )}
-                            </Space>
-                          </div>
-                          <div>
-                            <span>
-                              实收本金{" "}
-                              {formatAccount("Principal", item.principalMinor)}
-                            </span>
-                            <span>
-                              赠送奖励 {formatAccount("Bonus", item.bonusMinor)}
-                            </span>
-                            {item.refundedPrincipalMinor > 0 && <span>已退本金 {formatAccount("Principal", item.refundedPrincipalMinor)} · 已收回奖励 {formatAccount("Bonus", item.revokedBonusMinor)}</span>}
-                            <span>
-                              {new Date(item.paidAtUtc).toLocaleString(
-                                "zh-CN",
-                                { hour12: false },
-                              )}
-                            </span>
-                          </div>
-                          {item.allocations.map((line) => (
-                            <Space key={line.id} wrap>
-                              <Tag>
-                                {line.methodName}{" "}
-                                {formatAccount("Principal", line.amountMinor)}
-                              </Tag>
-                              {line.reconciliationStatus === "Pending" && (
-                                <Tag color="gold">待核对</Tag>
-                              )}
-                            </Space>
-                          ))}
-                        </Card>
-                      );
-                    })}
-                    <Pagination
-                      current={topupPage}
-                      pageSize={topupPageSize}
-                      total={topups.data.total}
-                      showSizeChanger={false}
-                      showTotal={(total) => `共 ${total} 笔`}
-                      onChange={setTopupPage}
-                      style={{ marginTop: 12, textAlign: "right" }}
-                    />
-                  </>
-                )}
-              </div>
             )}
           </Space>
         )}
@@ -1599,126 +1482,27 @@ export function CustomersPage() {
           ]} />
         </Form>
       </Modal>
-      <Modal
-        title={`会员储值 · ${topupCard?.maskedCardNo ?? ""}`}
-        width={760}
+      {storeId && selectedId && detail.data && <MemberTopupModal
         open={Boolean(topupCard)}
-        onCancel={() => setTopupCard(undefined)}
-        onOk={() => topupForm.submit()}
-        confirmLoading={createTopup.isPending}
-        okText="确认收款并入账"
-        destroyOnHidden
-      >
-        <Alert
-          type="warning"
-          showIcon
-          title="本金是本次实际应收；奖励金由门店赠送，不计入实收。确认后写入不可修改的账户流水。"
-          className="modal-alert"
-        />
-        <Form<TopupValues>
-          form={topupForm}
-          layout="vertical"
-          onFinish={(values) => createTopup.mutate(values)}
-        >
-          <Space align="start" className="full-width">
-            <Form.Item
-              name="principalYuan"
-              label="储值本金（元）"
-              className="grow"
-              rules={[
-                { required: true },
-                { type: "number", min: 0.01, max: 100000000 },
-              ]}
-            >
-              <InputNumber
-                min={0.01}
-                max={100000000}
-                precision={2}
-                prefix="¥"
-                className="full-width"
-              />
-            </Form.Item>
-            <Form.Item
-              name="bonusYuan"
-              label={
-                canGrantBonus
-                  ? "赠送奖励金（元）"
-                  : "赠送奖励金（仅最高权限可填）"
-              }
-              className="grow"
-              rules={[
-                { required: true },
-                { type: "number", min: 0, max: 100000000 },
-              ]}
-            >
-              <InputNumber
-                min={0}
-                max={100000000}
-                precision={2}
-                prefix="¥"
-                className="full-width"
-                disabled={!canGrantBonus}
-              />
-            </Form.Item>
-          </Space>
-          <Form.List
-            name="allocations"
-            rules={[
-              {
-                validator: async (_, lines: TopupAllocationValues[]) => {
-                  const principal = Math.round(
-                    Number(topupForm.getFieldValue("principalYuan") ?? 0) * 100,
-                  );
-                  const total = (lines ?? []).reduce(
-                    (sum, line) =>
-                      sum + Math.round(Number(line.amountYuan ?? 0) * 100),
-                    0,
-                  );
-                  if (total !== principal)
-                    throw new Error(
-                      `支付分摊必须等于储值本金 ¥${(principal / 100).toFixed(2)}`,
-                    );
-                },
-              },
-            ]}
-          >
-            {(fields, { add, remove }, { errors }) => (
-              <>
-                <div className="order-line-list">
-                  {fields.map((field) => (
-                    <TopupPaymentEditor
-                      key={field.key}
-                      field={field}
-                      form={topupForm}
-                      methods={(paymentMethods.data ?? []).filter(
-                        (method) => method.category !== "InternalAccount",
-                      )}
-                      removable={fields.length > 1}
-                      onRemove={() => remove(field.name)}
-                    />
-                  ))}
-                </div>
-                <Space>
-                  <Button
-                    icon={<PlusOutlined />}
-                    onClick={() => add({ amountYuan: 0 })}
-                  >
-                    添加支付方式
-                  </Button>
-                  <Form.ErrorList errors={errors} />
-                </Space>
-              </>
-            )}
-          </Form.List>
-          <Form.Item
-            name="note"
-            label="储值备注（可选）"
-            rules={[{ max: 500 }]}
-          >
-            <Input.TextArea rows={2} maxLength={500} showCount />
-          </Form.Item>
-        </Form>
-      </Modal>
+        storeId={storeId}
+        storeName={auth.store?.name}
+        customerId={selectedId}
+        customerName={detail.data.displayName}
+        cards={topupCard ? [topupCard] : []}
+        methods={paymentMethods.data ?? []}
+        shiftOpen={currentShift.data?.status === "Open"}
+        shiftLoading={currentShift.isLoading}
+        canGrantBonus={canGrantBonus}
+        onClose={() => setTopupCard(undefined)}
+        onSuccess={async () => {
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["customer", storeId, selectedId] }),
+            queryClient.invalidateQueries({ queryKey: ["member-topups", storeId, selectedId] }),
+            queryClient.invalidateQueries({ queryKey: ["payments", storeId] }),
+            queryClient.invalidateQueries({ queryKey: ["cashier-shift", storeId] }),
+          ]);
+        }}
+      />}
       <Modal
         title={`储值退款 · ${refundTopup?.topupNo ?? ""}`}
         open={Boolean(refundTopup)}
@@ -1767,81 +1551,47 @@ export function CustomersPage() {
   );
 }
 
-function TopupPaymentEditor({
-  field,
-  form,
-  methods,
-  removable,
-  onRemove,
-}: {
-  field: { key: number; name: number };
-  form: ReturnType<typeof Form.useForm<TopupValues>>[0];
-  methods: PaymentMethod[];
-  removable: boolean;
-  onRemove: () => void;
+function TopupHistorySection({ data, page, pageSize, canRequestRefund, onPageChange, onRefund }: {
+  data?: PageResult<MemberTopup>;
+  page: number;
+  pageSize: number;
+  canRequestRefund: boolean;
+  onPageChange: (page: number) => void;
+  onRefund: (topup: MemberTopup) => void;
 }) {
-  const methodId = Form.useWatch(["allocations", field.name, "methodId"], form);
-  const method = methods.find((item) => item.id === methodId);
-  return (
-    <Card
-      size="small"
-      className="order-line-editor"
-      extra={
-        removable && (
-          <Button
-            type="text"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={onRemove}
-            aria-label="删除支付分摊"
-          />
-        )
-      }
-    >
-      <div className="payment-line-fields">
-        <Form.Item
-          name={[field.name, "methodId"]}
-          label="支付方式"
-          rules={[{ required: true }]}
-        >
-          <Select
-            options={methods.map((item) => ({
-              value: item.id,
-              label: item.name,
-            }))}
-          />
-        </Form.Item>
-        <Form.Item
-          name={[field.name, "amountYuan"]}
-          label="实收金额（元）"
-          rules={[
-            { required: true },
-            { type: "number", min: 0.01, max: 100000000 },
-          ]}
-        >
-          <InputNumber min={0.01} max={100000000} precision={2} prefix="¥" />
-        </Form.Item>
-      </div>
-      {method?.category === "ManualExternal" && (
-        <Form.Item
-          name={[field.name, "externalReference"]}
-          label="交易参考号"
-          rules={[
-            { required: true, message: "人工外部收款必须填写参考号" },
-            { min: 4 },
-            { max: 100 },
-          ]}
-        >
-          <Input maxLength={100} />
-        </Form.Item>
-      )}
-      {method?.category === "ManualExternal" && (
-        <Alert
-          type="warning"
-          showIcon
-          title="人工登记只进入待对账，不能代表渠道确认到账。"
-        />
-      )}
-    </Card>
-  );
+  if (!data?.items.length)
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="还没有储值记录" />;
+  return <>
+    {data.items.map((item) => {
+      const originalRouteAvailable = item.allocations.every((line) => line.category === "Cash");
+      return <Card key={item.id} size="small" className="topup-history">
+        <div>
+          <strong>{item.topupNo}</strong>
+          <Space>
+            <Tag color={item.status === "Refunded" ? "default" : item.status === "PartiallyRefunded" ? "gold" : "green"}>
+              {item.status === "Refunded" ? "已全部退款" : item.status === "PartiallyRefunded" ? "部分已退" : "已入账"}
+            </Tag>
+            {canRequestRefund && (item.status === "Paid" || item.status === "PartiallyRefunded") &&
+              item.remainingPrincipalMinor > 0 && <Button size="small" danger
+                disabled={!originalRouteAvailable}
+                title={originalRouteAvailable ? "提交后由最高权限审批" : "人工外部登记暂不支持原路冲正"}
+                onClick={() => onRefund(item)}>申请退款</Button>}
+          </Space>
+        </div>
+        <div>
+          <span>实收本金 {formatAccount("Principal", item.principalMinor)}</span>
+          <span>赠送奖励 {formatAccount("Bonus", item.bonusMinor)}</span>
+          {item.refundedPrincipalMinor > 0 && <span>已退本金 {formatAccount("Principal", item.refundedPrincipalMinor)} · 已收回奖励 {formatAccount("Bonus", item.revokedBonusMinor)}</span>}
+          <span>{new Date(item.paidAtUtc).toLocaleString("zh-CN", { hour12: false })}</span>
+        </div>
+        {item.allocations.map((line) => <Space key={line.id} wrap>
+          <Tag>{line.methodName} {formatAccount("Principal", line.amountMinor)}</Tag>
+          {line.reconciliationStatus === "Pending" && <Tag color="gold">待核对</Tag>}
+        </Space>)}
+      </Card>;
+    })}
+    <Pagination current={page} pageSize={pageSize} total={data.total} showSizeChanger={false}
+      showTotal={(total) => `共 ${total} 笔`} onChange={onPageChange}
+      style={{ marginTop: 12, textAlign: "right" }} />
+  </>;
 }

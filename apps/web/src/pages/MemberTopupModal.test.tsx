@@ -27,11 +27,14 @@ describe('MemberTopupModal', () => {
 
   it('submits principal, bonus and an exactly balanced payment allocation', async () => {
     apiRequestMock.mockResolvedValue({
-      id: 'topup-1', principalMinor: 20_000, bonusMinor: 2_000,
+      id: 'topup-1', topupNo: 'TU-001', paymentNo: 'PAY-001', cardId: 'card-1',
+      principalMinor: 20_000, bonusMinor: 2_000, paidAtUtc: '2026-09-17T08:00:00Z',
+      allocations: [{ id: 'allocation-1', methodName: '现金', amountMinor: 20_000,
+        reconciliationStatus: 'NotRequired' }],
     })
     const onSuccess = vi.fn()
     render(<QueryClientProvider client={new QueryClient()}><MemberTopupModal
-      open storeId="store-1" customerId="customer-1" customerName="王女士"
+      open storeId="store-1" storeName="测试门店" customerId="customer-1" customerName="王女士"
       cards={[{ id: 'card-1', cardTypeId: 'card-type-1', cardTypeName: '金卡', maskedCardNo: 'CARD-001', status: 'Active',
         validFrom: '2026-01-01', serviceDiscountBasisPoints: 10_000, productDiscountBasisPoints: 10_000,
         accounts: [
@@ -66,5 +69,28 @@ describe('MemberTopupModal', () => {
       allocations: [{ methodId: 'cash-1', amountMinor: 20_000 }],
     })
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('储值完成 · TU-001')).toBeTruthy()
+    expect(screen.getByRole('button', { name: '打印储值小票' })).toBeTruthy()
+    expect(screen.getByText('储值单：TU-001')).toBeTruthy()
+  })
+
+  it('does not ask for a transaction reference for manual WeChat topups', async () => {
+    apiRequestMock.mockResolvedValue({ id: 'topup-2', topupNo: 'TU-002', paymentNo: 'PAY-002',
+      cardId: 'card-1', principalMinor: 100, bonusMinor: 0, paidAtUtc: '2026-09-17T08:00:00Z',
+      allocations: [{ id: 'allocation-2', methodName: '微信人工登记', amountMinor: 100,
+        reconciliationStatus: 'Pending' }] })
+    render(<QueryClientProvider client={new QueryClient()}><MemberTopupModal
+      open storeId="store-1" customerId="customer-1" customerName="王女士"
+      cards={[{ id: 'card-1', cardTypeId: 'card-type-1', cardTypeName: '金卡', maskedCardNo: 'CARD-001',
+        status: 'Active', validFrom: '2026-01-01', serviceDiscountBasisPoints: 10_000,
+        productDiscountBasisPoints: 10_000, accounts: [] }]}
+      methods={[{ id: 'wechat-1', code: 'WECHAT_MANUAL', name: '微信人工登记', category: 'ManualExternal',
+        requiresOpenShift: true }]}
+      shiftOpen canGrantBonus onClose={vi.fn()} onSuccess={vi.fn()}
+    /></QueryClientProvider>)
+
+    expect(screen.queryByRole('textbox', { name: '交易参考号' })).toBeNull()
+    expect(await screen.findByRole('spinbutton', { name: '实收金额（元）' })).toBeTruthy()
+    expect(screen.getByText('人工登记只进入待对账，不能代表渠道确认到账。')).toBeTruthy()
   })
 })

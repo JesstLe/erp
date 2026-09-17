@@ -54,6 +54,7 @@ import { applySettlementDiscount, buildSettlementAllocations, type SettlementVal
 import { normalizeExpectedDurationMinutes } from './modernFacilityReception'
 import { buildCashierProductCatalog, buildCashierServiceCatalog } from './cashierCatalog'
 import { MemberTopupModal } from './MemberTopupModal'
+import { applyMemberDiscountAndRoundToWholeYuan } from './membershipRules'
 import { ServiceRecordsSection } from './ServiceRecordsSection'
 
 type WorkbenchTab = 'main' | 'member' | 'service' | 'product'
@@ -114,7 +115,7 @@ function applyMembershipPricing(lines: ClassicCashierDraftLine[], customer?: Cus
         pricingSource: 'ListPrice' as const, memberDiscountBasisPoints: undefined,
         memberCardTypeId: undefined, memberCardTypeName: undefined }
     const basisPoints = effectiveBasis(card)
-    return { ...line, enteredPriceMinor: Math.round(line.referencePriceMinor * basisPoints / 10_000),
+    return { ...line, enteredPriceMinor: applyMemberDiscountAndRoundToWholeYuan(line.referencePriceMinor, basisPoints),
       priceOverrideReason: `会员折扣：${card.cardTypeName} ${(basisPoints / 1000).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}折`,
       pricingSource: 'MemberDiscount' as const, memberDiscountBasisPoints: basisPoints,
       memberCardTypeId: card.cardTypeId, memberCardTypeName: card.cardTypeName }
@@ -480,6 +481,7 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
     {storeId && previewCustomer && previewCustomerDetail.data && <MemberTopupModal
       open={memberTopupOpen}
       storeId={storeId}
+      storeName={auth.store?.name}
       customerId={previewCustomer.id}
       customerName={previewCustomer.displayName}
       cards={previewCustomerDetail.data.cards.filter((card) => card.status.toUpperCase() === 'ACTIVE')}
