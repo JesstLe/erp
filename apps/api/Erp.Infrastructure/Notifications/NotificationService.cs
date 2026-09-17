@@ -98,7 +98,8 @@ internal sealed class NotificationService(ErpDbContext db) : INotificationServic
                         "顾客护理提醒", $"{customerNames[x.CustomerId]} · 计划回访时间 " +
                         x.FollowUpAtUtc!.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
                             CultureInfo.InvariantCulture),
-                        x.FollowUpAtUtc.Value <= now ? "error" : "warning", "/customers",
+                        x.FollowUpAtUtc.Value <= now ? "error" : "warning",
+                        $"/customers?customerId={x.CustomerId:D}&section=care",
                         x.FollowUpAtUtc.Value)));
             }
         }

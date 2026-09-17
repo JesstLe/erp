@@ -1,5 +1,13 @@
 interface RefundAllocation { id: string; amountMinor: number }
 
+export function applyMemberDiscountAndRoundToWholeYuan(referencePriceMinor: number,
+  discountBasisPoints: number): number {
+  if (!Number.isSafeInteger(referencePriceMinor) || referencePriceMinor < 0 ||
+    !Number.isInteger(discountBasisPoints) || discountBasisPoints < 1_000 || discountBasisPoints > 10_000)
+    throw new Error('会员价格或折扣无效')
+  return Math.round(referencePriceMinor * discountBasisPoints / 1_000_000) * 100
+}
+
 export function buildRemainingRefundLines(allocations: RefundAllocation[], alreadyRefundedMinor: number,
   requestedMinor: number): { originalAllocationId: string; amountMinor: number }[] {
   if (!Number.isSafeInteger(requestedMinor) || requestedMinor <= 0 || alreadyRefundedMinor < 0)

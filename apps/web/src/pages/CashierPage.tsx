@@ -3737,7 +3737,7 @@ function PaymentAllocationEditor({
           />
         </Form.Item>
       )}
-      {method?.category === "ManualExternal" && (
+      {method?.category === "ManualExternal" && method.code !== "WECHAT_MANUAL" && (
         <Form.Item
           name={[field.name, "externalReference"]}
           label="交易参考号"

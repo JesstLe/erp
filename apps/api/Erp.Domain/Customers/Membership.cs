@@ -24,6 +24,17 @@ public static class MemberDeductionPolicy
     }
 }
 
+public static class MemberPricePolicy
+{
+    public static long ApplyDiscountAndRoundToWholeYuan(long referencePriceMinor, int discountBasisPoints)
+    {
+        if (referencePriceMinor < 0 || discountBasisPoints is < 1_000 or > 10_000)
+            throw new DomainRuleException("VALIDATION_FAILED", "会员价格或折扣无效");
+        const long divisor = 1_000_000;
+        return checked(((checked(referencePriceMinor * discountBasisPoints) + divisor / 2) / divisor) * 100);
+    }
+}
+
 public static class MemberTopupReversalPolicy
 {
     public static long CalculateRequiredBonusRevocation(long originalPrincipal, long originalBonus,

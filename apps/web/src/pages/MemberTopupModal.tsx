@@ -1,6 +1,7 @@
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, PrinterOutlined, PlusOutlined } from '@ant-design/icons'
 import { Alert, Button, Card, Form, Input, InputNumber, Modal, Select, Space, message } from 'antd'
 import { useMutation } from '@tanstack/react-query'
+import { useState } from 'react'
 import { apiRequest, ApiError } from '../api/client'
 import type { MemberCard, MemberTopup, PaymentMethod } from '../api/types'
 
@@ -21,6 +22,7 @@ interface TopupValues {
 interface Props {
   open: boolean
   storeId: string
+  storeName?: string
   customerId: string
   customerName: string
   cards: MemberCard[]
@@ -40,9 +42,10 @@ function money(minor: number) {
   return `¥${(minor / 100).toFixed(2)}`
 }
 
-export function MemberTopupModal({ open, storeId, customerId, customerName, cards, methods,
+export function MemberTopupModal({ open, storeId, storeName, customerId, customerName, cards, methods,
   shiftOpen, shiftLoading, canGrantBonus, onClose, onSuccess }: Props) {
   const [form] = Form.useForm<TopupValues>()
+  const [completedTopup, setCompletedTopup] = useState<MemberTopup>()
   const allowedMethods = methods.filter((method) =>
     method.category !== 'InternalAccount' && method.category !== 'ChannelExternal')
   const createTopup = useMutation({
@@ -65,14 +68,14 @@ export function MemberTopupModal({ open, storeId, customerId, customerName, card
     }),
     onSuccess: async (topup) => {
       message.success(`储值成功：本金 ${money(topup.principalMinor)}，赠金 ${money(topup.bonusMinor)}`)
-      form.resetFields()
-      onClose()
+      setCompletedTopup(topup)
       await onSuccess(topup)
     },
     onError: (error) => message.error(requestError(error)),
   })
   const initialize = (visible: boolean) => {
     if (!visible) return
+    setCompletedTopup(undefined)
     const firstMethod = allowedMethods.find((method) => method.code === 'CASH') ?? allowedMethods[0]
     form.setFieldsValue({
       cardId: cards[0]?.id,
@@ -81,20 +84,43 @@ export function MemberTopupModal({ open, storeId, customerId, customerName, card
       allocations: [{ methodId: firstMethod?.id, amountYuan: 0 }],
     })
   }
+  const close = () => {
+    setCompletedTopup(undefined)
+    form.resetFields()
+    onClose()
+  }
+  const receiptCard = cards.find((card) => card.id === completedTopup?.cardId)
 
   return <Modal
-    title={`会员储值 · ${customerName}`}
+    title={completedTopup ? `储值完成 · ${completedTopup.topupNo}` : `会员储值 · ${customerName}`}
     width={760}
     open={open}
-    onCancel={onClose}
-    onOk={() => form.submit()}
+    onCancel={close}
+    onOk={completedTopup ? undefined : () => form.submit()}
     afterOpenChange={initialize}
     confirmLoading={createTopup.isPending}
     okText="确认收款并入账"
     okButtonProps={{ disabled: shiftLoading || !shiftOpen || !cards.length || !allowedMethods.length }}
+    footer={completedTopup ? <Space><Button onClick={close}>完成</Button><Button type="primary"
+      icon={<PrinterOutlined />} aria-label="打印储值小票" onClick={() => window.print()}>打印储值小票</Button></Space> : undefined}
     destroyOnHidden
   >
-    <Alert type="warning" showIcon className="modal-alert"
+    {completedTopup ? <div className="modern-prebill modern-pos-receipt">
+      <h2>{storeName || '当前门店'}</h2>
+      <p>储值单：{completedTopup.topupNo}</p>
+      <p>支付单：{completedTopup.paymentNo}</p>
+      <p>时间：{new Date(completedTopup.paidAtUtc).toLocaleString('zh-CN', { hour12: false })}</p>
+      <p>会员：{customerName}</p>
+      <p>会员卡：{receiptCard ? `${receiptCard.maskedCardNo} · ${receiptCard.cardTypeName}` : completedTopup.cardId}</p>
+      <div><span>储值本金</span><b>{money(completedTopup.principalMinor)}</b></div>
+      <div><span>赠送金额</span><b>{money(completedTopup.bonusMinor)}</b></div>
+      {completedTopup.allocations.map((allocation) => <div key={allocation.id}>
+        <span>{allocation.methodName}{allocation.reconciliationStatus === 'Pending' ? '（待核对）' : ''}</span>
+        <b>{money(allocation.amountMinor)}</b>
+      </div>)}
+      {completedTopup.note && <p>备注：{completedTopup.note}</p>}
+      <footer>本次入账 <b>{money(completedTopup.principalMinor + completedTopup.bonusMinor)}</b></footer>
+    </div> : <><Alert type="warning" showIcon className="modal-alert"
       title="本金是本次实际收款；赠金不计入实收。确认后立即写入会员资金流水，不能直接修改余额。" />
     {!shiftLoading && !shiftOpen && <Alert type="error" showIcon className="modal-alert" title="请先开班，再办理会员储值。" />}
     {!allowedMethods.length && <Alert type="error" showIcon className="modal-alert" title="当前没有可用于即时储值的收款方式。" />}
@@ -134,7 +160,7 @@ export function MemberTopupModal({ open, storeId, customerId, customerName, card
       <Form.Item name="note" label="储值备注（可选）" rules={[{ max: 500 }]}>
         <Input.TextArea rows={2} maxLength={500} showCount />
       </Form.Item>
-    </Form>
+    </Form></>}
   </Modal>
 }
 
@@ -155,15 +181,16 @@ function TopupPaymentEditor({ field, form, methods, removable, onRemove }: {
       </Form.Item>
       <Form.Item name={[field.name, 'amountYuan']} label="实收金额（元）"
         rules={[{ required: true }, { type: 'number', min: 0.01, max: 100000000 }]}>
-        <InputNumber min={0.01} max={100000000} precision={2} prefix="¥" />
+        <InputNumber min={0.01} max={100000000} precision={2} prefix="¥" aria-label="实收金额（元）" />
       </Form.Item>
     </div>
-    {method?.category === 'ManualExternal' && <>
+    {method?.category === 'ManualExternal' && method.code !== 'WECHAT_MANUAL' && <>
       <Form.Item name={[field.name, 'externalReference']} label="交易参考号"
         rules={[{ required: true, message: '人工外部收款必须填写参考号' }, { min: 4 }, { max: 100 }]}>
-        <Input maxLength={100} />
+        <Input maxLength={100} aria-label="交易参考号" />
       </Form.Item>
-      <Alert type="warning" showIcon title="人工登记只进入待对账，不能代表渠道确认到账。" />
     </>}
+    {method?.category === 'ManualExternal' &&
+      <Alert type="warning" showIcon title="人工登记只进入待对账，不能代表渠道确认到账。" />}
   </Card>
 }

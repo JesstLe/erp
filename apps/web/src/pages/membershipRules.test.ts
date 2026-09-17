@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { buildRemainingRefundLines, isServicePassDue } from './membershipRules'
+import { applyMemberDiscountAndRoundToWholeYuan, buildRemainingRefundLines, isServicePassDue } from './membershipRules'
+
+it('rounds discounted member prices to the nearest whole yuan', () => {
+  expect(applyMemberDiscountAndRoundToWholeYuan(5_900, 8_305)).toBe(4_900)
+  expect(applyMemberDiscountAndRoundToWholeYuan(9_900, 9_500)).toBe(9_400)
+  expect(applyMemberDiscountAndRoundToWholeYuan(10_100, 5_000)).toBe(5_100)
+})
 
 describe('membership rules', () => {
   it('allocates a later partial refund after earlier allocation amounts', () => {

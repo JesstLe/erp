@@ -5,6 +5,17 @@ namespace Erp.Domain.Tests.Customers;
 
 public sealed class CustomerMembershipTests
 {
+    [Theory]
+    [InlineData(5_900, 8_305, 4_900)]
+    [InlineData(9_900, 9_500, 9_400)]
+    [InlineData(10_100, 5_000, 5_100)]
+    public void MemberPriceRoundsHalfUpToWholeYuan(long referencePriceMinor, int basisPoints,
+        long expectedPriceMinor)
+    {
+        Assert.Equal(expectedPriceMinor,
+            MemberPricePolicy.ApplyDiscountAndRoundToWholeYuan(referencePriceMinor, basisPoints));
+    }
+
     [Fact]
     public void CustomerHomeStoreCanBeCorrectedWithoutChangingIdentity()
     {

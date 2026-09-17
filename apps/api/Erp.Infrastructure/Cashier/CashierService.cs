@@ -1308,7 +1308,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
         if (referencePriceMinor > 0 && option is not null)
         {
             var basisPoints = option.BasisPoints;
-            var memberPrice = checked((referencePriceMinor * basisPoints + 5_000) / 10_000);
+            var memberPrice = MemberPricePolicy.ApplyDiscountAndRoundToWholeYuan(referencePriceMinor, basisPoints);
             if (!explicitManualOverride && (enteredPriceMinor == referencePriceMinor || enteredPriceMinor == memberPrice ||
                 inheritedMemberPrice))
             {

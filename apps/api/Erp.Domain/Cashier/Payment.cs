@@ -200,8 +200,12 @@ public sealed class PaymentAllocation : Entity
     {
         if (amountMinor <= 0 || amountMinor > 10_000_000_000)
             throw new DomainRuleException("VALIDATION_FAILED", "支付分摊金额必须大于0且不超过允许范围");
+        var normalizedMethodCode = methodCode.Trim();
         var reference = string.IsNullOrWhiteSpace(externalReference) ? null : externalReference.Trim();
-        if (category == PaymentMethodCategory.ManualExternal && reference?.Length is not (>= 4 and <= 100))
+        var referenceOptional = category == PaymentMethodCategory.ManualExternal &&
+            normalizedMethodCode.Equals("WECHAT_MANUAL", StringComparison.OrdinalIgnoreCase);
+        if (category == PaymentMethodCategory.ManualExternal && !referenceOptional &&
+            reference?.Length is not (>= 4 and <= 100))
             throw new DomainRuleException("VALIDATION_FAILED", "人工登记外部收款必须填写4到100字的交易参考号");
         if (reference?.Length > 128) throw new DomainRuleException("VALIDATION_FAILED", "交易参考号最多128字");
         if (category is PaymentMethodCategory.Cash or PaymentMethodCategory.ManualExternal or
@@ -215,7 +219,7 @@ public sealed class PaymentAllocation : Entity
             throw new DomainRuleException("VALIDATION_FAILED", "渠道交易号只能由已验签结果写入");
         PaymentId = paymentId;
         MethodId = methodId;
-        MethodCodeSnapshot = methodCode.Trim();
+        MethodCodeSnapshot = normalizedMethodCode;
         MethodNameSnapshot = methodName.Trim();
         Category = category;
         AmountMinor = amountMinor;

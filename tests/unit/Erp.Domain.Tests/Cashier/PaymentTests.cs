@@ -49,19 +49,20 @@ public sealed class PaymentTests
     }
 
     [Fact]
-    public void ManualExternalRequiresReferenceAndStaysPendingReconciliation()
+    public void ManualWechatMayOmitReferenceButOtherManualExternalStillRequiresIt()
     {
-        Assert.Throws<DomainRuleException>(() => CreatePayment(10_000,
-            [new(Guid.CreateVersion7(), "WECHAT_MANUAL", "微信人工登记", PaymentMethodCategory.ManualExternal,
-                10_000, null, Guid.CreateVersion7())]));
-
         var payment = CreatePayment(10_000,
             [new(Guid.CreateVersion7(), "WECHAT_MANUAL", "微信人工登记", PaymentMethodCategory.ManualExternal,
-                10_000, "WX-TEST-0001", Guid.CreateVersion7())]);
+                10_000, null, Guid.CreateVersion7())]);
 
         var allocation = payment.Allocations.Single();
+        Assert.Null(allocation.ExternalReference);
         Assert.Equal(PaymentConfirmationStatus.ManualPendingReconciliation, allocation.ConfirmationStatus);
         Assert.Equal(ReconciliationStatus.Pending, allocation.ReconciliationStatus);
+
+        Assert.Throws<DomainRuleException>(() => CreatePayment(10_000,
+            [new(Guid.CreateVersion7(), "ALIPAY_MANUAL", "支付宝人工登记", PaymentMethodCategory.ManualExternal,
+                10_000, null, Guid.CreateVersion7())]));
     }
 
     [Fact]
