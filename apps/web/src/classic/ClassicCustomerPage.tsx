@@ -99,12 +99,12 @@ export function ClassicCustomerDashboard() {
           <div className="classic-chart-wrap classic-customer-card-chart">
             <ResponsiveContainer width="48%" height="100%"><PieChart><Pie data={chartData} dataKey="value" nameKey="name" innerRadius={48} outerRadius={78} isAnimationActive={false}>{chartData.map((item, index) => <Cell key={item.name} fill={chartColors[index % chartColors.length]} opacity={item.value ? 1 : .18} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer>
             <div className="classic-customer-card-legend">{cardLegend.length ? cardLegend.map((item, index) => <span key={item.id}><i style={{ background: chartColors[index % chartColors.length] }} />{item.name}</span>) : <span>暂无卡类数据</span>}</div>
-            <small className="classic-data-gap">卡类数量汇总接口待接入</small>
+            <small className="classic-data-gap">卡类统计暂不可用</small>
           </div>
         </section>
         <section className="classic-panel classic-chart-panel">
           <header><strong>本月储值金额走势</strong><MenuOutlined /></header>
-          <div className="classic-chart-wrap classic-trend-gap"><ResponsiveContainer width="100%" height="100%"><LineChart data={trend}><XAxis dataKey="day" tick={{ fontSize: 10 }} interval={2} /><YAxis tick={{ fontSize: 10 }} width={42} /><Tooltip formatter={(value) => `¥${Number(value).toFixed(2)}`} /><Line dataKey="amount" stroke="#75a9df" strokeWidth={2} dot={false} isAnimationActive={false} /></LineChart></ResponsiveContainer><span>储值日趋势汇总接口待接入</span></div>
+          <div className="classic-chart-wrap classic-trend-gap"><ResponsiveContainer width="100%" height="100%"><LineChart data={trend}><XAxis dataKey="day" tick={{ fontSize: 10 }} interval={2} /><YAxis tick={{ fontSize: 10 }} width={42} /><Tooltip formatter={(value) => `¥${Number(value).toFixed(2)}`} /><Line dataKey="amount" stroke="#75a9df" strokeWidth={2} dot={false} isAnimationActive={false} /></LineChart></ResponsiveContainer><span>储值趋势暂不可用</span></div>
         </section>
       </section>
       <section className="classic-panel classic-latest classic-customer-latest">
@@ -216,10 +216,10 @@ export function ClassicCustomerListPage() {
   const toolbar = [
     ['新增', <PlusOutlined />, () => setCreateOpen(true), !canWrite],
     ['修改', <EditOutlined />, openEdit, !canManage],
-    ['批量修改', <SettingOutlined />, () => message.info('批量修改后端尚未接入，已登记在缺口文档'), !canManage],
+    ['批量修改', <SettingOutlined />, () => message.info('暂不支持批量修改，请逐个编辑顾客资料。'), !canManage],
     ['删除', <DeleteOutlined />, () => requireSelection(() => setStatusOpen(true)), !canManage],
     ['查询', <SearchOutlined />, () => setQueryOpen((value) => !value), false],
-    ['导入', <ImportOutlined />, () => message.info('顾客导入后端尚未接入，已登记在缺口文档'), !canWrite],
+    ['导入', <ImportOutlined />, () => message.info('暂不支持导入顾客。'), !canWrite],
     ['刷新', <ReloadOutlined />, () => void customers.refetch(), false],
     ['表格', <FileExcelOutlined />, () => setCompact((value) => !value), false],
     ['打印', <PrinterOutlined />, () => window.print(), false],
@@ -231,7 +231,7 @@ export function ClassicCustomerListPage() {
     <div className="classic-customer-toolbar">{toolbar.map(([label, icon, action, disabled]) => <button key={label} type="button" onClick={action} disabled={disabled}>{icon}<span>{label}</span></button>)}</div>
     {queryOpen && <section className="classic-customer-query"><label>顾客查询<Input value={query} allowClear placeholder="输入姓名、完整手机号或卡号自动检索" prefix={<SearchOutlined />} onChange={(event) => setQuery(event.target.value)} /></label><label>会员状态<Select value="全部" options={['全部', '正常', '停用', '挂失'].map((value) => ({ value, label: value }))} /></label><label>生日月份<Select value="全部" options={['全部', ...Array.from({ length: 12 }, (_, index) => `${String(index + 1).padStart(2, '0')}月`)].map((value) => ({ value, label: value }))} /></label><Button onClick={() => { setQuery(''); setQueryOpen(false) }}>取消</Button></section>}
     <div className="classic-customer-workspace">
-      <aside className="classic-customer-card-tree"><h3>顾客卡类</h3><button type="button" className={selectedCardType === '全部卡类' ? 'active' : ''} onClick={() => setSelectedCardType('全部卡类')}>全部卡类</button>{(cardTypes.data ?? []).filter((item) => item.status === 'Active').map((item) => <button key={item.id} type="button" className={selectedCardType === item.name ? 'active' : ''} onClick={() => { setSelectedCardType(item.name); message.info('已保留旧版卡类入口；按卡类服务端筛选接口待接入') }}>{item.name}</button>)}</aside>
+      <aside className="classic-customer-card-tree"><h3>顾客卡类</h3><button type="button" className={selectedCardType === '全部卡类' ? 'active' : ''} onClick={() => setSelectedCardType('全部卡类')}>全部卡类</button>{(cardTypes.data ?? []).filter((item) => item.status === 'Active').map((item) => <button key={item.id} type="button" className={selectedCardType === item.name ? 'active' : ''} onClick={() => { setSelectedCardType(item.name); message.info('暂不支持按卡类筛选，请使用姓名、手机号或卡号查询。') }}>{item.name}</button>)}</aside>
       <section className={`classic-customer-grid ${compact ? 'is-compact' : ''}`}>
         <div className="classic-customer-table-scroll"><table><thead><tr>{['会员卡号', '会员姓名', '性别', '手机号码', '办卡分店', '会员卡类', '来店渠道', '储值余额', '储值奖励', '消费总额', '欠款金额', '签单额度', '最后来店时间', '登记时间', '更新时间', '会员状态', '备注'].map((label) => <th key={label}>{label}</th>)}</tr></thead><tbody>
           {customers.isLoading && <tr><td colSpan={17}><Spin size="small" /></td></tr>}

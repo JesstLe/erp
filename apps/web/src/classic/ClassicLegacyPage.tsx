@@ -108,51 +108,50 @@ export function ClassicLegacyPage({ module, page }: { module: ClassicManifestMod
     if (control.includes('打印')) return window.print()
     if (control.includes('导出')) return exportHeaders(page.label, headers)
     if (control.includes('退出') || control.includes('取消') || control.includes('关闭')) return navigate(`/ui/new/${module.key}`)
-    if (dangerousPattern.test(control)) return void message.warning('该动作尚未接入新系统状态机，本页不会写入或破坏业务数据')
-    if (/确定|保存|结算/.test(control)) return void message.info('表单结构已完成；后端未接入的页面不会写入数据')
+    if (dangerousPattern.test(control)) return void message.warning('该操作暂不可用，数据未发生变化。')
+    if (/确定|保存|结算/.test(control)) return void message.info('该操作暂不可用，内容未保存。')
     if (formPattern.test(control) || control.includes('调阅')) return setFormOpen(true)
-    return void message.info('该控件位置已复刻，后端能力待接入')
+    return void message.info('该功能暂不可用。')
   }
 
   const grid = <section className={`classic-data-grid ${compact ? 'is-compact' : ''}`}>
-    <div className="classic-data-scroll"><table><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody><tr><td colSpan={headers.length}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={mapping.status === 'pending' ? '页面结构已完成，等待后端数据接入' : '当前查询条件下暂无记录'} /></td></tr></tbody></table></div>
-    <footer><span>共 0 条记录</span><span>经典页面编号：{page.id}</span><Tag color={mapping.status === 'integrated' ? 'green' : mapping.status === 'partial' ? 'blue' : 'orange'}>{mapping.status === 'integrated' ? '已接入' : mapping.status === 'partial' ? '部分接入' : '待接入'}</Tag></footer>
+    <div className="classic-data-scroll"><table><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody><tr><td colSpan={headers.length}><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="此页面暂不提供查询结果" /></td></tr></tbody></table></div>
+    <footer><span>请在对应业务页面查询记录</span></footer>
   </section>
 
   if (layout === 'form' || layout === 'document') {
     return <div className={`classic-legacy-page classic-legacy-form-page ${layout === 'document' ? 'classic-legacy-document-page' : ''}`}>
-      <header className="classic-page-caption"><div><strong>{page.label}</strong><span>{module.label}管理</span></div><Tag color={mapping.status === 'integrated' ? 'green' : mapping.status === 'partial' ? 'blue' : 'orange'}>{mapping.status === 'integrated' ? '已接入' : mapping.status === 'partial' ? '部分接入' : '后端待接入'}</Tag></header>
+      <header className="classic-page-caption"><div><strong>{page.label}</strong><span>{module.label}管理</span></div><Tag color="orange">此页面暂不支持保存</Tag></header>
       {page.tabs.length > 0 && <Tabs size="small" items={page.tabs.map((tab) => ({ key: tab, label: tab, children: null }))} />}
-      <Form layout="vertical" className="classic-direct-form" onFinish={() => message.info(mapping.path ? '请进入已接入业务完成提交' : '表单已通过前端校验；当前未写入数据')}>
+      <Form layout="vertical" className="classic-direct-form" onFinish={() => message.info(mapping.path ? '请在对应业务页面保存。' : '暂不支持保存，内容未保存。')}>
         <ClassicFieldGrid fields={fields} page={page} />
-        {layout === 'document' && <div className="classic-document-lines"><header><strong>单据明细</strong><span>明细操作与原系统位置一致，后端状态机接入后开放写入</span></header>{grid}</div>}
-        <footer>{toolbarControls.map((control) => /确定|保存|结算/.test(control) ? <Button key={control} type="primary" htmlType="submit" icon={controlIcon(control)}>{control}</Button> : <Button key={control} icon={controlIcon(control)} onClick={() => runControl(control)}>{control}</Button>)}{mapping.path && <Button onClick={() => navigate(mapping.path!)}>进入已接入业务</Button>}</footer>
+        {layout === 'document' && <div className="classic-document-lines"><header><strong>单据明细</strong></header>{grid}</div>}
+        <footer>{toolbarControls.map((control) => /确定|保存|结算/.test(control) ? <Button key={control} type="primary" htmlType="submit" icon={controlIcon(control)}>{control}</Button> : <Button key={control} icon={controlIcon(control)} onClick={() => runControl(control)}>{control}</Button>)}{mapping.path && <Button onClick={() => navigate(mapping.path!)}>前往业务页面</Button>}</footer>
       </Form>
-      <div className="classic-page-note">{mapping.note}</div>
     </div>
   }
 
   return <div className={`classic-legacy-page classic-legacy-${layout}-page`}>
-    <header className="classic-page-caption"><div><strong>{page.label}</strong><span>{mapping.note}</span></div>{mapping.path && <Button size="small" onClick={() => navigate(mapping.path!)}>进入已接入业务</Button>}</header>
+    <header className="classic-page-caption"><div><strong>{page.label}</strong><span>{module.label}管理</span></div>{mapping.path && <Button size="small" onClick={() => navigate(mapping.path!)}>前往业务页面</Button>}</header>
     {page.tabs.length > 0 && <Tabs size="small" items={page.tabs.map((tab) => ({ key: tab, label: tab, children: null }))} />}
     <section className="classic-legacy-toolbar" aria-label={`${page.label}工具栏`}>{toolbarControls.map((control) => {
       const disabled = dangerousPattern.test(control) && mapping.status === 'pending'
       const button = <Button key={control} size="small" icon={controlIcon(control)} disabled={disabled} onClick={() => runControl(control)}>{control}</Button>
-      return disabled ? <Tooltip key={control} title="后端状态机和审计尚未接入">{button}</Tooltip> : button
+      return disabled ? <Tooltip key={control} title="该操作暂不可用">{button}</Tooltip> : button
     })}</section>
     {lastQuery && <div className="classic-query-summary"><SearchOutlined /> 已应用 {Object.values(lastQuery).filter(Boolean).length} 个查询条件</div>}
     <div className={`classic-legacy-grid-layout ${navigationControls.length ? 'has-navigation' : ''}`}>
       {navigationControls.length > 0 && <aside className="classic-legacy-tree"><h3>{page.label}分类</h3><button type="button" className={!activeNavigation ? 'active' : ''} onClick={() => setActiveNavigation(undefined)}>全部</button>{navigationControls.map((control) => <button key={control} type="button" className={activeNavigation === control ? 'active' : ''} onClick={() => setActiveNavigation(control)}>{control}</button>)}</aside>}
-      <div className="classic-legacy-grid-main">{layout === 'report' && <section className="classic-report-filter"><Form layout="inline"><ClassicFieldGrid fields={fields.slice(0, 8)} page={page} namePrefix="report-" /><Button type="primary" icon={<SearchOutlined />} onClick={() => message.info('报表口径后端待接入')}>查询</Button></Form></section>}{grid}</div>
+      <div className="classic-legacy-grid-main">{layout === 'report' && <section className="classic-report-filter"><Form layout="inline"><ClassicFieldGrid fields={fields.slice(0, 8)} page={page} namePrefix="report-" /><Button type="primary" icon={<SearchOutlined />} onClick={() => message.info('该报表暂不可用。')}>查询</Button></Form></section>}{grid}</div>
     </div>
 
     <Modal title={`${page.label} · 查询条件`} open={queryOpen} onCancel={() => setQueryOpen(false)} footer={null} destroyOnHidden width={fields.length > 8 ? 820 : 620}>
       <Form layout="vertical" onFinish={(values) => { setLastQuery(values); setQueryOpen(false); message.success('查询条件已应用') }}><ClassicFieldGrid fields={fields} page={page} namePrefix="query-" /><Space><Button type="primary" htmlType="submit">确定</Button><Button onClick={() => setQueryOpen(false)}>取消</Button><Button htmlType="reset">清空</Button></Space></Form>
     </Modal>
 
-    <Modal title={`${page.label} · 业务表单`} open={formOpen} onCancel={() => setFormOpen(false)} footer={<Space><Button onClick={() => setFormOpen(false)}>关闭</Button>{mapping.path && <Button type="primary" onClick={() => navigate(mapping.path!)}>进入已接入业务</Button>}</Space>} width={820}>
-      {fields.length ? <Form layout="vertical"><ClassicFieldGrid fields={fields} page={page} namePrefix="business-" /></Form> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="参考系统未直接暴露该表单字段；已登记为后端与字段设计缺口" />}
-      <div className="classic-modal-note">本窗口只复刻字段与交互位置，不会向旧系统或新系统写入数据。</div>
+    <Modal title={`${page.label} · 业务表单`} open={formOpen} onCancel={() => setFormOpen(false)} footer={<Space><Button onClick={() => setFormOpen(false)}>关闭</Button>{mapping.path && <Button type="primary" onClick={() => navigate(mapping.path!)}>前往业务页面</Button>}</Space>} width={820}>
+      {fields.length ? <Form layout="vertical"><ClassicFieldGrid fields={fields} page={page} namePrefix="business-" /></Form> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该功能暂不可用" />}
+      <div className="classic-modal-note">此窗口暂不支持保存。</div>
     </Modal>
   </div>
 }

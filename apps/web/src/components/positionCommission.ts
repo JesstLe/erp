@@ -1,5 +1,11 @@
 import type { PositionServiceCommission } from "../api/types";
 
+export function commissionSourceLabel(override: number | undefined, defaultRate: number | null): string {
+  if (override != null) return "用此项目单独比例";
+  if (defaultRate != null) return "用岗位通用比例";
+  return "用服务项目原设置";
+}
+
 export function commissionLabel(service: PositionServiceCommission, override: number | undefined,
   defaultRate: number | null): string {
   const rate = override ?? defaultRate;

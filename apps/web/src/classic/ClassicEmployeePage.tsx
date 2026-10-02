@@ -497,7 +497,7 @@ export function ClassicEmployeePage() {
             <span>
               {selected
                 ? `已选择：${selected.displayName} · ${positionName(selected.positionCode)}`
-                : "员工档案与经典界面独立呈现，不跳转现代版页面"}
+                : "请选择员工查看或编辑资料"}
             </span>
             <Space>
               {selected && (

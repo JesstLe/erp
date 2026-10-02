@@ -4,7 +4,7 @@ import { Alert, Button, Input, InputNumber, Modal, Space, Table, Typography, mes
 import { apiRequest, ApiError } from "../api/client";
 import type { EmployeePosition, PositionCommissions, PositionServiceCommission } from "../api/types";
 
-import { commissionLabel } from "./positionCommission";
+import { commissionLabel, commissionSourceLabel } from "./positionCommission";
 
 // Shared configuration UI, without routing either shell into the other shell.
 export function PositionCommissionsModal({ position, onClose }: {
@@ -55,15 +55,20 @@ export function PositionCommissionsModal({ position, onClose }: {
     onCancel={onClose} onOk={() => save.mutate()} okText="保存提成规则"
     confirmLoading={save.isPending} okButtonProps={{ disabled: !configuration.data || busy || configuration.isError }}>
     <Space orientation="vertical" style={{ width: "100%" }} size={16}>
-      <Alert type="info" showIcon title="员工选择该岗位后自动使用这些比例。项目单独比例优先，其次岗位默认，最后沿用项目原有提成。留空表示沿用，0% 表示不计提；只影响新建或重新保存的草稿。" />
+      <Alert type="info" showIcon title="提成只算一次，不叠加" description={<div>
+        <div>先填岗位通用比例；个别项目不同，再在下面单独填。</div>
+        <div>项目单独填了，就用单独比例；没填，就用岗位通用比例。</div>
+        <div>两处都没填，就用“服务项目”页面设置的提成。</div>
+        <div>例如：岗位填20%，某项目单独填15%；该项目实收100元，提成是15元，不是35元。</div>
+      </div>} />
       {configuration.isError && <Alert type="error" title="提成配置加载失败，请重试" />}
       <Space wrap>
-        <Typography.Text>岗位默认提成比例</Typography.Text>
-        <InputNumber aria-label="岗位默认提成比例" min={0} max={100} precision={2} suffix="%"
+        <Typography.Text>岗位通用比例</Typography.Text>
+        <InputNumber aria-label="岗位通用比例" min={0} max={100} precision={2} suffix="%"
           disabled={busy || !configuration.data} value={defaultRate == null ? null : defaultRate / 100}
           onChange={value => setDefaultRate(value == null ? null : Math.round(value * 100))}
-          placeholder="留空沿用项目规则" style={{ width: 210 }} />
-        <Button disabled={busy || !configuration.data} onClick={() => setDefaultRate(null)}>清空默认比例</Button>
+          placeholder="不填则用项目原设置" style={{ width: 210 }} />
+        <Button disabled={busy || !configuration.data} onClick={() => setDefaultRate(null)}>清空通用比例</Button>
         <Button disabled={busy} onClick={() => { setDefaultRate(undefined); setRates(null); void configuration.refetch(); }}>重新加载</Button>
       </Space>
       <Space wrap>
@@ -84,17 +89,20 @@ export function PositionCommissionsModal({ position, onClose }: {
           { title: "项目编号", dataIndex: "code", width: 150 },
           { title: "服务项目", dataIndex: "name", width: 200,
             render: (_, item) => `${item.name}${item.status === "Disabled" ? "（已停用）" : ""}` },
-          { title: "该岗位的项目提成比例", width: 220, render: (_, item) =>
+          { title: "单独比例（可不填）", width: 220, render: (_, item) =>
             <InputNumber aria-label={`${item.name}提成比例`} min={0} max={100} precision={2} suffix="%"
               value={rates[item.serviceItemId] == null ? null : rates[item.serviceItemId]! / 100}
-              disabled={busy} placeholder="留空沿用岗位默认" style={{ width: "100%" }}
+              disabled={busy} placeholder="不填则用通用比例" style={{ width: "100%" }}
               onChange={value => setRates(previous => ({ ...(previous ?? rates),
                 [item.serviceItemId]: value == null ? undefined : Math.round(value * 100),
               }))} /> },
-          { title: "实际生效规则", width: 200, render: (_, item) =>
-            commissionLabel(item, rates[item.serviceItemId], defaultRate) },
+          { title: "最终按这个算", width: 200, render: (_, item) => <div>
+            <Typography.Text strong>{commissionLabel(item, rates[item.serviceItemId], defaultRate)}</Typography.Text>
+            <div><Typography.Text type="secondary">{commissionSourceLabel(rates[item.serviceItemId], defaultRate)}</Typography.Text></div>
+          </div> },
         ]} />
-      <Typography.Text type="secondary">比例按服务明细最终成交金额计算（包含数量），金额四舍五入到分；产品不计服务提成。合伙人暂未纳入。</Typography.Text>
+      <Typography.Text type="secondary">按服务成交金额（含数量）计算提成，四舍五入到分；产品不计服务提成。</Typography.Text>
+      <Typography.Text type="secondary">不填不等于0%：填0%就是不给提成。已确认的账单不会因修改比例而改变。</Typography.Text>
     </Space>
   </Modal>;
 }

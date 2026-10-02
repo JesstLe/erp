@@ -499,7 +499,7 @@ export function EmployeesPage() {
         <Alert
           type="info"
           showIcon
-          title="岗位是品牌自己的业务字典，与登录角色和系统权限分开管理。岗位名称可自定义，编码由系统自动生成且不随改名变化。"
+          title="岗位名称可自定义，岗位用于分配工作和提成；登录角色决定操作权限。岗位编码自动生成，改名不改变编码。"
           className="modal-alert"
         />
         <Space style={{ marginBottom: 12 }}>
@@ -966,7 +966,7 @@ export function EmployeesPage() {
             <Alert
               type="info"
               showIcon
-              title="角色与门店范围决定可访问的数据和动作；前端隐藏按钮不能替代服务端鉴权。"
+              title="角色决定操作权限，门店范围决定可查看的数据。"
             />
           </Space>
         )}

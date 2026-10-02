@@ -1433,7 +1433,7 @@ export function CustomersPage() {
           <Alert
             type="info"
             showIcon
-            title="折扣由后端权威计算。10 折表示原价；会员价不与团购核销叠加，历史订单不随以后调整而变化。"
+            title="10 折表示原价；会员价不与团购核销叠加，调整折扣不会改变历史订单。"
             className="modal-alert"
           />
           <Form.Item
