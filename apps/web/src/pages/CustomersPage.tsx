@@ -737,6 +737,69 @@ export function CustomersPage() {
         )}
         {detail.data && (
           <Space orientation="vertical" size={20} className="full-width">
+            <div>
+              <Typography.Title level={4}>会员卡与账户</Typography.Title>
+              {!detail.data.cards.length ? (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description="尚未开通会员"
+                />
+              ) : (
+                detail.data.cards.map((card) => (
+                  <Card key={card.id} size="small" className="member-card">
+                    <div className="member-card-title">
+                      <div>
+                        <Typography.Text type="secondary">
+                          {card.cardTypeName}
+                        </Typography.Text>
+                        <Typography.Title level={5}>
+                          {card.maskedCardNo}
+                        </Typography.Title>
+                      </div>
+                      <Space>
+                        <Tag color="green">有效</Tag>
+                        {canTopup && (
+                          <Button
+                            size="small"
+                            type="primary"
+                            icon={<DollarOutlined />}
+                            disabled={currentShift.data?.status !== "Open"}
+                            onClick={() => beginTopup(card)}
+                          >
+                            储值
+                          </Button>
+                        )}
+                      </Space>
+                    </div>
+                    <Typography.Text type="secondary">
+                      有效期：{card.validFrom} 至 {card.validTo ?? "长期"}
+                    </Typography.Text>
+                    {canViewFinancialDetails ? (
+                      <div className="account-grid">
+                        {card.accounts.map((account) => (
+                          <div key={account.id}>
+                            <span>
+                              {accountLabels[account.accountType] ??
+                                account.accountType}
+                            </span>
+                            <strong>
+                              {formatAccount(
+                                account.accountType,
+                                account.balanceUnits,
+                              )}
+                            </strong>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <Typography.Text type="secondary">
+                        账户余额仅向店长和结算角色显示。
+                      </Typography.Text>
+                    )}
+                  </Card>
+                ))
+              )}
+            </div>
             <Descriptions
               column={2}
               bordered
@@ -869,69 +932,6 @@ export function CustomersPage() {
                 },
               ]}
             />
-            <div>
-              <Typography.Title level={4}>会员卡与账户</Typography.Title>
-              {!detail.data.cards.length ? (
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description="尚未开通会员"
-                />
-              ) : (
-                detail.data.cards.map((card) => (
-                  <Card key={card.id} size="small" className="member-card">
-                    <div className="member-card-title">
-                      <div>
-                        <Typography.Text type="secondary">
-                          {card.cardTypeName}
-                        </Typography.Text>
-                        <Typography.Title level={5}>
-                          {card.maskedCardNo}
-                        </Typography.Title>
-                      </div>
-                      <Space>
-                        <Tag color="green">有效</Tag>
-                        {canTopup && (
-                          <Button
-                            size="small"
-                            type="primary"
-                            icon={<DollarOutlined />}
-                            disabled={currentShift.data?.status !== "Open"}
-                            onClick={() => beginTopup(card)}
-                          >
-                            储值
-                          </Button>
-                        )}
-                      </Space>
-                    </div>
-                    <Typography.Text type="secondary">
-                      有效期：{card.validFrom} 至 {card.validTo ?? "长期"}
-                    </Typography.Text>
-                    {canViewFinancialDetails ? (
-                      <div className="account-grid">
-                        {card.accounts.map((account) => (
-                          <div key={account.id}>
-                            <span>
-                              {accountLabels[account.accountType] ??
-                                account.accountType}
-                            </span>
-                            <strong>
-                              {formatAccount(
-                                account.accountType,
-                                account.balanceUnits,
-                              )}
-                            </strong>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <Typography.Text type="secondary">
-                        账户余额仅向店长和结算角色显示。
-                      </Typography.Text>
-                    )}
-                  </Card>
-                ))
-              )}
-            </div>
             {canViewFinancialDetails && detail.data.cards.length > 0 && (
               <MembershipBenefitsSection
                 storeId={storeId!}
