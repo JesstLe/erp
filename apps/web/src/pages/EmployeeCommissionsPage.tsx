@@ -48,8 +48,8 @@ export function EmployeeCommissionsPage({ classic = false, employee, initialDate
   return <div className={classic ? "classic-feature-panel" : "page-stack"}>
     <Space orientation="vertical" size={16} style={{ width: "100%" }}>
       <div className="page-heading"><div><Typography.Title level={employee ? 4 : 2}>{employee ? "已结算服务记录与提成" : "员工提成明细"}</Typography.Title>
-        <Typography.Text type="secondary">每笔服务提成、退款冲减与员工汇总集中查看；不是工资发放记录。</Typography.Text>
-        {employeeFilter && <div><Tag closable={!employee} onClose={() => { setFocusedEmployee(undefined); setPage(1); }}>{employeeFilter.displayName} · {employeeFilter.employeeNo}（精确关联）</Tag></div>}
+        <Typography.Text type="secondary">查看服务记录、提成明细与退款调整。</Typography.Text>
+        {employeeFilter && <div><Tag closable={!employee} onClose={() => { setFocusedEmployee(undefined); setPage(1); }}>{employeeFilter.displayName} · {employeeFilter.employeeNo}</Tag></div>}
       </div></div>
       <Card>
         <Space wrap>

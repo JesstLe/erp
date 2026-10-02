@@ -59,7 +59,8 @@ describe("employee service history in-place modal", () => {
     await waitFor(() => expect(apiMock).toHaveBeenCalledWith(expect.stringContaining("fromDate=2026-09-01&toDate=2026-09-30"), expect.anything()));
     fireEvent.click(screen.getByRole("button", { name: "重置筛选" }));
     expect((screen.getByLabelText("提成开始日期") as HTMLInputElement).value).toBe(initial.get("fromDate"));
-    expect(screen.getByText(/EMP000001（精确关联）/)).toBeTruthy();
+    expect(screen.getByText("服务老师 · EMP000001")).toBeTruthy();
+    expect(screen.queryByText(/精确关联/)).toBeNull();
   }, 15000);
   it("rejects reversed dates without querying, and distinguishes loading failure from a zero balance", async () => {
     reportState.failure = new Error("服务记录加载失败");
