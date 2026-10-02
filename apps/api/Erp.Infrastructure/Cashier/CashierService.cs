@@ -280,6 +280,8 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                 }
             }
 
+            var positionCommissions = await LoadPositionCommissionsAsync(tenantId, employees.Values,
+                items.Values, cancellationToken);
             var drafts = command.Lines.Select(line =>
             {
                 _ = TryGetLineType(line, out var type);
@@ -288,6 +290,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                     var id = line.ServiceItemId!.Value;
                     var item = items[id];
                     Employee? employee = line.ServiceEmployeeId.HasValue ? employees[line.ServiceEmployeeId.Value] : null;
+                    var commission = ResolveCommission(item, employee, positionCommissions);
                     if (item.CommissionMode != CommissionMode.None && employee is null)
                         throw new DomainRuleException("SERVICE_EMPLOYEE_REQUIRED", "已设置提成的服务项目必须选择服务员工");
                     var referencePrice = prices.GetValueOrDefault(id);
@@ -295,9 +298,10 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                         line.PriceOverrideReason, line.PricingSource, id, false, memberPricing);
                     return new ServiceOrderLineDraft(id, items[id].Code, items[id].Name, line.Quantity,
                         line.ActualSeconds, referencePrice, pricing.EnteredPriceMinor, pricing.Reason,
-                        employee?.Id, employee?.EmployeeNo, employee?.DisplayName, item.CommissionMode,
-                        item.CommissionRateBasisPoints, item.CommissionFixedMinor, pricing.Source,
-                        pricing.DiscountBasisPoints, pricing.CardTypeId, pricing.CardTypeName);
+                        employee?.Id, employee?.EmployeeNo, employee?.DisplayName, commission.Mode,
+                        commission.RateBasisPoints, commission.FixedMinor, pricing.Source,
+                        pricing.DiscountBasisPoints, pricing.CardTypeId, pricing.CardTypeName,
+                        commission.PositionCode, commission.PositionName, commission.Source);
                 }
                 var productId = line.ProductItemId!.Value;
                 var product = products[productId];
@@ -1015,6 +1019,8 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             throw new DomainRuleException("SERVICE_EMPLOYEE_NOT_ELIGIBLE",
                 "所选员工不存在、已停用或不属于当前门店");
 
+        var positionCommissions = await LoadPositionCommissionsAsync(tenantId, employees.Values,
+            items.Values, cancellationToken);
         var lines = commands.Select(line =>
         {
             _ = TryGetLineType(line, out var type);
@@ -1025,6 +1031,7 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                 Employee? employee = line.ServiceEmployeeId.HasValue
                     ? employees[line.ServiceEmployeeId.Value]
                     : null;
+                var commission = ResolveCommission(item, employee, positionCommissions);
                 if (item.CommissionMode != CommissionMode.None && employee is null)
                     throw new DomainRuleException("SERVICE_EMPLOYEE_REQUIRED",
                         "已设置提成的服务项目必须选择服务员工");
@@ -1033,9 +1040,10 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                     line.PriceOverrideReason, line.PricingSource, id, false, memberPricing);
                 return new ServiceOrderLineDraft(id, item.Code, item.Name, line.Quantity,
                     line.ActualSeconds, referencePrice, pricing.EnteredPriceMinor, pricing.Reason,
-                    employee?.Id, employee?.EmployeeNo, employee?.DisplayName, item.CommissionMode,
-                    item.CommissionRateBasisPoints, item.CommissionFixedMinor, pricing.Source,
-                    pricing.DiscountBasisPoints, pricing.CardTypeId, pricing.CardTypeName);
+                    employee?.Id, employee?.EmployeeNo, employee?.DisplayName, commission.Mode,
+                    commission.RateBasisPoints, commission.FixedMinor, pricing.Source,
+                    pricing.DiscountBasisPoints, pricing.CardTypeId, pricing.CardTypeName,
+                    commission.PositionCode, commission.PositionName, commission.Source);
             }
             var productId = line.ProductItemId!.Value;
             var product = products[productId];
@@ -1055,6 +1063,32 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
             ? employees[consultantEmployeeId.Value]
             : null);
     }
+
+    private async Task<Dictionary<(string PositionCode, Guid ServiceId), ResolvedServiceCommission>>
+        LoadPositionCommissionsAsync(Guid tenantId, IEnumerable<Employee> employees,
+            IEnumerable<ServiceItem> services, CancellationToken cancellationToken)
+    {
+        var codes = employees.Select(x => x.PositionCode).Distinct().ToList();
+        var items = services.ToList();
+        var serviceIds = items.Select(x => x.Id).ToList();
+        var positions = await db.EmployeePositions.AsNoTracking().Where(x =>
+            x.TenantId == tenantId && codes.Contains(x.Code)).ToListAsync(cancellationToken);
+        var positionIds = positions.Select(x => x.Id).ToList();
+        var rules = await db.PositionServiceCommissions.AsNoTracking().Where(x =>
+                x.TenantId == tenantId && positionIds.Contains(x.PositionId) && serviceIds.Contains(x.ServiceItemId))
+            .ToDictionaryAsync(x => (x.PositionId, x.ServiceItemId), cancellationToken);
+        return positions.SelectMany(position => items.Select(item => new
+            {
+                Key = (position.Code, item.Id),
+                Value = ResolvedServiceCommission.Resolve(item, position,
+                    rules.GetValueOrDefault((position.Id, item.Id))),
+            })).ToDictionary(x => x.Key, x => x.Value);
+    }
+
+    private static ResolvedServiceCommission ResolveCommission(ServiceItem item, Employee? employee,
+        Dictionary<(string PositionCode, Guid ServiceId), ResolvedServiceCommission> rules) =>
+        employee is not null && rules.TryGetValue((employee.PositionCode, item.Id), out var rule)
+            ? rule : ResolvedServiceCommission.Resolve(item, null, null);
 
     private async Task ApplyPriceAuthorizationAsync(Guid tenantId, Guid storeId, ServiceOrder order,
         Guid operatorId, IReadOnlyList<string> operatorRoles, Guid commandId, DateTimeOffset now,

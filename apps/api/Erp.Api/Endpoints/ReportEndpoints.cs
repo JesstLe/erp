@@ -1,4 +1,5 @@
 using Erp.Application.Identity;
+using Erp.Application.Common;
 using Erp.Application.Reports;
 using Erp.Application.Security;
 
@@ -10,6 +11,30 @@ public static class ReportEndpoints
     {
         var group = endpoints.MapGroup("/api/v1/reports").WithTags("Reports")
             .RequireAuthorization(SystemPermissions.ReportRead);
+
+        group.MapGet("/employee-commissions", async (Guid? storeId, DateOnly? fromDate, DateOnly? toDate,
+            string? query, int? page, int? pageSize, IIdentityService identity, IReportService reports,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (storeId.HasValue && current.Stores.All(x => x.Id != storeId.Value)) return Results.Forbid();
+            if (!Pagination.TryNormalize(page, pageSize, out var normalizedPage, out var normalizedSize))
+                return EndpointResults.InvalidPagination();
+            if (query?.Trim().Length > 100)
+                return EndpointResults.From(ResultFactory.Failure<object>("VALIDATION_FAILED", "查询关键词最多100个字符"));
+            var stores = current.Stores.Where(x => !storeId.HasValue || x.Id == storeId.Value)
+                .Select(x => x.Id).ToList();
+            try
+            {
+                return Results.Ok(await reports.GetEmployeeCommissionsAsync(current.TenantId, stores,
+                    fromDate, toDate, query, normalizedPage, normalizedSize, cancellationToken));
+            }
+            catch (ArgumentException exception)
+            {
+                return EndpointResults.From(ResultFactory.Failure<object>("VALIDATION_FAILED", exception.Message));
+            }
+        });
 
         group.MapGet("/operations", async (Guid storeId, DateOnly? fromDate, DateOnly? toDate,
             IIdentityService identity, IReportService reports, CancellationToken cancellationToken) =>

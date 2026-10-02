@@ -38,6 +38,7 @@ import type {
 } from "../api/types";
 import { useAuth } from "../auth/useAuth";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { PositionCommissionsModal } from "../components/PositionCommissionsModal";
 import {
   PASSWORD_POLICY_HINT,
   passwordRules,
@@ -82,6 +83,7 @@ export function ClassicEmployeePage() {
   const [positionsOpen, setPositionsOpen] = useState(false);
   const [positionEditorOpen, setPositionEditorOpen] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<EmployeePosition>();
+  const [commissionPosition, setCommissionPosition] = useState<EmployeePosition>();
   const [employmentOpen, setEmploymentOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [createForm] = Form.useForm<EmployeeValues>();
@@ -646,9 +648,10 @@ export function ClassicEmployeePage() {
           </Form.Item>
         </Form>
       </Modal>
+      {commissionPosition && <PositionCommissionsModal key={commissionPosition.id} position={commissionPosition} onClose={() => setCommissionPosition(undefined)} />}
       <Modal
         title="岗位设置"
-        width={760}
+        width={960}
         open={positionsOpen}
         onCancel={() => setPositionsOpen(false)}
         footer={<Button onClick={() => setPositionsOpen(false)}>关闭</Button>}
@@ -673,6 +676,7 @@ export function ClassicEmployeePage() {
           columns={[
             { title: "岗位编码", dataIndex: "code", width: 150 },
             { title: "岗位名称", dataIndex: "name" },
+            { title: "默认提成", width: 110, render: (_, position) => position.defaultCommissionRateBasisPoints == null ? "沿用项目" : `${position.defaultCommissionRateBasisPoints / 100}%` },
             { title: "排序", dataIndex: "sortOrder", width: 80 },
             {
               title: "状态",
@@ -687,9 +691,10 @@ export function ClassicEmployeePage() {
             {
               title: "操作",
               key: "action",
-              width: 160,
+              width: 260,
               render: (_value, item) => (
                 <Space>
+                  <Button size="small" onClick={() => setCommissionPosition(item)}>提成设置</Button>
                   <Button
                     size="small"
                     icon={<EditOutlined />}

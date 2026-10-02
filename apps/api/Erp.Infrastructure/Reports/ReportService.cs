@@ -1,4 +1,5 @@
 using Erp.Application.Reports;
+using System.Data;
 using Erp.Domain.Cashier;
 using Erp.Domain.Customers;
 using Erp.Domain.Facilities;
@@ -10,6 +11,76 @@ namespace Erp.Infrastructure.Reports;
 
 internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IReportService
 {
+    public async Task<EmployeeCommissionReportDto> GetEmployeeCommissionsAsync(Guid tenantId,
+        IReadOnlyList<Guid> storeIds, DateOnly? fromDate, DateOnly? toDate, string? query, int page,
+        int pageSize, CancellationToken cancellationToken)
+    {
+        if (fromDate.HasValue && toDate.HasValue && toDate < fromDate)
+            throw new ArgumentException("开始日期不得晚于结束日期");
+        if (toDate == DateOnly.MaxValue || query?.Trim().Length > 100 || page < 1 || pageSize is < 1 or > 100 ||
+            (long)(page - 1) * pageSize > int.MaxValue)
+            throw new ArgumentException("查询日期、关键词或分页参数无效");
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
+        var zones = await db.Stores.AsNoTracking().Where(x => x.TenantId == tenantId && storeIds.Contains(x.Id))
+            .OrderBy(x => x.Code).Select(x => x.TimeZoneId).ToListAsync(cancellationToken);
+        var zoneId = zones.FirstOrDefault() ?? "Asia/Shanghai";
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(zoneId);
+        DateTimeOffset? fromUtc = fromDate.HasValue ? ToUtc(fromDate.Value, zone) : null;
+        DateTimeOffset? toUtc = toDate.HasValue ? ToUtc(toDate.Value.AddDays(1), zone) : null;
+        var term = query?.Trim();
+        var rows = from line in db.ServiceOrderLines.AsNoTracking()
+            join order in db.ServiceOrders.AsNoTracking() on line.OrderId equals order.Id
+            join payment in db.Payments.AsNoTracking() on order.Id equals payment.OrderId
+            join store in db.Stores.AsNoTracking() on order.StoreId equals store.Id
+            join employee in db.Employees.AsNoTracking() on line.ServiceEmployeeId equals employee.Id
+            where line.TenantId == tenantId && order.TenantId == tenantId && payment.TenantId == tenantId &&
+                  store.TenantId == tenantId && employee.TenantId == tenantId && storeIds.Contains(order.StoreId) &&
+                  payment.StoreId == order.StoreId && payment.BusinessType == PaymentBusinessType.ServiceOrder &&
+                  line.LineType == ServiceOrderLineType.Service && payment.PaidAtUtc.HasValue &&
+                  (payment.Status == PaymentStatus.Paid || payment.Status == PaymentStatus.PartiallyRefunded ||
+                   payment.Status == PaymentStatus.Refunded) &&
+                  (!fromUtc.HasValue || payment.PaidAtUtc >= fromUtc) &&
+                  (!toUtc.HasValue || payment.PaidAtUtc < toUtc)
+            select new { Line = line, Order = order, Store = store, Payment = payment,
+                CurrentEmployeeName = employee.DisplayName,
+                RefundDeduction = line.CommissionAmountMinor <= 0 || order.RefundedMinor <= 0 || order.ReceivableMinor <= 0
+                    ? 0L : Math.Min(line.CommissionAmountMinor, (long)Math.Floor(
+                        (decimal)line.CommissionAmountMinor * order.RefundedMinor / order.ReceivableMinor + 0.5m)) };
+        if (!string.IsNullOrWhiteSpace(term))
+            rows = rows.Where(x => x.CurrentEmployeeName.Contains(term) || x.Line.EmployeeNameSnapshot!.Contains(term) ||
+                x.Line.EmployeeNoSnapshot!.Contains(term) || x.Line.ItemCodeSnapshot.Contains(term) ||
+                x.Line.ItemNameSnapshot.Contains(term) || x.Order.OrderNo.Contains(term));
+
+        var total = await rows.CountAsync(cancellationToken);
+        var totals = await rows.GroupBy(_ => 1).Select(g => new EmployeeCommissionTotalsDto(
+            g.Select(x => x.Order.Id).Distinct().Count(), g.Count(), g.Sum(x => x.Line.Quantity),
+            g.Sum(x => x.Line.LineAmountMinor), g.Sum(x => x.Line.CommissionAmountMinor),
+            g.Sum(x => x.RefundDeduction), g.Sum(x => x.Line.CommissionAmountMinor - x.RefundDeduction)))
+            .SingleOrDefaultAsync(cancellationToken) ?? new EmployeeCommissionTotalsDto(0, 0, 0, 0, 0, 0, 0);
+        var employees = await rows.GroupBy(x => new { Id = x.Line.ServiceEmployeeId!.Value,
+                x.Line.EmployeeNoSnapshot, x.CurrentEmployeeName })
+            .OrderByDescending(g => g.Sum(x => x.Line.CommissionAmountMinor - x.RefundDeduction))
+            .ThenBy(g => g.Key.EmployeeNoSnapshot)
+            .Select(g => new EmployeeCommissionDto(g.Key.Id, g.Key.EmployeeNoSnapshot!, g.Key.CurrentEmployeeName,
+                g.Sum(x => x.Line.Quantity), g.Select(x => x.Order.Id).Distinct().Count(),
+                g.Sum(x => x.Line.LineAmountMinor), g.Sum(x => x.Line.CommissionAmountMinor),
+                g.Sum(x => x.RefundDeduction), g.Sum(x => x.Line.CommissionAmountMinor - x.RefundDeduction)))
+            .ToListAsync(cancellationToken);
+        var items = await rows.OrderByDescending(x => x.Payment.PaidAtUtc).ThenByDescending(x => x.Line.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(x => new EmployeeCommissionLineDto(x.Line.Id, x.Order.Id, x.Order.OrderNo,
+                x.Store.Id, x.Store.Code, x.Store.Name, x.Payment.PaidAtUtc!.Value,
+                x.Line.ServiceEmployeeId!.Value, x.Line.EmployeeNoSnapshot!, x.Line.EmployeeNameSnapshot!,
+                x.Line.CommissionPositionCodeSnapshot, x.Line.CommissionPositionNameSnapshot,
+                x.Line.ItemCodeSnapshot, x.Line.ItemNameSnapshot, x.Line.Quantity, x.Line.EnteredPriceMinor,
+                x.Line.LineAmountMinor, x.Line.CommissionModeSnapshot.ToString(), x.Line.CommissionRateBasisPoints,
+                x.Line.CommissionFixedMinor, x.Line.CommissionRuleSourceSnapshot,
+                x.Line.CommissionAmountMinor, x.RefundDeduction, x.Line.CommissionAmountMinor - x.RefundDeduction,
+                x.Order.RefundedMinor)).ToListAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return new EmployeeCommissionReportDto(zoneId, totals, employees, items, total, page, pageSize);
+    }
+
     public async Task<OperationsReportDto> GetOperationsAsync(Guid tenantId, Guid storeId, DateOnly? fromDate,
         DateOnly? toDate, CancellationToken cancellationToken)
     {

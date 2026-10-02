@@ -18,6 +18,7 @@ const FacilitiesOrdersPage = lazy(() => import('./pages/FacilitiesOrdersPage').t
 const AuditPage = lazy(() => import('./pages/AuditPage').then((module) => ({ default: module.AuditPage })))
 const ReportsPage = lazy(() => import('./pages/ReportsPage').then((module) => ({ default: module.ReportsPage })))
 const EmployeesPage = lazy(() => import('./pages/EmployeesPage').then((module) => ({ default: module.EmployeesPage })))
+const EmployeeCommissionsPage = lazy(() => import('./pages/EmployeeCommissionsPage').then((module) => ({ default: module.EmployeeCommissionsPage })))
 const ChangePasswordPage = lazy(() => import('./pages/ChangePasswordPage').then((module) => ({ default: module.ChangePasswordPage })))
 const ProductsPage = lazy(() => import('./pages/ProductsPage').then((module) => ({ default: module.ProductsPage })))
 const PaymentChannelsPage = lazy(() => import('./pages/PaymentChannelsPage').then((module) => ({ default: module.PaymentChannelsPage })))
@@ -73,6 +74,7 @@ export default function App() {
           <Route element={<AuthorizedRoute permission={Permission.InventoryRead} />}><Route path="inventory" element={<InventoryPage />} /></Route>
           <Route element={<AuthorizedRoute permission={Permission.SupplyChainRead} />}><Route path="supply-chain" element={<SupplyChainPage />} /></Route>
           <Route element={<AuthorizedRoute permission={Permission.ReportRead} />}><Route path="reports" element={<ReportsPage />} /></Route>
+          <Route element={<AuthorizedRoute permission={Permission.ReportRead} />}><Route path="employee-commissions" element={<EmployeeCommissionsPage />} /></Route>
           <Route element={<AuthorizedRoute permission={Permission.AuditRead} />}><Route path="audit" element={<AuditPage />} /></Route>
           <Route element={<AuthorizedRoute permission={Permission.OrganizationManage} />}><Route path="settings/organization" element={<OrganizationSettingsPage />} /></Route>
           <Route element={<AuthorizedRoute permission={Permission.FacilityConfigure} />}><Route path="settings/facilities" element={<FacilityConfigurationPage />} /></Route>

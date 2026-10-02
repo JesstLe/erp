@@ -20,7 +20,7 @@ public sealed class OrganizationService(ErpDbContext db, IHttpContextAccessor ht
     private static readonly HashSet<string> NavigationLabelKeys =
     [
         "/", "/facilities", "/scheduling", "/customers", "/cashier", "/inventory",
-        "/supply-chain", "/catalog/items", "/catalog/products", "/catalog/prices", "/reports",
+        "/supply-chain", "/catalog/items", "/catalog/products", "/catalog/prices", "/reports", "/employee-commissions",
         "/audit", "/settings/facilities", "/settings/organization", "/settings/employees",
         "/settings/payment-channels",
     ];

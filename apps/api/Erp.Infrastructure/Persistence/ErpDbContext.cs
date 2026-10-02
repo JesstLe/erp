@@ -29,6 +29,8 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
 
     public DbSet<EmployeePosition> EmployeePositions => Set<EmployeePosition>();
 
+    public DbSet<PositionServiceCommission> PositionServiceCommissions => Set<PositionServiceCommission>();
+
     public DbSet<EmployeeStore> EmployeeStores => Set<EmployeeStore>();
 
     public DbSet<RoleActionGrant> RoleActionGrants => Set<RoleActionGrant>();
@@ -278,8 +280,21 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.Code).HasColumnName("code").HasMaxLength(40);
             entity.Property(x => x.Name).HasColumnName("name").HasMaxLength(60);
             entity.Property(x => x.SortOrder).HasColumnName("sort_order");
+            entity.Property(x => x.DefaultCommissionRateBasisPoints).HasColumnName("default_commission_rate_basis_points");
             entity.Property(x => x.Status).HasColumnName("status").HasConversion<string>().HasMaxLength(24);
             entity.HasIndex(x => new { x.TenantId, x.Code }).IsUnique();
+        });
+
+        builder.Entity<PositionServiceCommission>(entity =>
+        {
+            entity.ToTable("organization_position_service_commissions");
+            ConfigureBase(entity);
+            entity.Property(x => x.PositionId).HasColumnName("position_id");
+            entity.Property(x => x.ServiceItemId).HasColumnName("service_item_id");
+            entity.Property(x => x.RateBasisPoints).HasColumnName("rate_basis_points");
+            entity.HasIndex(x => new { x.TenantId, x.PositionId, x.ServiceItemId }).IsUnique();
+            entity.HasOne<EmployeePosition>().WithMany().HasForeignKey(x => x.PositionId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne<ServiceItem>().WithMany().HasForeignKey(x => x.ServiceItemId).OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<EmployeeStore>(entity =>
@@ -751,6 +766,9 @@ public sealed class ErpDbContext(DbContextOptions<ErpDbContext> options)
             entity.Property(x => x.CommissionRateBasisPoints).HasColumnName("commission_rate_basis_points");
             entity.Property(x => x.CommissionFixedMinor).HasColumnName("commission_fixed_minor");
             entity.Property(x => x.CommissionBasisMinor).HasColumnName("commission_basis_minor");
+            entity.Property(x => x.CommissionPositionCodeSnapshot).HasColumnName("commission_position_code_snapshot").HasMaxLength(40);
+            entity.Property(x => x.CommissionPositionNameSnapshot).HasColumnName("commission_position_name_snapshot").HasMaxLength(60);
+            entity.Property(x => x.CommissionRuleSourceSnapshot).HasColumnName("commission_rule_source_snapshot").HasMaxLength(24);
             entity.Property(x => x.CommissionAmountMinor).HasColumnName("commission_amount_minor");
             entity.HasIndex(x => new { x.OrderId, x.ServiceItemId })
                 .HasFilter("line_type = 'Service'");

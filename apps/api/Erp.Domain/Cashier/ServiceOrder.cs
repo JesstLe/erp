@@ -264,7 +264,8 @@ public sealed record ServiceOrderLineDraft
         long? commissionFixedMinor = null,
         ServiceOrderLinePricingSource? pricingSource = null,
         int? memberDiscountBasisPoints = null, Guid? memberCardTypeId = null,
-        string? memberCardTypeName = null)
+        string? memberCardTypeName = null, string? commissionPositionCode = null,
+        string? commissionPositionName = null, string? commissionRuleSource = null)
     {
         LineType = ServiceOrderLineType.Service;
         ServiceItemId = serviceItemId;
@@ -281,6 +282,9 @@ public sealed record ServiceOrderLineDraft
         CommissionMode = commissionMode;
         CommissionRateBasisPoints = commissionRateBasisPoints;
         CommissionFixedMinor = commissionFixedMinor;
+        CommissionPositionCode = commissionPositionCode;
+        CommissionPositionName = commissionPositionName;
+        CommissionRuleSource = commissionRuleSource;
         PricingSource = pricingSource ?? (enteredPriceMinor == referencePriceMinor
             ? ServiceOrderLinePricingSource.ListPrice
             : ServiceOrderLinePricingSource.ManualOverride);
@@ -342,6 +346,9 @@ public sealed record ServiceOrderLineDraft
     public CommissionMode CommissionMode { get; }
     public int? CommissionRateBasisPoints { get; }
     public long? CommissionFixedMinor { get; }
+    public string? CommissionPositionCode { get; }
+    public string? CommissionPositionName { get; }
+    public string? CommissionRuleSource { get; }
     public ServiceOrderLinePricingSource PricingSource { get; }
     public int? MemberDiscountBasisPoints { get; }
     public Guid? MemberCardTypeId { get; }
@@ -438,6 +445,9 @@ public sealed class ServiceOrderLine : Entity
     public long? CommissionFixedMinor { get; private set; }
     public long CommissionBasisMinor { get; private set; }
     public long CommissionAmountMinor { get; private set; }
+    public string? CommissionPositionCodeSnapshot { get; private set; }
+    public string? CommissionPositionNameSnapshot { get; private set; }
+    public string? CommissionRuleSourceSnapshot { get; private set; }
 
     public void ApplyProductReturn(int quantity)
     {
@@ -476,6 +486,16 @@ public sealed class ServiceOrderLine : Entity
         CommissionModeSnapshot = draft.CommissionMode;
         CommissionRateBasisPoints = draft.CommissionRateBasisPoints;
         CommissionFixedMinor = draft.CommissionFixedMinor;
+        if (draft.CommissionPositionCode?.Length > 40 || draft.CommissionPositionName?.Length > 60 ||
+            (draft.CommissionPositionCode is null) != (draft.CommissionPositionName is null) ||
+            draft.CommissionPositionCode is not null && (!draft.ServiceEmployeeId.HasValue ||
+                draft.CommissionPositionCode.Length < 2 || draft.CommissionPositionName!.Length < 2) ||
+            draft.CommissionRuleSource is "PositionDefault" or "PositionService" && draft.CommissionPositionCode is null ||
+            draft.CommissionRuleSource is not (null or "ServiceItem" or "PositionDefault" or "PositionService"))
+            throw new DomainRuleException("VALIDATION_FAILED", "岗位提成来源快照无效");
+        CommissionPositionCodeSnapshot = draft.CommissionPositionCode;
+        CommissionPositionNameSnapshot = draft.CommissionPositionName;
+        CommissionRuleSourceSnapshot = draft.CommissionRuleSource;
         CommissionBasisMinor = LineAmountMinor;
         CommissionAmountMinor = draft.CommissionMode switch
         {
