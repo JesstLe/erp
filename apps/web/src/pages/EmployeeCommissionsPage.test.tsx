@@ -10,7 +10,8 @@ const line = { lineId: "line1", orderId: "order1", orderNo: "SO-001", storeId: "
   paidAtUtc: "2026-10-02T03:00:00Z", employeeId: "employee1", employeeNo: "EMP000001", employeeName: "服务老师",
   positionCode: "POS000001", positionName: "高级老师", itemCode: "SV000001", itemName: "基础服务", quantity: 1,
   unitPriceMinor: 8000, lineAmountMinor: 8000, commissionMode: "Percentage", rateBasisPoints: 1550, ruleSource: "PositionService",
-  grossCommissionMinor: 1240, refundDeductionMinor: 310, netCommissionMinor: 930, orderRefundedMinor: 2000 };
+  grossCommissionMinor: 1240, refundDeductionMinor: 310, netCommissionMinor: 930, orderRefundedMinor: 2000,
+  actualSeconds: 600, referencePriceMinor: 10000, pricingSource: "ManualOverride" };
 beforeAll(() => {
   Object.defineProperty(window, "matchMedia", { writable: true, value: vi.fn().mockImplementation(() => ({ matches: false,
     addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn() })) });

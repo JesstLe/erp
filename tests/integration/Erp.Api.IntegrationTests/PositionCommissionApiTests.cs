@@ -109,6 +109,9 @@ public sealed class PositionCommissionApiTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal("自定义初级岗位", detail.Items.Single().PositionName);
         Assert.Equal("PositionService", detail.Items.Single().RuleSource);
         Assert.Equal(1550, detail.Items.Single().RateBasisPoints);
+        Assert.Equal(600, detail.Items.Single().ActualSeconds);
+        Assert.Equal(10000L, detail.Items.Single().ReferencePriceMinor);
+        Assert.Equal("ManualOverride", detail.Items.Single().PricingSource);
         var refund = await Post<RefundDto>(client, "/api/v1/refunds", new
         { storeId, paymentId = payment.Id, expectedPaymentVersion = payment.Version, reason = "提成退款冲减验证",
             lines = new[] { new { originalAllocationId = payment.Allocations.Single().Id, amountMinor = 2000L } }, commandId = Guid.NewGuid() });
@@ -141,10 +144,39 @@ public sealed class PositionCommissionApiTests(RealApiPostgreSqlFixture fixture)
         using var anonymous = fixture.CreateIsolatedClient();
         using var unauthorized = await anonymous.GetAsync(path);
         Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
-        await Post<EmployeeDto>(client, "/api/v1/employees", new
-        { displayName = "受限收银员工", positionCode = position.Code, storeIds = new[] { storeId },
+        var sameNameEmployee = await Post<EmployeeDto>(client, "/api/v1/employees", new
+        { displayName = employee.DisplayName, positionCode = position.Code, storeIds = new[] { storeId },
             createLoginAccount = true, account = "position.cashier", initialPassword = "CashierTest123",
             roles = new List<string> { "CASHIER" } });
+        var otherOrder = await Post<ServiceOrderDto>(client, "/api/v1/cashier/orders", new
+        { storeId, lines = new[] { new { lineType = "SERVICE", serviceItemId = service.Id, serviceEmployeeId = sameNameEmployee.Id,
+            quantity = 1, actualSeconds = 600, enteredPriceMinor = 8000L, priceOverrideReason = "同名员工隔离测试" } }, commandId = Guid.NewGuid() });
+        otherOrder = await Post<ServiceOrderDto>(client, $"/api/v1/cashier/orders/{otherOrder.Id}/confirm", new
+        { storeId, expectedVersion = otherOrder.Version, commandId = Guid.NewGuid() });
+        await Post<PaymentDto>(client, $"/api/v1/payments/orders/{otherOrder.Id}/settle", new
+        { storeId, expectedVersion = otherOrder.Version, allocations = new[] { new { methodId = cash.Id, amountMinor = 8000L } },
+            cashTenderedMinor = 8000L, commandId = Guid.NewGuid() });
+        var date = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(detail.Items.Single().PaidAtUtc,
+            TimeZoneInfo.FindSystemTimeZoneById("Asia/Shanghai")).DateTime).ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+        detail = (await client.GetFromJsonAsync<EmployeeCommissionReportDto>(
+            $"{detailPath}?employeeId={employee.Id}&fromDate={date}&toDate={date}&pageSize=1"))!;
+        Assert.Equal(2, detail.Total);
+        Assert.Equal(8130, detail.Totals.NetCommissionMinor);
+        Assert.Equal(employee.Id, detail.Items.Single().EmployeeId);
+        Assert.Single(detail.Employees);
+        var otherDetail = (await client.GetFromJsonAsync<EmployeeCommissionReportDto>($"{detailPath}?employeeId={sameNameEmployee.Id}"))!;
+        Assert.Equal(7200, otherDetail.Totals.NetCommissionMinor);
+        Assert.Equal(sameNameEmployee.Id, otherDetail.Items.Single().EmployeeId);
+        var nameMatches = (await client.GetFromJsonAsync<EmployeeCommissionReportDto>($"{detailPath}?query={Uri.EscapeDataString(employee.DisplayName)}"))!;
+        Assert.Equal(3, nameMatches.Total);
+        Assert.Equal(2, nameMatches.Employees.Count);
+        var emptyDetail = (await client.GetFromJsonAsync<EmployeeCommissionReportDto>($"{detailPath}?employeeId={Guid.NewGuid()}"))!;
+        Assert.Empty(emptyDetail.Items);
+        Assert.Equal(0, emptyDetail.Totals.NetCommissionMinor);
+        emptyDetail = (await client.GetFromJsonAsync<EmployeeCommissionReportDto>($"{detailPath}?employeeId={employee.Id}&fromDate=2000-01-01&toDate=2000-01-02"))!;
+        Assert.Empty(emptyDetail.Items);
+        using (var invalidEmployee = await client.GetAsync($"{detailPath}?employeeId={Guid.Empty}"))
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, invalidEmployee.StatusCode);
         using var cashier = fixture.CreateIsolatedClient();
         await Post<CurrentUserDto>(cashier, "/api/v1/auth/login", new { account = "position.cashier", password = "CashierTest123" });
         await Post<CurrentUserDto>(cashier, "/api/v1/auth/change-password", new { currentPassword = "CashierTest123", newPassword = "CashierChanged123" });
@@ -153,7 +185,7 @@ public sealed class PositionCommissionApiTests(RealApiPostgreSqlFixture fixture)
         using var forbiddenWrite = await Send(cashier, HttpMethod.Put, path, new
         { defaultRateBasisPoints = 1000, expectedVersion = config.Position.Version });
         Assert.Equal(HttpStatusCode.Forbidden, forbiddenWrite.StatusCode);
-        using var forbiddenReport = await cashier.GetAsync(detailPath);
+        using var forbiddenReport = await cashier.GetAsync($"{detailPath}?employeeId={employee.Id}");
         Assert.Equal(HttpStatusCode.Forbidden, forbiddenReport.StatusCode);
     }
 

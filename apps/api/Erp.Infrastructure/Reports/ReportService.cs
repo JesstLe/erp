@@ -13,11 +13,11 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
 {
     public async Task<EmployeeCommissionReportDto> GetEmployeeCommissionsAsync(Guid tenantId,
         IReadOnlyList<Guid> storeIds, DateOnly? fromDate, DateOnly? toDate, string? query, int page,
-        int pageSize, CancellationToken cancellationToken)
+        int pageSize, Guid? employeeId, CancellationToken cancellationToken)
     {
         if (fromDate.HasValue && toDate.HasValue && toDate < fromDate)
             throw new ArgumentException("开始日期不得晚于结束日期");
-        if (toDate == DateOnly.MaxValue || query?.Trim().Length > 100 || page < 1 || pageSize is < 1 or > 100 ||
+        if (employeeId == Guid.Empty || toDate == DateOnly.MaxValue || query?.Trim().Length > 100 || page < 1 || pageSize is < 1 or > 100 ||
             (long)(page - 1) * pageSize > int.MaxValue)
             throw new ArgumentException("查询日期、关键词或分页参数无效");
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
@@ -37,6 +37,7 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
                   store.TenantId == tenantId && employee.TenantId == tenantId && storeIds.Contains(order.StoreId) &&
                   payment.StoreId == order.StoreId && payment.BusinessType == PaymentBusinessType.ServiceOrder &&
                   line.LineType == ServiceOrderLineType.Service && payment.PaidAtUtc.HasValue &&
+                  (!employeeId.HasValue || line.ServiceEmployeeId == employeeId) &&
                   (payment.Status == PaymentStatus.Paid || payment.Status == PaymentStatus.PartiallyRefunded ||
                    payment.Status == PaymentStatus.Refunded) &&
                   (!fromUtc.HasValue || payment.PaidAtUtc >= fromUtc) &&
@@ -76,7 +77,8 @@ internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IRepo
                 x.Line.LineAmountMinor, x.Line.CommissionModeSnapshot.ToString(), x.Line.CommissionRateBasisPoints,
                 x.Line.CommissionFixedMinor, x.Line.CommissionRuleSourceSnapshot,
                 x.Line.CommissionAmountMinor, x.RefundDeduction, x.Line.CommissionAmountMinor - x.RefundDeduction,
-                x.Order.RefundedMinor)).ToListAsync(cancellationToken);
+                x.Order.RefundedMinor, x.Line.ActualSeconds, x.Line.ReferencePriceMinor,
+                x.Line.PricingSource.ToString())).ToListAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new EmployeeCommissionReportDto(zoneId, totals, employees, items, total, page, pageSize);
     }

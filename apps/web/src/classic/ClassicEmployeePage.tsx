@@ -39,6 +39,9 @@ import type {
 import { useAuth } from "../auth/useAuth";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { PositionCommissionsModal } from "../components/PositionCommissionsModal";
+import { EmployeeServiceHistoryModal } from "../components/EmployeeServiceHistoryModal";
+import { useAuthorization } from "../security/useAuthorization";
+import { Permission } from "../security/permissions";
 import {
   PASSWORD_POLICY_HINT,
   passwordRules,
@@ -70,6 +73,7 @@ const requestError = (error: unknown) =>
 
 export function ClassicEmployeePage() {
   const auth = useAuth();
+  const { can } = useAuthorization();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [queryText, setQueryText] = useState("");
@@ -78,6 +82,7 @@ export function ClassicEmployeePage() {
   const [page, setPage] = useState(1);
   const pageSize = 40;
   const [selected, setSelected] = useState<Employee>();
+  const [historyEmployee, setHistoryEmployee] = useState<Employee>();
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [positionsOpen, setPositionsOpen] = useState(false);
@@ -497,6 +502,7 @@ export function ClassicEmployeePage() {
             <Space>
               {selected && (
                 <>
+                  {can(Permission.ReportRead) && <Button size="small" onClick={() => setHistoryEmployee(selected)}>服务与提成</Button>}
                   <Button size="small" onClick={() => setEmploymentOpen(true)}>
                     {selected.status === "Active" ? "办理离职" : "恢复在职"}
                   </Button>
@@ -538,6 +544,8 @@ export function ClassicEmployeePage() {
         </section>
       </div>
 
+      {historyEmployee && <EmployeeServiceHistoryModal key={historyEmployee.id} employee={historyEmployee} classic
+        positionName={positionName(historyEmployee.positionCode)} onClose={() => setHistoryEmployee(undefined)} />}
       <Modal
         title="新增员工"
         width={700}

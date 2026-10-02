@@ -13,7 +13,7 @@ public static class ReportEndpoints
             .RequireAuthorization(SystemPermissions.ReportRead);
 
         group.MapGet("/employee-commissions", async (Guid? storeId, DateOnly? fromDate, DateOnly? toDate,
-            string? query, int? page, int? pageSize, IIdentityService identity, IReportService reports,
+            string? query, int? page, int? pageSize, Guid? employeeId, IIdentityService identity, IReportService reports,
             CancellationToken cancellationToken) =>
         {
             var current = await identity.GetCurrentAsync(cancellationToken);
@@ -23,12 +23,14 @@ public static class ReportEndpoints
                 return EndpointResults.InvalidPagination();
             if (query?.Trim().Length > 100)
                 return EndpointResults.From(ResultFactory.Failure<object>("VALIDATION_FAILED", "查询关键词最多100个字符"));
+            if (employeeId == Guid.Empty)
+                return EndpointResults.From(ResultFactory.Failure<object>("VALIDATION_FAILED", "员工编号无效"));
             var stores = current.Stores.Where(x => !storeId.HasValue || x.Id == storeId.Value)
                 .Select(x => x.Id).ToList();
             try
             {
                 return Results.Ok(await reports.GetEmployeeCommissionsAsync(current.TenantId, stores,
-                    fromDate, toDate, query, normalizedPage, normalizedSize, cancellationToken));
+                    fromDate, toDate, query, normalizedPage, normalizedSize, employeeId, cancellationToken));
             }
             catch (ArgumentException exception)
             {
