@@ -205,7 +205,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202609160045", ready?.SchemaVersion);
+        Assert.Equal("202610020046", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {
@@ -1418,6 +1418,34 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
         await using var scope = factory.Services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<ILegacyImportService>()
             .ImportAsync(command, CancellationToken.None);
+    }
+
+    public async Task<(long AmountMinor, int? RateBasisPoints)> GetCommissionSnapshotAsync(Guid lineId)
+    {
+        await using var connection = new NpgsqlConnection(database.GetConnectionString());
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT commission_amount_minor, commission_rate_basis_points FROM service_order_lines WHERE id = @id", connection);
+        command.Parameters.AddWithValue("id", lineId);
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        return (reader.GetInt64(0), reader.IsDBNull(1) ? null : reader.GetInt32(1));
+    }
+
+    public async Task<(Guid ServiceId, Guid PositionId)> SeedOtherBrandCommissionResourcesAsync()
+    {
+        if (factory is null) throw new InvalidOperationException("测试应用尚未初始化");
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<Erp.Infrastructure.Persistence.ErpDbContext>();
+        var brand = new Erp.Domain.Organization.Tenant("COMMISSION_OTHER", "其他品牌");
+        var position = new Erp.Domain.Organization.EmployeePosition(brand.Id, "POS000001", "其他品牌岗位");
+        var item = new Erp.Domain.Catalog.ServiceItem(brand.Id, "SV000001", "其他品牌项目", 30);
+        db.Tenants.Add(brand);
+        await db.SaveChangesAsync();
+        db.EmployeePositions.Add(position);
+        db.ServiceItems.Add(item);
+        await db.SaveChangesAsync();
+        return (item.Id, position.Id);
     }
 
     public async Task<int> CountLegacyRunsAsync(string sourceSystem)

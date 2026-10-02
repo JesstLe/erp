@@ -11,7 +11,15 @@ public sealed record EmployeeDto(Guid Id, string EmployeeNo, string DisplayName,
 public sealed record RoleDto(Guid Id, string Code, string Name);
 
 public sealed record EmployeePositionDto(Guid Id, string Code, string Name, int SortOrder, string Status,
-    uint Version);
+    uint Version, int? DefaultCommissionRateBasisPoints = null);
+
+public sealed record PositionServiceCommissionDto(Guid ServiceItemId, string Code, string Name, string Status,
+    int? RateBasisPoints, string FallbackMode, int? FallbackRateBasisPoints, long? FallbackFixedMinor);
+public sealed record PositionCommissionsDto(EmployeePositionDto Position,
+    IReadOnlyList<PositionServiceCommissionDto> Services);
+public sealed record PositionServiceCommissionInput(Guid ServiceItemId, int RateBasisPoints);
+public sealed record SetPositionCommissionsCommand(Guid PositionId, int? DefaultRateBasisPoints,
+    IReadOnlyList<PositionServiceCommissionInput> Services, uint ExpectedVersion, Guid OperatorId);
 
 public sealed record CreateEmployeePositionCommand(string Name, int SortOrder, Guid OperatorId);
 public sealed record UpdateEmployeePositionCommand(Guid Id, string Name, int SortOrder, bool IsEnabled,
@@ -45,6 +53,10 @@ public interface IEmployeeService
         CancellationToken cancellationToken);
     Task<Result<bool>> DeletePositionAsync(Guid tenantId, DeleteEmployeePositionCommand command,
         CancellationToken cancellationToken);
+    Task<Result<PositionCommissionsDto>> GetPositionCommissionsAsync(Guid tenantId, Guid positionId,
+        CancellationToken cancellationToken);
+    Task<Result<PositionCommissionsDto>> SetPositionCommissionsAsync(Guid tenantId,
+        SetPositionCommissionsCommand command, CancellationToken cancellationToken);
 
     Task<Result<EmployeeDto>> CreateAsync(Guid tenantId, CreateEmployeeCommand command, CancellationToken cancellationToken);
 

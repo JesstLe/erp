@@ -81,8 +81,76 @@ internal sealed partial class EmployeeService(ErpDbContext db, UserManager<Appli
         .Where(x => x.TenantId == tenantId)
         .OrderBy(x => x.SortOrder).ThenBy(x => x.Code)
         .Select(x => new EmployeePositionDto(x.Id, x.Code, x.Name, x.SortOrder,
-            x.Status.ToString().ToUpperInvariant(), x.Version))
+            x.Status.ToString().ToUpperInvariant(), x.Version, x.DefaultCommissionRateBasisPoints))
         .ToListAsync(cancellationToken);
+
+    public async Task<Result<PositionCommissionsDto>> GetPositionCommissionsAsync(Guid tenantId,
+        Guid positionId, CancellationToken cancellationToken)
+    {
+        var position = await db.EmployeePositions.AsNoTracking().SingleOrDefaultAsync(x =>
+            x.TenantId == tenantId && x.Id == positionId, cancellationToken);
+        if (position is null)
+            return ResultFactory.Failure<PositionCommissionsDto>("POSITION_NOT_FOUND", "岗位不存在");
+        var rules = await db.PositionServiceCommissions.AsNoTracking().Where(x =>
+                x.TenantId == tenantId && x.PositionId == positionId)
+            .ToDictionaryAsync(x => x.ServiceItemId, x => x.RateBasisPoints, cancellationToken);
+        var services = await db.ServiceItems.AsNoTracking().Where(x => x.TenantId == tenantId)
+            .OrderBy(x => x.Code).ToListAsync(cancellationToken);
+        return ResultFactory.Success(new PositionCommissionsDto(Map(position), services.Select(x =>
+            new PositionServiceCommissionDto(x.Id, x.Code, x.Name, x.Status.ToString(),
+                rules.TryGetValue(x.Id, out var rate) ? rate : null, x.CommissionMode.ToString(),
+                x.CommissionRateBasisPoints, x.CommissionFixedMinor)).ToList()));
+    }
+
+    public async Task<Result<PositionCommissionsDto>> SetPositionCommissionsAsync(Guid tenantId,
+        SetPositionCommissionsCommand command, CancellationToken cancellationToken)
+    {
+        if (command.DefaultRateBasisPoints is < 0 or > 10_000 || command.Services.Count > 2000 ||
+            command.Services.Any(x => x is null || x.RateBasisPoints is < 0 or > 10_000) ||
+            command.Services.Select(x => x.ServiceItemId).Distinct().Count() != command.Services.Count)
+            return ResultFactory.Failure<PositionCommissionsDto>("VALIDATION_FAILED",
+                "提成比例必须在0%到100%之间，项目不能重复且最多2000条");
+        var position = await db.EmployeePositions.SingleOrDefaultAsync(x => x.TenantId == tenantId &&
+            x.Id == command.PositionId, cancellationToken);
+        if (position is null)
+            return ResultFactory.Failure<PositionCommissionsDto>("POSITION_NOT_FOUND", "岗位不存在");
+        if (position.Version != command.ExpectedVersion)
+            return ResultFactory.Failure<PositionCommissionsDto>("VERSION_CONFLICT", "岗位已修改，请刷新后重试");
+        var serviceIds = command.Services.Select(x => x.ServiceItemId).ToList();
+        if (await db.ServiceItems.CountAsync(x => x.TenantId == tenantId && serviceIds.Contains(x.Id),
+                cancellationToken) != serviceIds.Count)
+            return ResultFactory.Failure<PositionCommissionsDto>("INVALID_SERVICE_ITEM", "服务项目不存在或不属于当前品牌");
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            var previous = await db.PositionServiceCommissions.Where(x => x.TenantId == tenantId &&
+                x.PositionId == position.Id).ToListAsync(cancellationToken);
+            var before = JsonSerializer.Serialize(new { position.DefaultCommissionRateBasisPoints,
+                Services = previous.Select(x => new { x.ServiceItemId, x.RateBasisPoints }) });
+            position.ConfigureCommission(command.DefaultRateBasisPoints);
+            db.PositionServiceCommissions.RemoveRange(previous);
+            // Persist the version guard and removals before inserting replacement unique keys.
+            await db.SaveChangesAsync(cancellationToken);
+            db.PositionServiceCommissions.AddRange(command.Services.Select(x =>
+                new PositionServiceCommission(tenantId, position.Id, x.ServiceItemId, x.RateBasisPoints)));
+            AddPositionAudit(tenantId, command.OperatorId, "employee.position.commissions.update", position.Id,
+                before, JsonSerializer.Serialize(new { command.DefaultRateBasisPoints, command.Services }));
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return await GetPositionCommissionsAsync(tenantId, position.Id, cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<PositionCommissionsDto>("VERSION_CONFLICT", "岗位已修改，请刷新后重试");
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            return ResultFactory.Failure<PositionCommissionsDto>("POSITION_COMMISSION_CONFLICT", "保存冲突，请刷新后重试");
+        }
+    }
 
     public async Task<Result<EmployeePositionDto>> CreatePositionAsync(Guid tenantId,
         CreateEmployeePositionCommand command, CancellationToken cancellationToken)
@@ -568,7 +636,8 @@ internal sealed partial class EmployeeService(ErpDbContext db, UserManager<Appli
         user?.MustChangePassword, roles, stores, employee.CreatedAtUtc, employee.Version);
 
     private static EmployeePositionDto Map(EmployeePosition position) => new(position.Id, position.Code,
-        position.Name, position.SortOrder, position.Status.ToString().ToUpperInvariant(), position.Version);
+        position.Name, position.SortOrder, position.Status.ToString().ToUpperInvariant(), position.Version,
+        position.DefaultCommissionRateBasisPoints);
 
     private static async Task<Result<EmployeeDto>> RollbackFailure(Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction,
         string code, string message, CancellationToken cancellationToken)

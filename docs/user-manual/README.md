@@ -23,7 +23,7 @@
 13. [产品图片与顾客服务档案](16-product-images-and-service-records.md)
 14. [审计记录](07-audit-events.md)
 15. [经营工作台与经营报表](08-dashboard-and-operations-reports.md)
-16. [员工、登录账号与门店权限](09-employees-accounts-and-permissions.md)
+16. [员工、登录账号与门店权限、岗位提成设置与提成明细查询](09-employees-accounts-and-permissions.md)
 17. [品牌与门店主数据](17-brand-and-store-management.md)
 18. [预约与员工排班](18-appointments-and-employee-scheduling.md)
 19. [次卡、积分与储值部分退款](19-service-passes-points-and-partial-topup-refunds.md)

@@ -4,7 +4,12 @@ export interface CurrentUser { id: string; tenantId: string; displayName: string
 export interface EmployeeStore { id: string; code: string; name: string; isPrimary: boolean }
 export interface Employee { id: string; employeeNo: string; displayName: string; positionCode: string; status: string; userId?: string; account?: string; accountEnabled?: boolean; mustChangePassword?: boolean; roles: string[]; stores: EmployeeStore[]; createdAtUtc: string; version: number }
 export interface EmployeeRole { id: string; code: string; name: string }
-export interface EmployeePosition { id: string; code: string; name: string; sortOrder: number; status: string; version: number }
+export interface EmployeePosition { id: string; code: string; name: string; sortOrder: number; status: string; version: number; defaultCommissionRateBasisPoints?: number | null }
+export interface PositionServiceCommission { serviceItemId: string; code: string; name: string; status: string; rateBasisPoints: number | null; fallbackMode: string; fallbackRateBasisPoints: number | null; fallbackFixedMinor: number | null }
+export interface PositionCommissions { position: EmployeePosition; services: PositionServiceCommission[] }
+export interface EmployeeCommissionLine { lineId: string; orderId: string; orderNo: string; storeId: string; storeCode: string; storeName: string; paidAtUtc: string; employeeId: string; employeeNo: string; employeeName: string; positionCode?: string | null; positionName?: string | null; itemCode: string; itemName: string; quantity: number; unitPriceMinor: number; lineAmountMinor: number; commissionMode: string; rateBasisPoints?: number | null; fixedMinor?: number | null; ruleSource?: string | null; grossCommissionMinor: number; refundDeductionMinor: number; netCommissionMinor: number; orderRefundedMinor: number }
+export interface EmployeeCommissionTotals { orderCount: number; lineCount: number; serviceQuantity: number; serviceRevenueMinor: number; grossCommissionMinor: number; refundDeductionMinor: number; netCommissionMinor: number }
+export interface EmployeeCommissionReport { timeZoneId: string; totals: EmployeeCommissionTotals; employees: EmployeeCommission[]; items: EmployeeCommissionLine[]; total: number; page: number; pageSize: number }
 export interface BrandProfile { id: string; code: string; name: string; status: string; version: number }
 export interface StoreProfile { id: string; code: string; name: string; timeZoneId: string; address?: string; status: string; managerNames: string[]; employeeCount: number; facilityGroupCount: number; facilityCount: number; enabledFacilityCount: number; version: number }
 export interface OrganizationSettings { brand: BrandProfile; stores: StoreProfile[] }

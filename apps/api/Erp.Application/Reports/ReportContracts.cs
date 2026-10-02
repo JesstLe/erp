@@ -49,6 +49,9 @@ public sealed record DashboardOverviewDto(string ScopeName, DateOnly TrendFromDa
 
 public interface IReportService
 {
+    Task<EmployeeCommissionReportDto> GetEmployeeCommissionsAsync(Guid tenantId, IReadOnlyList<Guid> storeIds,
+        DateOnly? fromDate, DateOnly? toDate, string? query, int page, int pageSize,
+        CancellationToken cancellationToken);
     Task<OperationsReportDto> GetOperationsAsync(Guid tenantId, Guid storeId, DateOnly? fromDate,
         DateOnly? toDate, CancellationToken cancellationToken);
     Task<BrandStoreFinancialOverviewDto> GetStoreOverviewAsync(Guid tenantId, DateOnly? fromDate,
@@ -56,3 +59,15 @@ public interface IReportService
     Task<DashboardOverviewDto> GetDashboardOverviewAsync(Guid tenantId, Guid? storeId,
         CancellationToken cancellationToken);
 }
+
+public sealed record EmployeeCommissionLineDto(Guid LineId, Guid OrderId, string OrderNo,
+    Guid StoreId, string StoreCode, string StoreName, DateTimeOffset PaidAtUtc,
+    Guid EmployeeId, string EmployeeNo, string EmployeeName, string? PositionCode, string? PositionName,
+    string ItemCode, string ItemName, int Quantity, long UnitPriceMinor, long LineAmountMinor,
+    string CommissionMode, int? RateBasisPoints, long? FixedMinor, string? RuleSource,
+    long GrossCommissionMinor, long RefundDeductionMinor, long NetCommissionMinor, long OrderRefundedMinor);
+public sealed record EmployeeCommissionTotalsDto(int OrderCount, int LineCount, int ServiceQuantity,
+    long ServiceRevenueMinor, long GrossCommissionMinor, long RefundDeductionMinor, long NetCommissionMinor);
+public sealed record EmployeeCommissionReportDto(string TimeZoneId, EmployeeCommissionTotalsDto Totals,
+    IReadOnlyList<EmployeeCommissionDto> Employees, IReadOnlyList<EmployeeCommissionLineDto> Items,
+    int Total, int Page, int PageSize);

@@ -23,6 +23,16 @@ public sealed class EmployeePosition : Entity
 
     public int SortOrder { get; private set; }
 
+    public int? DefaultCommissionRateBasisPoints { get; private set; }
+
+    public void ConfigureCommission(int? rateBasisPoints)
+    {
+        if (rateBasisPoints is < 0 or > 10_000)
+            throw new DomainRuleException("VALIDATION_FAILED", "岗位提成比例必须在0%到100%之间");
+        DefaultCommissionRateBasisPoints = rateBasisPoints;
+        Touch();
+    }
+
     public EmployeePositionStatus Status { get; private set; }
 
     public void Update(string name, int sortOrder)

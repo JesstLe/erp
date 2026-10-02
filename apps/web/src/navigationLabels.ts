@@ -10,6 +10,7 @@ export const defaultNavigationLabels: Record<string, string> = {
   '/catalog/products': '产品目录',
   '/catalog/prices': '价格管理',
   '/reports': '经营报表',
+  '/employee-commissions': '员工提成',
   '/audit': '审计记录',
   '/settings/facilities': '门店设施配置',
   '/settings/organization': '品牌与门店',

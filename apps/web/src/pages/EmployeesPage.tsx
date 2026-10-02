@@ -37,6 +37,7 @@ import type { Employee, EmployeePosition, EmployeeRole, PageResult } from "../ap
 import { useAuth } from "../auth/useAuth";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { PASSWORD_POLICY_HINT, passwordRules } from "../security/passwordPolicy";
+import { PositionCommissionsModal } from "../components/PositionCommissionsModal";
 
 interface EmployeeValues {
   displayName: string;
@@ -88,6 +89,7 @@ export function EmployeesPage() {
   const [positionsOpen, setPositionsOpen] = useState(false);
   const [positionEditOpen, setPositionEditOpen] = useState(false);
   const [selectedPosition, setSelectedPosition] = useState<EmployeePosition>();
+  const [commissionPosition, setCommissionPosition] = useState<EmployeePosition>();
   const [selected, setSelected] = useState<Employee>();
   const [queryText, setQueryText] = useState("");
   const appliedQuery = useDebouncedValue(queryText.trim());
@@ -477,7 +479,7 @@ export function EmployeesPage() {
 
       <Modal
         title="岗位设置"
-        width={760}
+        width={960}
         open={positionsOpen}
         onCancel={() => setPositionsOpen(false)}
         footer={<Button onClick={() => setPositionsOpen(false)}>关闭</Button>}
@@ -502,9 +504,11 @@ export function EmployeesPage() {
           columns={[
             { title: "岗位编码", dataIndex: "code", width: 130 },
             { title: "岗位名称", dataIndex: "name" },
+            { title: "默认提成", width: 110, render: (_, position) => position.defaultCommissionRateBasisPoints == null ? "沿用项目" : `${position.defaultCommissionRateBasisPoints / 100}%` },
             { title: "排序", dataIndex: "sortOrder", width: 80 },
             { title: "状态", dataIndex: "status", width: 90, render: (value: string) => <Tag color={value === "ENABLED" ? "green" : "default"}>{value === "ENABLED" ? "启用" : "停用"}</Tag> },
-            { title: "操作", key: "action", width: 150, render: (_: unknown, position: EmployeePosition) => <Space>
+            { title: "操作", key: "action", width: 260, render: (_: unknown, position: EmployeePosition) => <Space>
+              <Button size="small" onClick={() => setCommissionPosition(position)}>提成设置</Button>
               <Button size="small" icon={<EditOutlined />} onClick={() => openEditPosition(position)}>修改</Button>
               <Popconfirm title="确认删除该岗位？" description="只有未被任何员工使用的岗位才能删除。" onConfirm={() => deletePosition.mutate(position)}>
                 <Button size="small" danger icon={<DeleteOutlined />} loading={deletePosition.isPending}>删除</Button>
@@ -538,6 +542,8 @@ export function EmployeesPage() {
           {selectedPosition && <Form.Item name="isEnabled" valuePropName="checked"><Checkbox>启用该岗位</Checkbox></Form.Item>}
         </Form>
       </Modal>
+
+      {commissionPosition && <PositionCommissionsModal key={commissionPosition.id} position={commissionPosition} onClose={() => setCommissionPosition(undefined)} />}
 
       <Modal
         title="新增员工"

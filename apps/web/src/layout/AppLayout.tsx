@@ -30,6 +30,7 @@ const managementMenuItems: AuthorizedMenuItem[] = [
   { key: '/catalog/products', icon: <ShoppingOutlined />, label: defaultNavigationLabels['/catalog/products'], permission: Permission.CatalogRead },
   { key: '/catalog/prices', icon: <TagsOutlined />, label: defaultNavigationLabels['/catalog/prices'], permission: Permission.CatalogRead },
   { key: '/reports', icon: <BarChartOutlined />, label: defaultNavigationLabels['/reports'], permission: Permission.ReportRead },
+  { key: '/employee-commissions', icon: <TeamOutlined />, label: defaultNavigationLabels['/employee-commissions'], permission: Permission.ReportRead },
   { key: '/audit', icon: <AuditOutlined />, label: defaultNavigationLabels['/audit'], permission: Permission.AuditRead },
 ]
 

@@ -6,7 +6,7 @@ namespace Erp.Infrastructure.Persistence;
 
 internal sealed class DatabaseReadinessService(ErpDbContext db) : IDatabaseReadinessService
 {
-    public const string RequiredSchemaVersion = "202609160045";
+    public const string RequiredSchemaVersion = "202610020046";
 
     public async Task<DatabaseReadinessDto> CheckAsync(CancellationToken cancellationToken)
     {
@@ -23,6 +23,13 @@ internal sealed class DatabaseReadinessService(ErpDbContext db) : IDatabaseReadi
                    AND to_regclass('public.customer_service_record_corrections') IS NOT NULL
                    AND to_regclass('public.customer_service_record_categories') IS NOT NULL
                    AND to_regclass('public.organization_employee_positions') IS NOT NULL
+                   AND to_regclass('public.organization_position_service_commissions') IS NOT NULL
+                   AND EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_schema = 'public' AND table_name = 'service_order_lines'
+                                 AND column_name = 'commission_rule_source_snapshot')
+                   AND EXISTS (SELECT 1 FROM information_schema.columns
+                               WHERE table_schema = 'public' AND table_name = 'organization_employee_positions'
+                                 AND column_name = 'default_commission_rate_basis_points')
                    AND to_regclass('public.inventory_movements') IS NOT NULL
                    AND to_regclass('public.appointments') IS NOT NULL
                    AND to_regclass('public.employee_shifts') IS NOT NULL

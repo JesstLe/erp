@@ -62,6 +62,7 @@ const ClassicCustomerDashboard = lazy(() => import('./ClassicCustomerPage').then
 const ClassicCustomerListPage = lazy(() => import('./ClassicCustomerPage').then((module) => ({ default: module.ClassicCustomerListPage })))
 const ClassicCustomerCarePage = lazy(() => import('./ClassicCustomerCarePage').then((module) => ({ default: module.ClassicCustomerCarePage })))
 const ClassicEmployeePage = lazy(() => import('./ClassicEmployeePage').then((module) => ({ default: module.ClassicEmployeePage })))
+const EmployeeCommissionsPage = lazy(() => import('../pages/EmployeeCommissionsPage').then((module) => ({ default: module.EmployeeCommissionsPage })))
 const SchedulingPage = lazy(() => import('../pages/SchedulingPage').then((module) => ({ default: module.SchedulingPage })))
 const CashierPage = lazy(() => import('../pages/CashierPage').then((module) => ({ default: module.CashierPage })))
 const InventoryPage = lazy(() => import('../pages/InventoryPage').then((module) => ({ default: module.InventoryPage })))
@@ -156,6 +157,7 @@ const classicModules: ClassicModuleDefinition[] = [
     { label: '预约与排班', path: '/ui/new/employee/scheduling', permission: Permission.SchedulingOperate, icon: <CalendarOutlined /> },
   ], queries: [
     { label: '员工查询', path: '/ui/new/employee/manage', permission: Permission.EmployeeManage, icon: <SearchOutlined /> },
+    { label: '员工提成明细', path: '/ui/new/employee/commissions', permission: Permission.ReportRead, icon: <DollarOutlined /> },
     { label: '排班查询', path: '/ui/new/employee/scheduling', permission: Permission.SchedulingOperate, icon: <SearchOutlined /> },
   ] },
   { key: 'finance', label: '财务', icon: <DollarOutlined />, permission: Permission.ReportRead, managementTitle: '财务管理', queryTitle: '财务查询', chartTitle: '本月资金构成图表', listTitle: '最新交班与对账列表', actions: [
@@ -172,6 +174,7 @@ const classicModules: ClassicModuleDefinition[] = [
   ], queries: [
     { label: '收入报表', path: '/ui/new/reports/operations', permission: Permission.ReportRead, icon: <SearchOutlined /> },
     { label: '员工业绩报表', path: '/ui/new/reports/operations', permission: Permission.ReportRead, icon: <SearchOutlined /> },
+    { label: '员工提成明细', path: '/ui/new/employee/commissions', permission: Permission.ReportRead, icon: <DollarOutlined /> },
   ] },
   { key: 'decision', label: '决策', icon: <LineChartOutlined />, permission: Permission.ReportRead, managementTitle: '经营决策', queryTitle: '分析入口', chartTitle: '经营趋势分析', listTitle: '关键经营指标', actions: [
     { label: '经营趋势', path: '/ui/new/decision/analysis', permission: Permission.ReportRead, icon: <LineChartOutlined /> },
@@ -188,6 +191,7 @@ const classicModules: ClassicModuleDefinition[] = [
 ]
 
 const featureTitles: Record<string, string> = {
+  '/ui/new/employee/commissions': '员工提成明细',
   '/ui/new/cashier/facilities': '设施接待', '/ui/new/cashier/checkout': '服务录单与收银', '/ui/new/cashier/scheduling': '预约与排班',
   '/ui/new/customer/list': '顾客、会员与服务记录', '/ui/new/promotion/prices': '价格版本', '/ui/new/promotion/services': '服务项目', '/ui/new/promotion/products': '产品目录',
   '/ui/new/purchase/manage': '采购与入库', '/ui/new/sales/orders': '销售单与收银', '/ui/new/inventory/manage': '库存管理', '/ui/new/distribution/manage': '门店调拨',
@@ -464,6 +468,7 @@ export function ClassicApp() {
             <Route path="inventory/manage" element={<ClassicPageRoute permission={Permission.InventoryRead} component={InventoryPage} />} />
             <Route path="distribution/manage" element={<ClassicPageRoute permission={Permission.SupplyChainRead} component={SupplyChainPage} />} />
             <Route path="employee/manage" element={<ClassicAuthorized permission={Permission.EmployeeManage}><ClassicEmployeePage /></ClassicAuthorized>} />
+            <Route path="employee/commissions" element={<ClassicAuthorized permission={Permission.ReportRead}><EmployeeCommissionsPage classic /></ClassicAuthorized>} />
             <Route path="employee/scheduling" element={<ClassicPageRoute permission={Permission.SchedulingOperate} component={SchedulingPage} />} />
             <Route path="finance/checkout" element={<ClassicPageRoute permission={Permission.CashierCheckout} component={CashierPage} />} />
             <Route path="finance/reports" element={<ClassicPageRoute permission={Permission.ReportRead} component={ReportsPage} />} />

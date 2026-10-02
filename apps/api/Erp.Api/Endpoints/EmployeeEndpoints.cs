@@ -45,6 +45,25 @@ public static class EmployeeEndpoints
                 await employees.ListPositionsAsync(current.TenantId, cancellationToken));
         });
 
+        group.MapGet("/positions/{positionId:guid}/commissions", async (Guid positionId,
+            IIdentityService identity, IEmployeeService employees, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await employees.GetPositionCommissionsAsync(current.TenantId, positionId, cancellationToken));
+        });
+
+        group.MapPut("/positions/{positionId:guid}/commissions", async (Guid positionId,
+            SetPositionCommissionsRequest request, IIdentityService identity, IEmployeeService employees,
+            CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            return current is null ? Results.Unauthorized() : EndpointResults.From(
+                await employees.SetPositionCommissionsAsync(current.TenantId,
+                    new SetPositionCommissionsCommand(positionId, request.DefaultRateBasisPoints,
+                        request.Services ?? [], request.ExpectedVersion, current.Id), cancellationToken));
+        });
+
         group.MapPost("/positions", async (CreateEmployeePositionRequest request, IIdentityService identity,
             IEmployeeService employees, CancellationToken cancellationToken) =>
         {
@@ -138,6 +157,8 @@ public static class EmployeeEndpoints
     private sealed record CreateEmployeeRequest(string? DisplayName, string? PositionCode,
         IReadOnlyList<Guid>? StoreIds, bool CreateLoginAccount, string? Account, string? InitialPassword,
         IReadOnlyList<string>? Roles);
+    private sealed record SetPositionCommissionsRequest(int? DefaultRateBasisPoints,
+        IReadOnlyList<PositionServiceCommissionInput>? Services, uint ExpectedVersion);
     private sealed record CreateEmployeePositionRequest(string? Name, int SortOrder);
     private sealed record UpdateEmployeePositionRequest(string? Name, int SortOrder, bool IsEnabled,
         uint ExpectedVersion);
