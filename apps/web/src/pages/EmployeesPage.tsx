@@ -38,6 +38,9 @@ import { useAuth } from "../auth/useAuth";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { PASSWORD_POLICY_HINT, passwordRules } from "../security/passwordPolicy";
 import { PositionCommissionsModal } from "../components/PositionCommissionsModal";
+import { EmployeeServiceHistoryModal } from "../components/EmployeeServiceHistoryModal";
+import { useAuthorization } from "../security/useAuthorization";
+import { Permission } from "../security/permissions";
 
 interface EmployeeValues {
   displayName: string;
@@ -76,6 +79,7 @@ const roleColor: Record<string, string> = {
 
 export function EmployeesPage() {
   const auth = useAuth();
+  const { can } = useAuthorization();
   const queryClient = useQueryClient();
   const [createForm] = Form.useForm<EmployeeValues>();
   const [editForm] = Form.useForm<EditValues>();
@@ -91,6 +95,7 @@ export function EmployeesPage() {
   const [selectedPosition, setSelectedPosition] = useState<EmployeePosition>();
   const [commissionPosition, setCommissionPosition] = useState<EmployeePosition>();
   const [selected, setSelected] = useState<Employee>();
+  const [historyEmployee, setHistoryEmployee] = useState<Employee>();
   const [queryText, setQueryText] = useState("");
   const appliedQuery = useDebouncedValue(queryText.trim());
   const [page, setPage] = useState(1);
@@ -374,8 +379,9 @@ export function EmployeesPage() {
     {
       title: "操作",
       key: "action",
-      width: 90,
+      width: 200,
       render: (_: unknown, record: Employee) => (
+        <Space wrap>
         <Button
           size="small"
           onClick={(event) => {
@@ -385,6 +391,8 @@ export function EmployeesPage() {
         >
           查看
         </Button>
+        {can(Permission.ReportRead) && <Button size="small" onClick={event => { event.stopPropagation(); setHistoryEmployee(record); }}>服务与提成</Button>}
+        </Space>
       ),
     },
   ];
@@ -477,6 +485,9 @@ export function EmployeesPage() {
         />
       </Card>
 
+      {historyEmployee && <EmployeeServiceHistoryModal key={historyEmployee.id} employee={historyEmployee}
+        positionName={positions.data?.find(item => item.code === historyEmployee.positionCode)?.name ?? historyEmployee.positionCode}
+        onClose={() => setHistoryEmployee(undefined)} />}
       <Modal
         title="岗位设置"
         width={960}
@@ -803,6 +814,7 @@ export function EmployeesPage() {
       >
         {selected && (
           <Space orientation="vertical" size={18} className="full-width">
+            {can(Permission.ReportRead) && <Button onClick={() => setHistoryEmployee(selected)}>查看服务与提成</Button>}
             <Descriptions
               bordered
               size="small"

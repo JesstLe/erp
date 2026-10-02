@@ -12,7 +12,7 @@ vi.mock('../api/client', () => ({
 }))
 vi.mock('../auth/useAuth', () => ({
   useAuth: () => ({
-    user: { id: 'owner-user', roles: ['OWNER'], stores: [{ id: 'store-1', code: 'S001', name: '测试门店' }] },
+    user: { id: 'owner-user', permissions: ['report.read'], roles: ['OWNER'], stores: [{ id: 'store-1', code: 'S001', name: '测试门店' }] },
     store: { id: 'store-1', code: 'S001', name: '测试门店' },
   }),
 }))
@@ -26,6 +26,7 @@ const employee = {
 }
 
 beforeAll(() => {
+  Object.defineProperty(globalThis, 'ResizeObserver', { configurable: true, value: class { observe() {} unobserve() {} disconnect() {} } })
   Object.defineProperty(window, 'matchMedia', { writable: true, value: vi.fn().mockImplementation(() => ({
     matches: false, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(),
     removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
@@ -39,6 +40,8 @@ describe('EmployeesPage regression', () => {
       if (path === '/api/v1/employees/roles') return Promise.resolve([{ id: 'role-1', code: 'TECHNICIAN', name: '服务员工' }])
       if (path === '/api/v1/employees/positions') return Promise.resolve([{ id: 'position-1', code: 'TECHNICIAN', name: '顾问', sortOrder: 10, status: 'ENABLED', version: 1 }])
       if (path.startsWith('/api/v1/employees?')) return Promise.resolve({ items: [employee], total: 1, page: 1, pageSize: 20 })
+      if (path.startsWith('/api/v1/reports/employee-commissions?')) return Promise.resolve({ timeZoneId: 'Asia/Shanghai', total: 0, page: 1, pageSize: 20,
+        totals: { orderCount: 0, lineCount: 0, serviceQuantity: 0, serviceRevenueMinor: 0, grossCommissionMinor: 0, refundDeductionMinor: 0, netCommissionMinor: 0 }, employees: [], items: [] })
       return Promise.reject(new Error(`unexpected request ${path}`))
     })
   })
@@ -62,4 +65,12 @@ describe('EmployeesPage regression', () => {
       expect.stringContaining('query=%E7%8E%8B%E6%8A%80%E5%B8%88'), expect.anything(),
     ), { timeout: 1_500 })
   })
+
+  it('opens selected employee service history in place without triggering the account drawer', async () => {
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><EmployeesPage /></QueryClientProvider>)
+    fireEvent.click(await screen.findByRole('button', { name: '服务与提成' }))
+    expect(await screen.findByText('王技师 · 服务与提成')).toBeTruthy()
+    expect(screen.queryByText('员工与账号详情')).toBeNull()
+    await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith(expect.stringContaining('employeeId=employee-1'), expect.anything()))
+  }, 15000)
 })
