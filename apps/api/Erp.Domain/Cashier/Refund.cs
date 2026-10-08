@@ -135,8 +135,6 @@ public sealed class RefundLine : Entity
 
     internal void Complete(Guid? cashShiftId, DateTimeOffset now)
     {
-        if (Category == PaymentMethodCategory.Cash && cashShiftId is null)
-            throw new DomainRuleException("SHIFT_NOT_OPEN", "现金退款必须归入审批人的当前班次");
         CashShiftId = cashShiftId;
         CompletedAtUtc = now;
         Touch();

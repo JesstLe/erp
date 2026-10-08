@@ -224,26 +224,6 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
                     new OperateChannelRefundCommand(command.StoreId, refund.Id, command.ApproverId), false,
                     cancellationToken);
             }
-            CashierShift? cashShift = null;
-            if (refund.Lines.Any(x => x.Category == PaymentMethodCategory.Cash))
-            {
-                cashShift = await db.CashierShifts.SingleOrDefaultAsync(x => x.TenantId == tenantId &&
-                    x.StoreId == command.StoreId && x.OperatorId == command.ApproverId &&
-                    x.Status == CashierShiftStatus.Open, cancellationToken);
-                if (cashShift is null)
-                    return await Fail(transaction, "SHIFT_NOT_OPEN", "现金退款前请由审批人先开班", cancellationToken);
-                var cashReceipts = await db.PaymentAllocations.Where(x => x.ShiftId == cashShift.Id &&
-                    x.Category == PaymentMethodCategory.Cash &&
-                    x.ConfirmationStatus == PaymentConfirmationStatus.CashRecorded)
-                    .SumAsync(x => (long?)x.AmountMinor, cancellationToken) ?? 0;
-                var previousCashRefunds = await db.RefundLines.Where(x => x.CashShiftId == cashShift.Id &&
-                    x.CompletedAtUtc != null).SumAsync(x => (long?)x.AmountMinor, cancellationToken) ?? 0;
-                var requestedCash = refund.Lines.Where(x => x.Category == PaymentMethodCategory.Cash)
-                    .Sum(x => x.AmountMinor);
-                if (cashShift.OpeningCashMinor + cashReceipts - previousCashRefunds < requestedCash)
-                    return await Fail(transaction, "INSUFFICIENT_SHIFT_CASH",
-                        "当前班次可用现金不足，不能完成本次现金退款", cancellationToken);
-            }
             var now = clock.GetUtcNow();
             var accountIds = refund.Lines.Where(x => x.MemberAccountId.HasValue)
                 .Select(x => x.MemberAccountId!.Value).ToList();
@@ -286,7 +266,7 @@ internal sealed class RefundService(ErpDbContext db, TimeProvider clock,
             }
             payment.ApplyRefund(refund.AmountMinor);
             if (order is not null) order.ApplyRefund(refund.AmountMinor);
-            refund.Complete(command.ApproverId, cashShift?.Id, now);
+            refund.Complete(command.ApproverId, null, now);
             AddReceipt(tenantId, command.CommandId, command.ApproverId, requestHash, refund.Id, now);
             AddAudit(tenantId, command.StoreId, command.ApproverId, "refund.complete", refund.Id,
                 RefundStatus.PendingApproval.ToString(), refund.Status.ToString(), command.CommandId,

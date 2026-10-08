@@ -15,7 +15,6 @@ internal sealed class NotificationService(ErpDbContext db) : INotificationServic
     {
         var items = new List<NotificationItemDto>();
         var owner = roles.Contains(SystemRoles.Owner, StringComparer.OrdinalIgnoreCase);
-        var reviewer = owner || roles.Contains(SystemRoles.StoreManager, StringComparer.OrdinalIgnoreCase);
 
         if (owner)
         {
@@ -42,19 +41,6 @@ internal sealed class NotificationService(ErpDbContext db) : INotificationServic
                 "error", "/cashier", x.RequestedAtUtc)));
         }
 
-        if (reviewer)
-        {
-            var shifts = await db.CashierShifts.AsNoTracking().Where(x => x.TenantId == tenantId &&
-                    x.StoreId == storeId && x.Status == CashierShiftStatus.ReviewPending &&
-                    x.OperatorId != userId)
-                .OrderByDescending(x => x.SubmittedAtUtc).Take(20)
-                .Select(x => new { x.Id, x.ShiftNo, x.CashDifferenceMinor, x.PendingReconciliationMinor,
-                    x.SubmittedAtUtc }).ToListAsync(cancellationToken);
-            items.AddRange(shifts.Select(x => new NotificationItemDto($"shift:{x.Id}", "ShiftReview",
-                "待复核交班", $"班次 {x.ShiftNo}，现金差额 ¥{(x.CashDifferenceMinor ?? 0) / 100m:F2}，" +
-                $"待核对 ¥{(x.PendingReconciliationMinor ?? 0) / 100m:F2}", "info", "/cashier",
-                x.SubmittedAtUtc ?? DateTimeOffset.MinValue)));
-        }
 
         var now = DateTimeOffset.UtcNow;
         var followUpRecords = await db.ServiceRecords.AsNoTracking()

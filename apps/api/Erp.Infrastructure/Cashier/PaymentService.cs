@@ -38,8 +38,9 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                 x.Category == PaymentMethodCategory.ManualExternal ? 1 :
                 x.Category == PaymentMethodCategory.ChannelExternal ? 2 :
                 x.InternalAccountType == MemberAccountType.Principal ? 3 : 4)
+            // Keep the legacy DTO field for clients, but manual shifts are no longer required.
             .ThenBy(x => x.Code).Select(x => new PaymentMethodDto(x.Id, x.Code, x.Name, x.Category.ToString(),
-                x.RequiresOpenShift, x.InternalAccountType == null ? null : x.InternalAccountType.ToString(),
+                false, x.InternalAccountType == null ? null : x.InternalAccountType.ToString(),
                 x.ChannelProvider == null ? null : x.ChannelProvider.ToString()))
             .ToListAsync(cancellationToken);
     }
@@ -420,13 +421,6 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                         clock.GetUtcNow());
                 }
             }
-            CashierShift? shift = null;
-            if (methods.Values.Any(x => x.RequiresOpenShift))
-            {
-                shift = await db.CashierShifts.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.StoreId == command.StoreId &&
-                    x.OperatorId == command.OperatorId && x.Status == CashierShiftStatus.Open, cancellationToken);
-                if (shift is null) return await FailureAndRollback<PaymentDto>(transaction, "SHIFT_NOT_OPEN", "请先开班，再登记现金或人工外部收款", cancellationToken);
-            }
             var now = clock.GetUtcNow();
             var localTime = await StoreLocalTimeAsync(tenantId, command.StoreId, now, cancellationToken);
             if (localTime is null) return await FailureAndRollback<PaymentDto>(transaction, "VALIDATION_FAILED", "门店时区配置无效", cancellationToken);
@@ -434,7 +428,7 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
             {
                 var method = methods[line.MethodId];
                 return new PaymentAllocationDraft(method.Id, method.Code, method.Name, method.Category, line.AmountMinor,
-                    line.ExternalReference, method.RequiresOpenShift ? shift?.Id : null,
+                    line.ExternalReference, null,
                     method.Category == PaymentMethodCategory.InternalAccount ? line.MemberAccountId : null,
                     method.ChannelProvider);
             }).ToList();

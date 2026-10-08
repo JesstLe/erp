@@ -12,6 +12,19 @@ public static class ReportEndpoints
         var group = endpoints.MapGroup("/api/v1/reports").WithTags("Reports")
             .RequireAuthorization(SystemPermissions.ReportRead);
 
+        group.MapGet("/daily-cashier", async (Guid storeId, DateOnly? date,
+            IIdentityService identity, IReportService reports, CancellationToken cancellationToken) =>
+        {
+            var current = await identity.GetCurrentAsync(cancellationToken);
+            if (current is null) return Results.Unauthorized();
+            if (current.Stores.All(x => x.Id != storeId)) return Results.Forbid();
+            try { return Results.Ok(await reports.GetDailyCashierAsync(current.TenantId, storeId, date, cancellationToken)); }
+            catch (ArgumentException exception)
+            {
+                return EndpointResults.From(ResultFactory.Failure<object>("VALIDATION_FAILED", exception.Message));
+            }
+        });
+
         group.MapGet("/employee-commissions", async (Guid? storeId, DateOnly? fromDate, DateOnly? toDate,
             string? query, int? page, int? pageSize, Guid? employeeId, IIdentityService identity, IReportService reports,
             CancellationToken cancellationToken) =>

@@ -27,8 +27,6 @@ interface Props {
   customerName: string
   cards: MemberCard[]
   methods: PaymentMethod[]
-  shiftOpen: boolean
-  shiftLoading?: boolean
   canGrantBonus: boolean
   onClose: () => void
   onSuccess: (topup: MemberTopup) => Promise<void> | void
@@ -43,7 +41,7 @@ function money(minor: number) {
 }
 
 export function MemberTopupModal({ open, storeId, storeName, customerId, customerName, cards, methods,
-  shiftOpen, shiftLoading, canGrantBonus, onClose, onSuccess }: Props) {
+  canGrantBonus, onClose, onSuccess }: Props) {
   const [form] = Form.useForm<TopupValues>()
   const [completedTopup, setCompletedTopup] = useState<MemberTopup>()
   const allowedMethods = methods.filter((method) =>
@@ -100,7 +98,7 @@ export function MemberTopupModal({ open, storeId, storeName, customerId, custome
     afterOpenChange={initialize}
     confirmLoading={createTopup.isPending}
     okText="确认收款并入账"
-    okButtonProps={{ disabled: shiftLoading || !shiftOpen || !cards.length || !allowedMethods.length }}
+    okButtonProps={{ disabled: !cards.length || !allowedMethods.length }}
     footer={completedTopup ? <Space><Button onClick={close}>完成</Button><Button type="primary"
       icon={<PrinterOutlined />} aria-label="打印储值小票" onClick={() => window.print()}>打印储值小票</Button></Space> : undefined}
     destroyOnHidden
@@ -122,7 +120,6 @@ export function MemberTopupModal({ open, storeId, storeName, customerId, custome
       <footer>本次入账 <b>{money(completedTopup.principalMinor + completedTopup.bonusMinor)}</b></footer>
     </div> : <><Alert type="warning" showIcon className="modal-alert"
       title="本金是本次实际收款；赠金不计入实收。确认后立即写入会员资金流水，不能直接修改余额。" />
-    {!shiftLoading && !shiftOpen && <Alert type="error" showIcon className="modal-alert" title="请先开班，再办理会员储值。" />}
     {!allowedMethods.length && <Alert type="error" showIcon className="modal-alert" title="当前没有可用于即时储值的收款方式。" />}
     <Form<TopupValues> form={form} layout="vertical" onFinish={(values) => createTopup.mutate(values)}>
       <Form.Item name="cardId" label="存入会员卡" rules={[{ required: true, message: '请选择会员卡' }]}>

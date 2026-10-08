@@ -204,7 +204,7 @@ export function ClassicCashierFacilitiesPage() {
       </button>
     })}</div>}
     <footer className="classic-room-shortcuts">
-      {[['顾客\n开卡', '/ui/new/customer/list'], ['顾客\n储值', '/ui/new/customer/list'], ['顾客\n预约', '/ui/new/cashier/scheduling'], ['顾客\n护理', '/ui/new/legacy/customer/customer-005'], ['签单\n清账', '/ui/new/cashier/checkout'], ['消费\n退货', '/ui/new/cashier/checkout'], ['积分\n增减', '/ui/new/customer/list'], ['兑换\n礼品', '/ui/new/customer/list'], ['兑换\n储值', '/ui/new/customer/list'], ['收银\n交班', '/ui/new/finance/checkout']].map(([label, path]) => <button type="button" key={label} onClick={() => navigate(path)}>{label.split('\n').map((part) => <span key={part}>{part}</span>)}</button>)}
+      {[['顾客\n开卡', '/ui/new/customer/list'], ['顾客\n储值', '/ui/new/customer/list'], ['顾客\n预约', '/ui/new/cashier/scheduling'], ['顾客\n护理', '/ui/new/legacy/customer/customer-005'], ['签单\n清账', '/ui/new/cashier/checkout'], ['消费\n退货', '/ui/new/cashier/checkout'], ['积分\n增减', '/ui/new/customer/list'], ['兑换\n礼品', '/ui/new/customer/list'], ['兑换\n储值', '/ui/new/customer/list'], ['收款\n记录', '/ui/new/finance/checkout']].map(([label, path]) => <button type="button" key={label} onClick={() => navigate(path)}>{label.split('\n').map((part) => <span key={part}>{part}</span>)}</button>)}
       <button type="button" className="is-exit" onClick={() => navigate('/ui/new/cashier')}>退出<span>前台</span></button>
     </footer>
   </div>
@@ -215,11 +215,11 @@ export function ClassicCashierFacilitiesPage() {
   return <div className="classic-sell-page">
     <header className="classic-sell-tabs">
       <div className="classic-sell-room"><b>{selected.displayName}</b><span>{selected.code} · {duration(liveSeconds)}</span></div>
-      <button type="button" className={tab === 'main' ? 'active' : ''} onClick={() => setTab('main')}><FileTextOutlined />主单<span>信息</span></button>
-      <button type="button" onClick={() => navigate('/ui/new/cashier/scheduling')}><ClockCircleOutlined />顾客<span>预约</span></button>
-      <button type="button" className={tab === 'member' ? 'active' : ''} onClick={() => setTab('member')}><TeamOutlined />会员<span>刷卡</span></button>
-      <button type="button" className={tab === 'service' ? 'active' : ''} onClick={() => setTab('service')}><AppstoreOutlined />项目<span>列表</span></button>
-      <button type="button" className={tab === 'product' ? 'active' : ''} onClick={() => setTab('product')}><ShoppingOutlined />产品<span>列表</span></button>
+      <button type="button" className={tab === 'main' ? 'active' : ''} onClick={() => setTab('main')}><FileTextOutlined /><span>主单信息</span></button>
+      <button type="button" onClick={() => navigate('/ui/new/cashier/scheduling')}><ClockCircleOutlined /><span>顾客预约</span></button>
+      <button type="button" className={tab === 'member' ? 'active' : ''} onClick={() => setTab('member')}><TeamOutlined /><span>会员刷卡</span></button>
+      <button type="button" className={tab === 'service' ? 'active' : ''} onClick={() => setTab('service')}><AppstoreOutlined /><span>项目列表</span></button>
+      <button type="button" className={tab === 'product' ? 'active' : ''} onClick={() => setTab('product')}><ShoppingOutlined /><span>产品列表</span></button>
       <button type="button" className="is-settle" onClick={openSettlement}>结算</button>
     </header>
     <div className="classic-sell-body">

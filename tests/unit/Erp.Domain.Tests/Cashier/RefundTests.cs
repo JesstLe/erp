@@ -22,13 +22,18 @@ public sealed class RefundTests
     }
 
     [Fact]
-    public void CashRefundNeedsApproverShiftAndManualExternalCannotPretendOriginalRoute()
+    public void CashRefundCompletesWithoutShiftAndManualExternalCannotPretendOriginalRoute()
     {
         var cashRefund = new Refund(Guid.CreateVersion7(), Guid.CreateVersion7(), Guid.CreateVersion7(),
             "RF202608180002", "现金原路退回", Guid.CreateVersion7(),
             [new(Guid.CreateVersion7(), 2_000, PaymentMethodCategory.Cash, null)], Now);
 
-        Assert.Throws<DomainRuleException>(() => cashRefund.Complete(Guid.CreateVersion7(), null, Now));
+        var approverId = Guid.CreateVersion7();
+        cashRefund.Complete(approverId, null, Now);
+        Assert.Equal(RefundStatus.Completed, cashRefund.Status);
+        Assert.Equal(approverId, cashRefund.ApprovedBy);
+        Assert.Null(cashRefund.Lines.Single().CashShiftId);
+        Assert.Equal(Now, cashRefund.Lines.Single().CompletedAtUtc);
         Assert.Throws<DomainRuleException>(() => new Refund(Guid.CreateVersion7(), Guid.CreateVersion7(),
             Guid.CreateVersion7(), "RF202608180003", "人工渠道退款", Guid.CreateVersion7(),
             [new(Guid.CreateVersion7(), 2_000, PaymentMethodCategory.ManualExternal, null)], Now));

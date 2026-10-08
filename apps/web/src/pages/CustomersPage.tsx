@@ -38,7 +38,6 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { apiDownload, apiRequest, ApiError } from "../api/client";
 import type {
-  CashierShift,
   CustomerDetail,
   CustomerMergePreview,
   CustomerSummary,
@@ -215,14 +214,6 @@ export function CustomersPage() {
     queryFn: () =>
       apiRequest<PaymentMethod[]>(
         `/api/v1/payments/methods?storeId=${storeId}`,
-      ),
-  });
-  const currentShift = useQuery({
-    queryKey: ["cashier-shift", storeId],
-    enabled: Boolean(storeId && canTopup),
-    queryFn: () =>
-      apiRequest<CashierShift | undefined>(
-        `/api/v1/payments/shifts/current?storeId=${storeId}`,
       ),
   });
   const topups = useQuery({
@@ -763,7 +754,6 @@ export function CustomersPage() {
                             size="small"
                             type="primary"
                             icon={<DollarOutlined />}
-                            disabled={currentShift.data?.status !== "Open"}
                             onClick={() => beginTopup(card)}
                           >
                             储值
@@ -1490,8 +1480,6 @@ export function CustomersPage() {
         customerName={detail.data.displayName}
         cards={topupCard ? [topupCard] : []}
         methods={paymentMethods.data ?? []}
-        shiftOpen={currentShift.data?.status === "Open"}
-        shiftLoading={currentShift.isLoading}
         canGrantBonus={canGrantBonus}
         onClose={() => setTopupCard(undefined)}
         onSuccess={async () => {
@@ -1499,7 +1487,6 @@ export function CustomersPage() {
             queryClient.invalidateQueries({ queryKey: ["customer", storeId, selectedId] }),
             queryClient.invalidateQueries({ queryKey: ["member-topups", storeId, selectedId] }),
             queryClient.invalidateQueries({ queryKey: ["payments", storeId] }),
-            queryClient.invalidateQueries({ queryKey: ["cashier-shift", storeId] }),
           ]);
         }}
       />}

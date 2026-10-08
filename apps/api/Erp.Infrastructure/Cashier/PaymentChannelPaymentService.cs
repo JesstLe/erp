@@ -113,19 +113,12 @@ internal sealed class PaymentChannelPaymentService(ErpDbContext db, PaymentChann
                     return await RollbackFailure(transaction, "PAYMENT_CHANNEL_ENVIRONMENT_MISMATCH",
                         environmentMessage, cancellationToken);
 
-                var shift = await db.CashierShifts.SingleOrDefaultAsync(x => x.TenantId == tenantId &&
-                    x.StoreId == command.StoreId && x.OperatorId == command.OperatorId &&
-                    x.Status == CashierShiftStatus.Open, cancellationToken);
-                if (shift is null)
-                    return await RollbackFailure(transaction, "SHIFT_NOT_OPEN", "请先开班，再发起渠道支付",
-                        cancellationToken);
-
                 var now = clock.GetUtcNow();
                 var paymentNo = CreatePaymentNo(now);
                 order.BeginCheckout();
                 var payment = new Payment(tenantId, command.StoreId, order.Id, paymentNo, order.ReceivableMinor,
                     [new PaymentAllocationDraft(method.Id, method.Code, method.Name, method.Category,
-                        order.ReceivableMinor, null, shift.Id, null, method.ChannelProvider)], now);
+                        order.ReceivableMinor, null, null, null, method.ChannelProvider)], now);
                 var allocation = payment.Allocations.Single();
                 channelOrder = new PaymentChannelOrder(tenantId, configuration.Id, allocation.Id,
                     method.ChannelProvider.Value, $"{paymentNo}-A1", 1, order.ReceivableMinor,

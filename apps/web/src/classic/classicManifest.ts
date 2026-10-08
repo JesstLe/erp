@@ -63,7 +63,7 @@ export function getClassicFeatureMapping(moduleKey: string, label: string): Clas
     case 'cashier':
       if (contains(label, ['预约'])) return { path: '/ui/new/cashier/scheduling', status: 'integrated', note: '已接入预约与排班能力。' }
       if (contains(label, ['护理', '开卡', '储值', '积分', '兑换'])) return { path: '/ui/new/customer/list', status: 'partial', note: '已接入顾客、会员与服务记录；旧版专用单据字段仍按页面清单补齐。' }
-      if (contains(label, ['交班'])) return { path: '/ui/new/finance/checkout', status: 'integrated', note: '已接入交班与复核流程。' }
+      if (contains(label, ['交班'])) return { path: '/ui/new/finance/checkout', status: 'integrated', note: '已改为收款记录，无需开班或交班。' }
       return { path: '/ui/new/cashier/checkout', status: 'partial', note: '已接入服务录单与收银；旧版单据布局由本页承接。' }
     case 'customer':
       return { path: '/ui/new/customer/list', status: 'partial', note: '已接入顾客、会员、储值和服务档案；专项退款与统计仍需逐项补齐。' }
@@ -82,7 +82,7 @@ export function getClassicFeatureMapping(moduleKey: string, label: string): Clas
     case 'employee':
       return { path: '/ui/new/employee/manage', status: 'partial', note: '已接入员工、账号与权限；工资、奖惩和个税流程待接入。' }
     case 'finance':
-      if (contains(label, ['交班', '结算'])) return { path: '/ui/new/finance/checkout', status: 'partial', note: '已接入交班与对账，其他财务单据仍待补齐。' }
+      if (contains(label, ['交班', '结算'])) return { path: '/ui/new/finance/checkout', status: 'partial', note: '已接入收款记录与对账，其他财务单据仍待补齐。' }
       return { path: '/ui/new/finance/reports', status: 'partial', note: '已接入经营报表；会计类单据和专项口径待补齐。' }
     case 'reports':
     case 'decision':

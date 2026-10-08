@@ -12,7 +12,7 @@ export function FacilitiesOrdersPage() {
         <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/facilities')}>返回设施看板</Button>
         <div>
           <Typography.Title level={4}>设施接待 · 消费单管理</Typography.Title>
-          <Typography.Text type="secondary">补录散客消费、处理待支付账单、交班与复核。原服务录单功能保持不变，仅归入设施接待模块。</Typography.Text>
+          <Typography.Text type="secondary">补录散客消费、处理待支付账单、查询收款与核对退款。</Typography.Text>
         </div>
       </Space>
     </Card>

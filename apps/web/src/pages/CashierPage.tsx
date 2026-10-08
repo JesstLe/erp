@@ -1,5 +1,4 @@
 import {
-  CheckCircleOutlined,
   DeleteOutlined,
   FileDoneOutlined,
   PictureOutlined,
@@ -35,8 +34,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, ApiError } from "../api/client";
 import type {
-  CashierShift,
-  CashierShiftReview,
   CashierVisit,
   CustomerDetail,
   CustomerSummary,
@@ -59,10 +56,10 @@ import type {
 } from "../api/types";
 import { useAuth } from "../auth/useAuth";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { DailyCashierTable } from "./DailyCashierTable";
 import { Permission } from "../security/permissions";
 import { useAuthorization } from "../security/useAuthorization";
 import {
-  canActivateShiftReview,
   cashAmountMinor as calculateCashAmountMinor,
   cashTenderedMinorForSubmission,
   hasAllocationCategory,
@@ -98,13 +95,6 @@ interface SettleValues {
   verificationCode?: string;
 }
 type SettlementMemberAccount = MemberAccount & { cardLabel: string };
-interface ShiftValues {
-  amountYuan: number;
-  note?: string;
-}
-interface ReviewValues {
-  reason?: string;
-}
 interface RefundValues {
   reason: string;
   lines: { originalAllocationId: string; amountYuan: number }[];
@@ -250,9 +240,6 @@ export function CashierPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string>();
   const [settleOrder, setSettleOrder] = useState<ServiceOrder>();
-  const [settleAfterShiftOpen, setSettleAfterShiftOpen] = useState<ServiceOrder>();
-  const [shiftAction, setShiftAction] = useState<"open" | "submit">();
-  const [reviewShift, setReviewShift] = useState<CashierShiftReview>();
   const [refundPayment, setRefundPayment] = useState<Payment>();
   const [rejectRefund, setRejectRefund] = useState<Refund>();
   const [voidOrder, setVoidOrder] = useState<ServiceOrder>();
@@ -268,13 +255,11 @@ export function CashierPage() {
   const appliedOrderKeyword = useDebouncedValue(orderKeyword.trim());
   const [orderFilters, setOrderFilters] = useState<OrderFilters>({});
   const [workbenchView, setWorkbenchView] = useState<
-    "today" | "pending" | "review"
+    "today" | "pending"
   >("today");
   const orderPageSize = 10;
   const [form] = Form.useForm<OrderValues>();
   const [settleForm] = Form.useForm<SettleValues>();
-  const [shiftForm] = Form.useForm<ShiftValues>();
-  const [reviewForm] = Form.useForm<ReviewValues>();
   const [refundForm] = Form.useForm<RefundValues>();
   const [rejectRefundForm] = Form.useForm<RejectRefundValues>();
   const [voidForm] = Form.useForm<VoidOrderValues>();
@@ -373,14 +358,6 @@ export function CashierPage() {
       ),
     select: (result) => result.items,
   });
-  const currentShift = useQuery({
-    queryKey: ["cashier-shift", storeId],
-    enabled: Boolean(storeId),
-    queryFn: () =>
-      apiRequest<CashierShift | undefined>(
-        `/api/v1/payments/shifts/current?storeId=${storeId}`,
-      ),
-  });
   const activeChannelOrder = useQuery({
     queryKey: ["payment-channel-order", storeId, selected.data?.id],
     enabled: Boolean(
@@ -402,7 +379,7 @@ export function CashierPage() {
         `/api/v1/customers/${settleOrder?.customerId}?storeId=${storeId}`,
       ),
   });
-  const canReviewShifts = can(Permission.ShiftReview);
+  const canReconcilePayments = can(Permission.ShiftReview);
   const canApproveRefunds = can(Permission.RefundApprove);
   const canRequestRefunds = can(Permission.RefundRequest);
   const isOwner = can(Permission.CashierApprovePrice);
@@ -418,15 +395,6 @@ export function CashierPage() {
     queryFn: () =>
       apiRequest<PageResult<PriceOverrideApproval>>(
         `/api/v1/cashier/price-approvals?storeId=${storeId}&status=Pending&page=1&pageSize=100`,
-      ),
-    select: (result) => result.items,
-  });
-  const shiftReviews = useQuery({
-    queryKey: ["cashier-shift-reviews", storeId],
-    enabled: Boolean(storeId && canReviewShifts),
-    queryFn: () =>
-      apiRequest<PageResult<CashierShiftReview>>(
-        `/api/v1/payments/shifts?storeId=${storeId}&page=1&pageSize=100`,
       ),
     select: (result) => result.items,
   });
@@ -448,10 +416,7 @@ export function CashierPage() {
       queryClient.invalidateQueries({ queryKey: ["cashier-visits", storeId] }),
       queryClient.invalidateQueries({ queryKey: ["payments", storeId] }),
       queryClient.invalidateQueries({ queryKey: ["refunds", storeId] }),
-      queryClient.invalidateQueries({ queryKey: ["cashier-shift", storeId] }),
-      queryClient.invalidateQueries({
-        queryKey: ["cashier-shift-reviews", storeId],
-      }),
+      queryClient.invalidateQueries({ queryKey: ["daily-cashier-report", storeId] }),
       queryClient.invalidateQueries({
         queryKey: ["price-override-approvals", storeId],
       }),
@@ -638,7 +603,7 @@ export function CashierPage() {
         result.cashChangeMinor
           ? `结算完成，应找零 ${money(result.cashChangeMinor)}`
           : includesManualExternal
-            ? "人工收款已记录，消费单已结算；金额已计入当前班次的人工外部收款待核对"
+            ? "人工收款已记录，消费单已结算；该笔人工外部收款仍待核对"
             : includesMemberAccount
               ? "结算完成；会员余额已写入不可变扣款流水"
               : "收款已记录，消费单已结算",
@@ -776,83 +741,6 @@ export function CashierPage() {
     onSuccess: (result) => {
       setMemberVerification(result);
       message.success("会员验证码核验通过");
-    },
-    onError,
-  });
-  const openShift = useMutation({
-    mutationFn: (values: ShiftValues) =>
-      apiRequest<CashierShift>("/api/v1/payments/shifts/open", {
-        method: "POST",
-        body: JSON.stringify({
-          storeId,
-          openingCashMinor: Math.round(values.amountYuan * 100),
-          commandId: commandId(),
-        }),
-      }),
-    onSuccess: async () => {
-      message.success("班次已开始");
-      setShiftAction(undefined);
-      shiftForm.resetFields();
-      await refresh();
-      if (settleAfterShiftOpen) {
-        beginSettlement(settleAfterShiftOpen);
-        setSettleAfterShiftOpen(undefined);
-      }
-    },
-    onError,
-  });
-  const submitShift = useMutation({
-    mutationFn: (values: ShiftValues) =>
-      apiRequest<CashierShift>(
-        `/api/v1/payments/shifts/${currentShift.data?.id}/submit`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            storeId,
-            expectedVersion: currentShift.data?.version,
-            submittedCashMinor: Math.round(values.amountYuan * 100),
-            note: values.note,
-            commandId: commandId(),
-          }),
-        },
-      ),
-    onSuccess: async (shift) => {
-      message.success(
-        shift.status === "Closed"
-          ? "账实一致且没有外部待核对，班次已自动关闭"
-          : "交班已提交，存在差额或外部待核对，等待独立复核",
-      );
-      setShiftAction(undefined);
-      shiftForm.resetFields();
-      await refresh();
-    },
-    onError,
-  });
-  const review = useMutation({
-    mutationFn: ({
-      item,
-      values,
-    }: {
-      item: CashierShiftReview;
-      values: ReviewValues;
-    }) =>
-      apiRequest<CashierShift>(
-        `/api/v1/payments/shifts/${item.shift.id}/review`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            storeId,
-            expectedVersion: item.shift.version,
-            reason: values.reason,
-            commandId: commandId(),
-          }),
-        },
-      ),
-    onSuccess: async () => {
-      message.success("交班已独立复核并关闭");
-      setReviewShift(undefined);
-      reviewForm.resetFields();
-      await refresh();
     },
     onError,
   });
@@ -1154,17 +1042,6 @@ export function CashierPage() {
     refundForm.setFieldsValue({ reason: "", lines });
     setRefundPayment(payment);
   };
-  const shiftPendingExternal =
-    currentShift.data?.status === "Open"
-      ? (payments.data
-          ?.flatMap((payment) => payment.allocations)
-          .filter(
-            (line) =>
-              line.shiftId === currentShift.data?.id &&
-              line.reconciliationStatus === "Pending",
-          )
-          .reduce((sum, line) => sum + line.amountMinor, 0) ?? 0)
-      : (currentShift.data?.pendingReconciliationMinor ?? 0);
   const beginSettlement = (order: ServiceOrder) => {
     const first =
       paymentMethods.data?.find((method) => method.code === "CASH") ??
@@ -1316,93 +1193,7 @@ export function CashierPage() {
       ),
     },
   ];
-  const reviewColumns = [
-    {
-      title: "班次",
-      dataIndex: ["shift", "shiftNo"],
-      render: (value: string) => <strong>{value}</strong>,
-    },
-    { title: "收银员", dataIndex: "operatorDisplayName" },
-    {
-      title: "状态",
-      dataIndex: ["shift", "status"],
-      render: (value: string) => (
-        <Tag
-          color={
-            value === "ReviewPending"
-              ? "gold"
-              : value === "Closed"
-                ? "default"
-                : "green"
-          }
-        >
-          {value === "ReviewPending"
-            ? "待复核"
-            : value === "Closed"
-              ? "已关闭"
-              : "当班中"}
-        </Tag>
-      ),
-    },
-    {
-      title: "理论现金（仅现金）",
-      dataIndex: ["shift", "expectedCashMinor"],
-      align: "right" as const,
-      render: (value?: number) =>
-        value === undefined || value === null ? "—" : money(value),
-    },
-    {
-      title: "现金差额",
-      dataIndex: ["shift", "cashDifferenceMinor"],
-      align: "right" as const,
-      render: (value?: number) =>
-        value === undefined || value === null ? (
-          "—"
-        ) : (
-          <Typography.Text type={value === 0 ? "success" : "danger"}>
-            {money(value)}
-          </Typography.Text>
-        ),
-    },
-    {
-      title: "人工外部收款待核对",
-      dataIndex: ["shift", "pendingReconciliationMinor"],
-      align: "right" as const,
-      render: (value?: number) =>
-        value === undefined || value === null ? "—" : money(value),
-    },
-    {
-      title: "操作",
-      key: "action",
-      width: 110,
-      render: (_: unknown, item: CashierShiftReview) =>
-        item.shift.status === "ReviewPending" ? (
-          <Button
-            size="small"
-            type="primary"
-            icon={<CheckCircleOutlined />}
-            disabled={
-              !canActivateShiftReview(
-                item.shift.operatorId,
-                auth.user?.id,
-                isOwner,
-              )
-            }
-            onClick={(event) => {
-              event.stopPropagation();
-              reviewForm.setFieldsValue({
-                reason: item.shift.pendingReconciliationMinor
-                  ? "已核对交班数据；外部渠道款项继续保留待核对状态。"
-                  : undefined,
-              });
-              setReviewShift(item);
-            }}
-          >
-            复核
-          </Button>
-        ) : null,
-    },
-  ];
+
 
   return (
     <div className="page-stack">
@@ -1423,26 +1214,6 @@ export function CashierPage() {
               改价策略
             </Button>
           )}
-          <Button
-            icon={<WalletOutlined />}
-            disabled={currentShift.data?.status === "ReviewPending"}
-            onClick={() => {
-              shiftForm.setFieldsValue({
-                amountYuan: currentShift.data?.expectedCashMinor
-                  ? currentShift.data.expectedCashMinor / 100
-                  : 0,
-              });
-              setShiftAction(
-                currentShift.data?.status === "Open" ? "submit" : "open",
-              );
-            }}
-          >
-            {currentShift.data?.status === "Open"
-              ? "提交交班"
-              : currentShift.data?.status === "ReviewPending"
-                ? "交班待复核"
-                : "开班"}
-          </Button>
           <Button
             type="primary"
             icon={<PlusOutlined />}
@@ -1480,87 +1251,9 @@ export function CashierPage() {
             value: "pending",
             label: `待处理（${(priceApprovals.data?.length ?? 0) + (refunds.data?.filter((item) => ["PendingApproval", "Processing"].includes(item.status)).length ?? 0)}）`,
           },
-          {
-            value: "review",
-            label: `交班复核（${shiftReviews.data?.filter((item) => item.shift.status === "ReviewPending").length ?? 0}）`,
-          },
         ]}
       />
-      {workbenchView === "today" && (
-        <>
-          <Card variant="borderless" className="shift-strip">
-            {currentShift.data ? (
-              <div>
-                <div>
-                  <Typography.Text type="secondary">当前班次</Typography.Text>
-                  <strong>{currentShift.data.shiftNo}</strong>
-                </div>
-                <div>
-                  <Typography.Text type="secondary">状态</Typography.Text>
-                  <Tag
-                    color={
-                      currentShift.data.status === "Open" ? "green" : "gold"
-                    }
-                  >
-                    {currentShift.data.status === "Open" ? "当班中" : "待复核"}
-                  </Tag>
-                </div>
-                <div>
-                  <Typography.Text type="secondary">备用金</Typography.Text>
-                  <strong>{money(currentShift.data.openingCashMinor)}</strong>
-                </div>
-                <div>
-                  <Typography.Text type="secondary">外部待核对</Typography.Text>
-                  <strong>{money(shiftPendingExternal)}</strong>
-                </div>
-              </div>
-            ) : (
-              <div className="shift-empty">
-                <Typography.Text>
-                  尚未开班。现金和人工外部收款必须先归入班次。
-                </Typography.Text>
-                <Button
-                  type="primary"
-                  onClick={() => {
-                    shiftForm.setFieldsValue({ amountYuan: 0 });
-                    setShiftAction("open");
-                  }}
-                >
-                  立即开班
-                </Button>
-              </div>
-            )}
-          </Card>
-        </>
-      )}
-      {workbenchView === "review" &&
-        (canReviewShifts ? (
-          <Card
-            variant="borderless"
-            title="交班复核"
-            extra={
-              <Typography.Text type="secondary">
-                复核只关闭班次，不把外部待核对款项改成渠道到账
-              </Typography.Text>
-            }
-          >
-            <Table<CashierShiftReview>
-              rowKey={(item) => item.shift.id}
-              size="small"
-              columns={reviewColumns}
-              dataSource={shiftReviews.data?.filter(
-                (item) => item.shift.status !== "Open",
-              )}
-              loading={shiftReviews.isLoading}
-              pagination={{ pageSize: 10 }}
-              locale={{
-                emptyText: <Empty description="没有待复核或已关闭班次" />,
-              }}
-            />
-          </Card>
-        ) : (
-          <Alert type="info" showIcon title="当前账号没有交班复核权限。" />
-        ))}
+      {workbenchView === "today" && storeId && can(Permission.ReportRead) && <DailyCashierTable key={storeId} storeId={storeId} />}
       {workbenchView === "pending" && (
         <>
           {isOwner && (
@@ -1632,7 +1325,7 @@ export function CashierPage() {
               </Space>
             </Card>
           )}
-          {canReviewShifts && (
+          {canReconcilePayments && (
             <Card
               variant="borderless"
               title="退款审批与渠道处理"
@@ -1747,7 +1440,7 @@ export function CashierPage() {
               </Space>
             </Card>
           )}
-          {!isOwner && !canReviewShifts && (
+          {!isOwner && !canReconcilePayments && (
             <Alert
               type="info"
               showIcon
@@ -2176,28 +1869,11 @@ export function CashierPage() {
                 确认金额
               </Button>
             )}
-            {selected.data?.status === "PendingPayment" &&
-              (currentShift.data?.status === "Open" ? (
-                <Button
-                  type="primary"
-                  icon={<WalletOutlined />}
-                  onClick={() => beginSettlement(selected.data!)}
-                >
-                  收款结算
-                </Button>
-              ) : (
-                <Button
-                  type="primary"
-                  icon={<WalletOutlined />}
-                  onClick={() => {
-                    setSettleAfterShiftOpen(selected.data!);
-                    shiftForm.setFieldsValue({ amountYuan: 0 });
-                    setShiftAction("open");
-                  }}
-                >
-                  开班并结算
-                </Button>
-              ))}
+            {selected.data?.status === "PendingPayment" && (
+              <Button type="primary" icon={<WalletOutlined />} onClick={() => beginSettlement(selected.data!)}>
+                收款结算
+              </Button>
+            )}
             {selected.data?.status === "PaymentProcessing" &&
               activeChannelOrder.data && (
                 <Button
@@ -2282,15 +1958,13 @@ export function CashierPage() {
                   : selected.data.priceAuthorizationStatus === "Rejected"
                     ? "本单改价已被驳回，不能确认或收款；请作废后按正确金额重新录入。"
                     : selected.data.status === "PendingPayment"
-                      ? currentShift.data?.status === "Open"
-                        ? "金额已锁定，可按实际收款方式分摊结算。"
-                        : "金额已锁定；收款须归入当前账号自己的班次，点上方“开班并结算”即可先开班再收款。"
+                      ? "金额已锁定，可按实际收款方式分摊结算。"
                       : selected.data.status === "PartiallyRefunded"
                         ? `消费单已部分退款 ${money(selected.data.refundedMinor)}；原支付和反向流水均保留。`
                         : selected.data.status === "Refunded"
                           ? "消费单已全额退款；原支付和反向流水均保留。"
                           : selected.data.status === "Settled"
-                            ? "消费单已结算；人工外部支付仍需在交班和财务中持续核对。"
+                            ? "消费单已结算；人工外部支付仍需在财务中持续核对。"
                             : selected.data.status === "Voided"
                               ? "消费单已经作废，仅保留历史金额、原因和审计记录。"
                               : "草稿可核对金额；确认后进入待支付。"
@@ -2940,7 +2614,7 @@ export function CashierPage() {
             hasRealChannelMethod
               ? "会员余额只按服务端账户扣减；真实微信/支付宝必须等待渠道确认，人工登记不会伪装成渠道确认。"
               : hasManualExternalMethod
-                ? "真实微信/支付宝渠道当前停用；仍可选择现金、微信人工登记或支付宝人工登记完成结算。人工登记金额会进入当前班次的“人工外部收款待核对”。"
+                ? "真实微信/支付宝渠道当前停用；仍可选择现金、微信人工登记或支付宝人工登记完成结算。人工登记金额仍标记为“待核对”。"
                 : "真实微信/支付宝渠道当前停用；仍可选择现金完成结算。"
           }
           className="modal-alert"
@@ -3264,138 +2938,6 @@ export function CashierPage() {
         </Space>
       </Modal>
 
-      <Modal
-        title={shiftAction === "open" ? "开始收银班次" : "提交交班"}
-        open={Boolean(shiftAction)}
-        onCancel={() => {
-          setShiftAction(undefined);
-          setSettleAfterShiftOpen(undefined);
-        }}
-        onOk={() => shiftForm.submit()}
-        okText={shiftAction === "open" ? "确认开班" : "确认交班"}
-        confirmLoading={openShift.isPending || submitShift.isPending}
-        destroyOnHidden
-      >
-        <Alert
-          type="info"
-          showIcon
-          title={
-            shiftAction === "open"
-              ? "备用金只用于计算本班次理论现金，不计入营业收入。"
-              : "提交后冻结本班次范围；账实一致且没有外部待核对时自动关班，否则进入独立复核。"
-          }
-          className="modal-alert"
-        />
-        <Form<ShiftValues>
-          form={shiftForm}
-          layout="vertical"
-          onFinish={(values) =>
-            shiftAction === "open"
-              ? openShift.mutate(values)
-              : submitShift.mutate(values)
-          }
-        >
-          <Form.Item
-            name="amountYuan"
-            label={
-              shiftAction === "open" ? "开班备用金（元）" : "实际清点现金（元）"
-            }
-            rules={[
-              { required: true },
-              { type: "number", min: 0, max: 100000000 },
-            ]}
-          >
-            <InputNumber
-              min={0}
-              max={100000000}
-              precision={2}
-              prefix="¥"
-              className="full-width"
-            />
-          </Form.Item>
-          {shiftAction === "submit" && (
-            <Form.Item
-              name="note"
-              label="交班备注（可选）"
-              rules={[{ max: 500 }]}
-            >
-              <Input.TextArea rows={3} maxLength={500} showCount />
-            </Form.Item>
-          )}
-        </Form>
-      </Modal>
-      <Modal
-        title={`复核交班 · ${reviewShift?.shift.shiftNo ?? ""}`}
-        open={Boolean(reviewShift)}
-        onCancel={() => setReviewShift(undefined)}
-        onOk={() => reviewForm.submit()}
-        okText="确认复核并关班"
-        confirmLoading={review.isPending}
-        destroyOnHidden
-      >
-        <Alert
-          type="warning"
-          showIcon
-          title="复核确认交班数据和差额处理，不会修改原支付流水，也不会把人工微信/支付宝标记为渠道确认。"
-          className="modal-alert"
-        />
-        {reviewShift && (
-          <Descriptions
-            bordered
-            size="small"
-            column={2}
-            className="modal-alert"
-            items={[
-              {
-                key: "operator",
-                label: "收银员",
-                children: reviewShift.operatorDisplayName,
-              },
-              {
-                key: "difference",
-                label: "现金差额",
-                children: money(reviewShift.shift.cashDifferenceMinor ?? 0),
-              },
-              {
-                key: "pending",
-                label: "外部待核对",
-                children: money(
-                  reviewShift.shift.pendingReconciliationMinor ?? 0,
-                ),
-              },
-              {
-                key: "note",
-                label: "交班备注",
-                children: reviewShift.shift.handoverNote ?? "无",
-              },
-            ]}
-          />
-        )}
-        <Form<ReviewValues>
-          form={reviewForm}
-          layout="vertical"
-          onFinish={(values) =>
-            reviewShift && review.mutate({ item: reviewShift, values })
-          }
-        >
-          <Form.Item
-            name="reason"
-            label="复核说明"
-            rules={[
-              {
-                required: Boolean(
-                  (reviewShift?.shift.cashDifferenceMinor ?? 0) !== 0 ||
-                    (reviewShift?.shift.pendingReconciliationMinor ?? 0) > 0,
-                ),
-                message: "存在差额或外部待核对金额时必须填写复核说明",
-              },
-              { max: 500 },
-            ]}
-          >
-            <Input.TextArea rows={4} maxLength={500} showCount />
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   );
 }

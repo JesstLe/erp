@@ -21,7 +21,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiRequest, ApiError } from '../api/client'
 import type {
-  CashierShift,
   CustomerDetail,
   CashierCustomerSummary,
   FacilityBoardItem,
@@ -54,6 +53,7 @@ import { applySettlementDiscount, buildSettlementAllocations, type SettlementVal
 import { normalizeExpectedDurationMinutes } from './modernFacilityReception'
 import { buildCashierProductCatalog, buildCashierServiceCatalog } from './cashierCatalog'
 import { MemberTopupModal } from './MemberTopupModal'
+import { MemberHistoryModal, type MemberHistoryTab } from './MemberHistoryModal'
 import { applyMemberDiscountAndRoundToWholeYuan } from './membershipRules'
 import { ServiceRecordsSection } from './ServiceRecordsSection'
 
@@ -155,6 +155,9 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   const [productToAddId, setProductToAddId] = useState<string>(); const [productAddedByEmployeeId, setProductAddedByEmployeeId] = useState<string>()
   const [memberSearch, setMemberSearch] = useState(''); const [discountOpen, setDiscountOpen] = useState(false); const [employeeOpen, setEmployeeOpen] = useState(false); const [consultantOpen, setConsultantOpen] = useState(false)
   const [memberTopupOpen, setMemberTopupOpen] = useState(false); const [memberCareOpen, setMemberCareOpen] = useState(false)
+  const [memberHistory, setMemberHistory] = useState<{ tab: MemberHistoryTab; customerId: string; customerName: string }>()
+  const canReadTopups = can(Permission.MembershipManage) && canTopup
+  const canReadOrders = can(Permission.CashierCheckout)
   const [switchOpen, setSwitchOpen] = useState(false); const [mergeOpen, setMergeOpen] = useState(false); const [mergeOrderId, setMergeOrderId] = useState<string>(); const [settleOpen, setSettleOpen] = useState(false); const [prebill, setPrebill] = useState<ServiceOrderPrebill>()
   const [completedPayment, setCompletedPayment] = useState<Payment>(); const [completedReceipt, setCompletedReceipt] = useState<PaymentReceipt>(); const [autoPrintReceipt, setAutoPrintReceipt] = useState(false)
   const [serviceEnded, setServiceEnded] = useState(!isBeforeStart && (!facility.sessionId || !['IN_USE', 'PAUSED'].includes(facility.status)))
@@ -193,7 +196,6 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   const inventory = useQuery({ queryKey: ['inventory-balances', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<InventoryBalance[]>(`/api/v1/inventory/balances?storeId=${storeId}`) })
   const employees = useQuery({ queryKey: ['service-employees', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<ServiceEmployee[]>(`/api/v1/cashier/service-employees?storeId=${storeId}`) })
   const paymentMethods = useQuery({ queryKey: ['payment-methods', storeId], enabled: Boolean(storeId), queryFn: () => apiRequest<PaymentMethod[]>(`/api/v1/payments/methods?storeId=${storeId}`) })
-  const currentShift = useQuery({ queryKey: ['cashier-shift', storeId], enabled: Boolean(storeId && memberTopupOpen && canTopup), queryFn: () => apiRequest<CashierShift | undefined>(`/api/v1/payments/shifts/current?storeId=${storeId}`) })
   const customers = useQuery({ queryKey: ['modern-cashier-customers', storeId, debouncedMemberSearch], enabled: Boolean(storeId && debouncedMemberSearch), queryFn: () => apiRequest<PageResult<CashierCustomerSummary>>('/api/v1/customers/cashier-search', { method: 'POST', body: JSON.stringify({ storeId, query: debouncedMemberSearch, page: 1, pageSize: 30 }) }), select: (result) => result.items })
   const effectiveCustomerId = settleOpen ? settlementCustomerId || customerId : customerId
   const customerDetail = useQuery({ queryKey: ['customer-detail', storeId, effectiveCustomerId], enabled: Boolean(storeId && effectiveCustomerId), queryFn: () => apiRequest<CustomerDetail>(`/api/v1/customers/${effectiveCustomerId}?storeId=${storeId}`) })
@@ -395,11 +397,11 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   return <div className="modern-facility-cashier">{modalContextHolder}
     <header className="modern-cashier-tabs">
       <div className="modern-cashier-room"><b>{facility.displayName}</b><span>{facility.code} · {duration(isBeforeStart ? 0 : liveSeconds)}</span><Tag color={isBeforeStart ? 'gold' : serviceEnded ? 'default' : facility.status === 'PAUSED' ? 'orange' : 'processing'}>{isBeforeStart ? '待开始计时' : serviceEnded ? '服务已结束' : facility.status === 'PAUSED' ? '已暂停' : '服务中'}</Tag></div>
-      <button type="button" className={tab === 'main' ? 'active' : ''} onClick={() => setTab('main')}><FileTextOutlined /><span>主单</span><small>信息</small></button>
-      <button type="button" onClick={() => navigate('/scheduling')}><ClockCircleOutlined /><span>顾客</span><small>预约</small></button>
-      <button type="button" className={tab === 'member' ? 'active' : ''} onClick={() => setTab('member')}><TeamOutlined /><span>会员</span><small>刷卡</small></button>
-      <button type="button" className={tab === 'service' ? 'active' : ''} onClick={() => setTab('service')}><AppstoreOutlined /><span>项目</span><small>列表</small></button>
-      <button type="button" className={tab === 'product' ? 'active' : ''} onClick={() => setTab('product')}><ShoppingOutlined /><span>产品</span><small>列表</small></button>
+      <button type="button" className={tab === 'main' ? 'active' : ''} onClick={() => setTab('main')}><FileTextOutlined /><span>主单信息</span></button>
+      <button type="button" onClick={() => navigate('/scheduling')}><ClockCircleOutlined /><span>顾客预约</span></button>
+      <button type="button" className={tab === 'member' ? 'active' : ''} onClick={() => setTab('member')}><TeamOutlined /><span>会员刷卡</span></button>
+      <button type="button" className={tab === 'service' ? 'active' : ''} onClick={() => setTab('service')}><AppstoreOutlined /><span>项目列表</span></button>
+      <button type="button" className={tab === 'product' ? 'active' : ''} onClick={() => setTab('product')}><ShoppingOutlined /><span>产品列表</span></button>
       <button type="button" className="is-settle" disabled={isBeforeStart} onClick={openSettlement}>结算</button>
     </header>
     <div className="modern-cashier-body">
@@ -449,6 +451,12 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
                 title={!canTopup ? '当前账号没有会员储值权限' : undefined} onClick={() => setMemberTopupOpen(true)}>储值</Button>
               <Button icon={<FileTextOutlined />} disabled={!canManageCare}
                 title={!canManageCare ? '当前账号没有护理记录权限' : undefined} onClick={() => setMemberCareOpen(true)}>护理记录</Button>
+              <Button icon={<WalletOutlined />} disabled={!canReadTopups}
+                title={!canReadTopups ? '当前账号没有储值记录查看权限' : undefined}
+                onClick={() => setMemberHistory({ tab: 'topups', customerId: previewCustomer.id, customerName: previewCustomer.displayName })}>储值记录</Button>
+              <Button icon={<ShoppingOutlined />} disabled={!canReadOrders}
+                title={!canReadOrders ? '当前账号没有消费记录查看权限' : undefined}
+                onClick={() => setMemberHistory({ tab: 'orders', customerId: previewCustomer.id, customerName: previewCustomer.displayName })}>消费记录</Button>
               <Button type="primary" disabled={!editable} loading={previewCustomerDetail.isLoading} onClick={async () => {
                 const detail = previewCustomerDetail.data ?? (storeId ? await apiRequest<CustomerDetail>(`/api/v1/customers/${previewCustomer.id}?storeId=${storeId}`) : undefined)
                 if (detail) queryClient.setQueryData(['customer-detail', storeId, previewCustomer.id], detail)
@@ -478,6 +486,10 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
       <button type="button" className="is-return" onClick={onExit}>返回房台</button>
     </footer>
 
+    {storeId && memberHistory && <MemberHistoryModal key={`${storeId}:${memberHistory.customerId}:${memberHistory.tab}`}
+      storeId={storeId} storeName={auth.store?.name} customerId={memberHistory.customerId}
+      customerName={memberHistory.customerName} initialTab={memberHistory.tab}
+      canReadTopups={canReadTopups} canReadOrders={canReadOrders} onClose={() => setMemberHistory(undefined)} />}
     {storeId && previewCustomer && previewCustomerDetail.data && <MemberTopupModal
       open={memberTopupOpen}
       storeId={storeId}
@@ -486,8 +498,6 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
       customerName={previewCustomer.displayName}
       cards={previewCustomerDetail.data.cards.filter((card) => card.status.toUpperCase() === 'ACTIVE')}
       methods={paymentMethods.data ?? []}
-      shiftOpen={currentShift.data?.status === 'Open'}
-      shiftLoading={currentShift.isLoading}
       canGrantBonus={canGrantBonus}
       onClose={() => setMemberTopupOpen(false)}
       onSuccess={async () => {
@@ -496,7 +506,6 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
           queryClient.invalidateQueries({ queryKey: ['customer-detail', storeId, previewCustomer.id] }),
           queryClient.invalidateQueries({ queryKey: ['customer', storeId, previewCustomer.id] }),
           queryClient.invalidateQueries({ queryKey: ['payments', storeId] }),
-          queryClient.invalidateQueries({ queryKey: ['cashier-shift', storeId] }),
         ])
       }}
     />}
