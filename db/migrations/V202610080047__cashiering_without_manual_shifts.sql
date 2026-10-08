@@ -6,4 +6,3 @@ ALTER TABLE payment_refund_lines DROP CONSTRAINT ck_payment_refund_lines_cash_sh
 ALTER TABLE payment_refund_lines ADD CONSTRAINT ck_payment_refund_lines_cash_shift CHECK (
     (category = 'Cash' AND (completed_at_utc IS NOT NULL OR cash_shift_id IS NULL)) OR
     (category IN ('InternalAccount', 'ChannelExternal') AND cash_shift_id IS NULL));
-
