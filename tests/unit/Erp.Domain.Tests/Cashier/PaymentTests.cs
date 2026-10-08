@@ -66,10 +66,32 @@ public sealed class PaymentTests
     }
 
     [Fact]
-    public void CashAndManualExternalRequireOpenShiftReference()
+    public void CashAndManualExternalCanBeRecordedWithoutManualShift()
     {
-        Assert.Throws<DomainRuleException>(() => CreatePayment(10_000,
-            [new(Guid.CreateVersion7(), "CASH", "现金", PaymentMethodCategory.Cash, 10_000, null, null)]));
+        var payment = CreatePayment(10_000,
+            [new(Guid.CreateVersion7(), "CASH", "现金", PaymentMethodCategory.Cash, 6_000, null, null),
+             new(Guid.CreateVersion7(), "WECHAT_MANUAL", "微信人工登记", PaymentMethodCategory.ManualExternal,
+                 4_000, null, null)]);
+
+        Assert.All(payment.Allocations, allocation => Assert.Null(allocation.ShiftId));
+        Assert.Equal(PaymentConfirmationStatus.CashRecorded, payment.Allocations.First().ConfirmationStatus);
+        Assert.Equal(PaymentConfirmationStatus.ManualPendingReconciliation,
+            payment.Allocations.Last().ConfirmationStatus);
+        Assert.Equal(ReconciliationStatus.Pending, payment.Allocations.Last().ReconciliationStatus);
+    }
+
+    [Fact]
+    public void ChannelPaymentWithoutShiftStillWaitsForVerifiedPayment()
+    {
+        var payment = CreatePayment(10_000,
+            [new(Guid.CreateVersion7(), "WECHAT_NATIVE", "微信支付", PaymentMethodCategory.ChannelExternal,
+                10_000, null, null, ChannelProvider: PaymentChannelProvider.WeChatPay)]);
+        Assert.Equal(PaymentStatus.Processing, payment.Status);
+        Assert.Equal(0, payment.PaidMinor);
+        var allocation = Assert.Single(payment.Allocations);
+        Assert.Null(allocation.ShiftId);
+        Assert.Equal(PaymentConfirmationStatus.ChannelPending, allocation.ConfirmationStatus);
+        Assert.Equal(ReconciliationStatus.Pending, allocation.ReconciliationStatus);
     }
 
     [Fact]

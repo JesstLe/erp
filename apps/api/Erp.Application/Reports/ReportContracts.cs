@@ -1,5 +1,15 @@
 namespace Erp.Application.Reports;
 
+public sealed record DailyCashierChannelDto(string Code, string Name, long ConsumptionMinor,
+    long ConsumptionRefundMinor, long TopupMinor, long TopupRefundMinor, long PendingReconciliationMinor);
+public sealed record DailyCashierSummaryDto(int ConsumptionOrderCount, long ConsumptionMinor,
+    long ConsumptionRefundMinor, long NetRevenueMinor, int TopupCount, long TopupMinor,
+    long TopupRefundMinor, long NetTopupMinor, long BonusMinor, long RevokedBonusMinor,
+    long PendingReconciliationMinor);
+public sealed record DailyCashierReportDto(Guid StoreId, string StoreName, DateOnly Date,
+    string TimeZoneId, DateTimeOffset GeneratedAtUtc, DailyCashierSummaryDto Summary,
+    IReadOnlyList<DailyCashierChannelDto> Channels);
+
 public sealed record OperationsSummaryDto(long SettledRevenueMinor, long RecordedFundsMinor,
     long PendingReconciliationMinor, long RefundMinor, long NetRevenueMinor, long TodayRevenueMinor,
     int SettledOrderCount, int VisitCount, long AverageTicketMinor, long FacilityActiveSeconds,
@@ -49,6 +59,8 @@ public sealed record DashboardOverviewDto(string ScopeName, DateOnly TrendFromDa
 
 public interface IReportService
 {
+    Task<DailyCashierReportDto> GetDailyCashierAsync(Guid tenantId, Guid storeId, DateOnly? reportDate,
+        CancellationToken cancellationToken);
     Task<EmployeeCommissionReportDto> GetEmployeeCommissionsAsync(Guid tenantId, IReadOnlyList<Guid> storeIds,
         DateOnly? fromDate, DateOnly? toDate, string? query, int page, int pageSize, Guid? employeeId,
         CancellationToken cancellationToken);

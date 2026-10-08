@@ -42,7 +42,7 @@ describe('MemberTopupModal', () => {
           { id: 'bonus-1', accountType: 'Bonus', balanceUnits: 3_000, status: 'Active' },
         ] }]}
       methods={[{ id: 'cash-1', code: 'CASH', name: '现金', category: 'Cash', requiresOpenShift: true }]}
-      shiftOpen canGrantBonus onClose={vi.fn()} onSuccess={onSuccess}
+      canGrantBonus onClose={vi.fn()} onSuccess={onSuccess}
     /></QueryClientProvider>)
 
     expect(await screen.findByText('会员储值 · 王女士')).toBeTruthy()
@@ -86,7 +86,7 @@ describe('MemberTopupModal', () => {
         productDiscountBasisPoints: 10_000, accounts: [] }]}
       methods={[{ id: 'wechat-1', code: 'WECHAT_MANUAL', name: '微信人工登记', category: 'ManualExternal',
         requiresOpenShift: true }]}
-      shiftOpen canGrantBonus onClose={vi.fn()} onSuccess={vi.fn()}
+      canGrantBonus onClose={vi.fn()} onSuccess={vi.fn()}
     /></QueryClientProvider>)
 
     expect(screen.queryByRole('textbox', { name: '交易参考号' })).toBeNull()

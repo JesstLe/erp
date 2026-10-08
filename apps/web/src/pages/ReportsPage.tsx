@@ -17,6 +17,7 @@ import type {
   StoreFinancialOverview,
 } from '../api/types'
 import { useAuth } from '../auth/useAuth'
+import { DailyCashierTable } from './DailyCashierTable'
 
 function dateString(date: Date) {
   const year = date.getFullYear()
@@ -81,7 +82,6 @@ export function ReportsPage() {
     { title: '累计储值净额', dataIndex: 'storedValueNetMinor', align: 'right' as const, width: 150, render: (value: number, row: StoreFinancialOverview) => <div className="audit-action"><strong>{money(value)}</strong><Typography.Text type="secondary">本金 {money(row.storedValuePrincipalMinor)} · 赠送 {money(row.storedValueBonusMinor)}</Typography.Text></div> },
     { title: '资金待核对', dataIndex: 'pendingReconciliationMinor', align: 'right' as const, width: 150, render: (value: number, row: StoreFinancialOverview) => value > 0 ? <Tag color="orange">{money(value)} · {row.pendingReconciliationCount} 笔</Tag> : <Tag color="green">已清</Tag> },
     { title: '渠道差异', dataIndex: 'channelDifferenceCount', align: 'center' as const, width: 110, render: (value: number) => value > 0 ? <Tag color="red">{value} 条</Tag> : <Tag color="green">0 条</Tag> },
-    { title: '交班状态', align: 'right' as const, width: 170, render: (_: unknown, row: StoreFinancialOverview) => <div className="audit-action"><strong>营业中 {row.openShiftCount} 班</strong><Typography.Text type="secondary">待复核 {row.reviewPendingShiftCount} 班 · {money(row.reviewPendingShiftAmountMinor)}</Typography.Text></div> },
     { title: '操作', fixed: 'right' as const, width: 120, render: (_: unknown, row: StoreFinancialOverview) => <Button type="link" onClick={() => { const store = auth.user?.stores.find((item) => item.id === row.storeId); if (store) auth.setStore(store) }}>查看门店明细</Button> },
   ]
 
@@ -91,6 +91,7 @@ export function ReportsPage() {
       <Space><Input aria-label="开始日期" type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} /><span>至</span><Input aria-label="结束日期" type="date" value={toDate} min={fromDate} max={today} onChange={(event) => setToDate(event.target.value)} /></Space>
     </div>
 
+    {storeId && <DailyCashierTable key={storeId} storeId={storeId} />}
     {isOwner && <Card variant="borderless" title="品牌多门店经营与对账总览" extra={<Tag color="purple">总账号可见</Tag>}>
       <Alert type="info" showIcon title="收入按消费发生门店统计；储值按充值门店归属，展示未退款本金与未收回赠送金；品牌内跨店消费不会重复计算充值。" className="report-inline-alert" />
       <Row gutter={[16, 16]} className="report-overview-metrics">

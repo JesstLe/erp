@@ -160,8 +160,8 @@ const classicModules: ClassicModuleDefinition[] = [
     { label: '员工提成明细', path: '/ui/new/employee/commissions', permission: Permission.ReportRead, icon: <DollarOutlined /> },
     { label: '排班查询', path: '/ui/new/employee/scheduling', permission: Permission.SchedulingOperate, icon: <SearchOutlined /> },
   ] },
-  { key: 'finance', label: '财务', icon: <DollarOutlined />, permission: Permission.ReportRead, managementTitle: '财务管理', queryTitle: '财务查询', chartTitle: '本月资金构成图表', listTitle: '最新交班与对账列表', actions: [
-    { label: '交班与复核', path: '/ui/new/finance/checkout', permission: Permission.CashierCheckout, icon: <AuditOutlined /> },
+  { key: 'finance', label: '财务', icon: <DollarOutlined />, permission: Permission.ReportRead, managementTitle: '财务管理', queryTitle: '财务查询', chartTitle: '本月资金构成图表', listTitle: '最新收款与对账列表', actions: [
+    { label: '收款记录', path: '/ui/new/finance/checkout', permission: Permission.CashierCheckout, icon: <AuditOutlined /> },
     { label: '经营对账', path: '/ui/new/finance/reports', permission: Permission.ReportRead, icon: <BarChartOutlined /> },
     { label: '支付渠道', path: '/ui/new/finance/channels', permission: Permission.PaymentChannelRead, icon: <CreditCardOutlined /> },
   ], queries: [
@@ -195,7 +195,7 @@ const featureTitles: Record<string, string> = {
   '/ui/new/cashier/facilities': '设施接待', '/ui/new/cashier/checkout': '服务录单与收银', '/ui/new/cashier/scheduling': '预约与排班',
   '/ui/new/customer/list': '顾客、会员与服务记录', '/ui/new/promotion/prices': '价格版本', '/ui/new/promotion/services': '服务项目', '/ui/new/promotion/products': '产品目录',
   '/ui/new/purchase/manage': '采购与入库', '/ui/new/sales/orders': '销售单与收银', '/ui/new/inventory/manage': '库存管理', '/ui/new/distribution/manage': '门店调拨',
-  '/ui/new/employee/manage': '员工与权限', '/ui/new/employee/scheduling': '预约与排班', '/ui/new/finance/checkout': '交班与复核', '/ui/new/finance/reports': '财务报表',
+  '/ui/new/employee/manage': '员工与权限', '/ui/new/employee/scheduling': '预约与排班', '/ui/new/finance/checkout': '收款记录', '/ui/new/finance/reports': '财务报表',
   '/ui/new/finance/channels': '支付渠道', '/ui/new/finance/audit': '审计记录', '/ui/new/reports/operations': '经营报表', '/ui/new/decision/analysis': '经营决策',
   '/ui/new/settings/organization': '品牌与门店', '/ui/new/settings/facilities': '门店设施配置', '/ui/new/change-password': '修改密码',
 }

@@ -11,6 +11,92 @@ namespace Erp.Infrastructure.Reports;
 
 internal sealed class ReportService(ErpDbContext db, TimeProvider clock) : IReportService
 {
+    public async Task<DailyCashierReportDto> GetDailyCashierAsync(Guid tenantId, Guid storeId,
+        DateOnly? reportDate, CancellationToken cancellationToken)
+    {
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
+        var store = await db.Stores.AsNoTracking().SingleAsync(x => x.TenantId == tenantId && x.Id == storeId, cancellationToken);
+        var now = clock.GetUtcNow();
+        var zone = TimeZoneInfo.FindSystemTimeZoneById(store.TimeZoneId);
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(now, zone).DateTime);
+        var day = reportDate ?? today;
+        if (day > today || day == DateOnly.MaxValue) throw new ArgumentException("营业日报日期不得晚于门店当天");
+        var fromUtc = ToUtc(day, zone);
+        var toUtc = ToUtc(day.AddDays(1), zone);
+        var paid = db.Payments.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId &&
+            (x.Status == PaymentStatus.Paid || x.Status == PaymentStatus.PartiallyRefunded || x.Status == PaymentStatus.Refunded) &&
+            x.PaidAtUtc >= fromUtc && x.PaidAtUtc < toUtc);
+        var receipts = await (from allocation in db.PaymentAllocations.AsNoTracking()
+            join payment in paid on allocation.PaymentId equals payment.Id
+            where allocation.TenantId == tenantId
+            group allocation by new { payment.BusinessType, allocation.MethodCodeSnapshot,
+                allocation.Category, allocation.ChannelProvider } into g
+            select new DailyCashierMovement(g.Key.BusinessType, g.Key.MethodCodeSnapshot, g.Key.Category,
+                g.Key.ChannelProvider, g.Sum(x => x.AmountMinor), 0,
+                g.Sum(x => x.ReconciliationStatus == ReconciliationStatus.Pending ? x.AmountMinor : 0)))
+            .ToListAsync(cancellationToken);
+        // Refunds belong to their completion day, including refunds of older receipts.
+        var refunds = await (from line in db.RefundLines.AsNoTracking()
+            join refund in db.Refunds.AsNoTracking() on line.RefundId equals refund.Id
+            join allocation in db.PaymentAllocations.AsNoTracking() on line.OriginalAllocationId equals allocation.Id
+            join payment in db.Payments.AsNoTracking() on refund.PaymentId equals payment.Id
+            where refund.TenantId == tenantId && refund.StoreId == storeId &&
+                line.TenantId == tenantId && allocation.TenantId == tenantId && payment.TenantId == tenantId &&
+                payment.StoreId == storeId && refund.Status == RefundStatus.Completed &&
+                refund.CompletedAtUtc >= fromUtc && refund.CompletedAtUtc < toUtc
+            group line by new { payment.BusinessType, allocation.MethodCodeSnapshot,
+                allocation.Category, allocation.ChannelProvider } into g
+            select new DailyCashierMovement(g.Key.BusinessType, g.Key.MethodCodeSnapshot, g.Key.Category,
+                g.Key.ChannelProvider, 0, g.Sum(x => x.AmountMinor), 0)).ToListAsync(cancellationToken);
+        var counts = await paid.GroupBy(x => x.BusinessType).Select(g => new { Type = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.Type, x => x.Count, cancellationToken);
+        var bonus = await db.MemberTopupOrders.AsNoTracking().Where(x => x.TenantId == tenantId && x.StoreId == storeId &&
+            x.Status != MemberTopupStatus.Cancelled && x.PaidAtUtc >= fromUtc && x.PaidAtUtc < toUtc)
+            .SumAsync(x => (long?)x.BonusMinor, cancellationToken) ?? 0;
+        var revokedBonus = await (from ledger in db.MemberAccountLedgers.AsNoTracking()
+            join account in db.MemberAccounts.AsNoTracking() on ledger.AccountId equals account.Id
+            join refund in db.Refunds.AsNoTracking() on ledger.BusinessId equals refund.Id
+            where ledger.TenantId == tenantId && account.TenantId == tenantId && refund.TenantId == tenantId &&
+                refund.StoreId == storeId && refund.Status == RefundStatus.Completed &&
+                ledger.BusinessType == "MemberTopupRefund" && ledger.Direction == LedgerDirection.Debit &&
+                account.AccountType == MemberAccountType.Bonus && ledger.OccurredAtUtc >= fromUtc && ledger.OccurredAtUtc < toUtc
+            select (long?)ledger.Units).SumAsync(cancellationToken) ?? 0;
+        var movements = receipts.Concat(refunds).GroupBy(x => DailyChannelCode(x.MethodCode, x.Category, x.Provider))
+            .ToDictionary(x => x.Key, x => x.ToList());
+        var channels = new[] { ("CASH", "现金"), ("WECHAT", "微信"), ("ALIPAY", "支付宝"), ("GROUP_BUY", "团购"),
+            ("BANK_CARD", "银行卡"), ("MEMBER_PRINCIPAL", "会员本金"), ("MEMBER_BONUS", "会员赠金"), ("OTHER", "其他") }
+            .Select(channel =>
+            {
+                var rows = movements.GetValueOrDefault(channel.Item1) ?? [];
+                return new DailyCashierChannelDto(channel.Item1, channel.Item2,
+                    rows.Where(x => x.Type == PaymentBusinessType.ServiceOrder).Sum(x => x.Gross),
+                    rows.Where(x => x.Type == PaymentBusinessType.ServiceOrder).Sum(x => x.Refund),
+                    rows.Where(x => x.Type == PaymentBusinessType.MemberTopup).Sum(x => x.Gross),
+                    rows.Where(x => x.Type == PaymentBusinessType.MemberTopup).Sum(x => x.Refund), rows.Sum(x => x.Pending));
+            }).ToList();
+        var consumption = channels.Sum(x => x.ConsumptionMinor);
+        var consumptionRefund = channels.Sum(x => x.ConsumptionRefundMinor);
+        var topup = channels.Sum(x => x.TopupMinor);
+        var topupRefund = channels.Sum(x => x.TopupRefundMinor);
+        var summary = new DailyCashierSummaryDto(counts.GetValueOrDefault(PaymentBusinessType.ServiceOrder),
+            consumption, consumptionRefund, consumption - consumptionRefund,
+            counts.GetValueOrDefault(PaymentBusinessType.MemberTopup), topup, topupRefund, topup - topupRefund,
+            bonus, revokedBonus, channels.Sum(x => x.PendingReconciliationMinor));
+        await transaction.CommitAsync(cancellationToken);
+        return new DailyCashierReportDto(storeId, store.Name, day, store.TimeZoneId, now, summary, channels);
+    }
+
+    private static string DailyChannelCode(string methodCode, PaymentMethodCategory category, PaymentChannelProvider? provider) =>
+        category == PaymentMethodCategory.Cash ? "CASH" : provider == PaymentChannelProvider.WeChatPay ? "WECHAT" :
+        provider == PaymentChannelProvider.Alipay ? "ALIPAY" : methodCode switch
+        {
+            "WECHAT_MANUAL" => "WECHAT", "ALIPAY_MANUAL" => "ALIPAY", "GROUP_BUY_MANUAL" => "GROUP_BUY",
+            "BANK_CARD_MANUAL" => "BANK_CARD", "MEMBER_PRINCIPAL" => "MEMBER_PRINCIPAL", "MEMBER_BONUS" => "MEMBER_BONUS",
+            _ => "OTHER",
+        };
+    private sealed record DailyCashierMovement(PaymentBusinessType Type, string MethodCode,
+        PaymentMethodCategory Category, PaymentChannelProvider? Provider, long Gross, long Refund, long Pending);
+
     public async Task<EmployeeCommissionReportDto> GetEmployeeCommissionsAsync(Guid tenantId,
         IReadOnlyList<Guid> storeIds, DateOnly? fromDate, DateOnly? toDate, string? query, int page,
         int pageSize, Guid? employeeId, CancellationToken cancellationToken)

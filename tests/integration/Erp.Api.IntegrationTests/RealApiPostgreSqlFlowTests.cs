@@ -31,8 +31,16 @@ public sealed class RealApiPostgreSqlTestGroup : ICollectionFixture<RealApiPostg
     public const string Name = "real-api-postgresql";
 }
 
-[Collection(RealApiPostgreSqlTestGroup.Name)]
-public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
+// Legacy incremental imports commit stores and balances; isolate them from cashier seed assumptions.
+// The API fixture temporarily sets process configuration, so its collections must not overlap.
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class LegacyApiPostgreSqlTestGroup : ICollectionFixture<RealApiPostgreSqlFixture>
+{
+    public const string Name = "legacy-api-postgresql";
+}
+
+[Collection(LegacyApiPostgreSqlTestGroup.Name)]
+public sealed class LegacyApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
 {
     [Fact]
     public async Task LegacyImportDryRunTransformsB01DataAndRollsBack()
@@ -199,13 +207,18 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal(0, await fixture.CountLegacyRunsAsync("integration-legacy-store-map"));
     }
 
+}
+
+[Collection(RealApiPostgreSqlTestGroup.Name)]
+public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
+{
     [Fact]
     public async Task CoreStoreFlowRunsThroughRealHttpApiAndPostgreSql()
     {
         var client = fixture.Client;
         var ready = await client.GetFromJsonAsync<ReadinessResponse>("/health/ready");
         Assert.Equal("ready", ready?.Status);
-        Assert.Equal("202610020046", ready?.SchemaVersion);
+        Assert.Equal("202610080047", ready?.SchemaVersion);
 
         var login = await PostAsync<CurrentUserDto>(client, "/api/v1/auth/login", new
         {
@@ -783,12 +796,9 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             });
         Assert.Equal("PendingPayment", confirmed.Status);
 
-        var primaryShift = await PostAsync<CashierShiftDto>(client, "/api/v1/payments/shifts/open", new
-        {
-            storeId, openingCashMinor = 5_000L, commandId = Guid.NewGuid(),
-        });
         var methods = (await client.GetFromJsonAsync<IReadOnlyList<PaymentMethodDto>>(
             $"/api/v1/payments/methods?storeId={storeId}"))!;
+        Assert.All(methods, method => Assert.False(method.RequiresOpenShift));
         var cash = Assert.Single(methods, x => x.Code == "CASH");
         var wechatManual = Assert.Single(methods, x => x.Code == "WECHAT_MANUAL");
         Assert.Equal("ManualExternal", wechatManual.Category);
@@ -802,6 +812,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
                 externalReference = (string?)null } },
             commandId = Guid.NewGuid(),
         });
+        Assert.All(topup.Allocations, allocation => Assert.Null(allocation.ShiftId));
         var topupRefund = await PostAsync<RefundDto>(client, "/api/v1/refunds", new
         {
             storeId, paymentId = topup.PaymentId, expectedPaymentVersion = topup.PaymentVersion,
@@ -809,10 +820,12 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             lines = new[] { new { originalAllocationId = topup.Allocations.Single().Id, amountMinor = 20_000L } },
             commandId = Guid.NewGuid(),
         });
-        _ = await PostAsync<RefundDto>(client, $"/api/v1/refunds/{topupRefund.Id}/approve", new
+        var completedTopupRefund = await PostAsync<RefundDto>(client, $"/api/v1/refunds/{topupRefund.Id}/approve", new
         {
             storeId, expectedVersion = topupRefund.Version, commandId = Guid.NewGuid(),
         });
+        Assert.Equal("Completed", completedTopupRefund.Status);
+        Assert.All(completedTopupRefund.Lines, line => Assert.Null(line.CashShiftId));
         var topupPage = await client.GetFromJsonAsync<PageResponse<MemberTopupDto>>(
             $"/api/v1/member-topups?storeId={storeId}&customerId={customer.Id}&page=1&pageSize=20");
         var partiallyRefundedTopup = Assert.Single(topupPage!.Items);
@@ -828,10 +841,6 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal(6_000L, Assert.Single(accountsAfterTopupRefund,
             account => account.AccountType == "Bonus").BalanceUnits);
 
-        var secondStoreShift = await PostAsync<CashierShiftDto>(client, "/api/v1/payments/shifts/open", new
-        {
-            storeId = secondStore.Id, openingCashMinor = 0L, commandId = Guid.NewGuid(),
-        });
         var secondStoreMethods = (await client.GetFromJsonAsync<IReadOnlyList<PaymentMethodDto>>(
             $"/api/v1/payments/methods?storeId={secondStore.Id}"))!;
         var secondStoreCash = Assert.Single(secondStoreMethods, x => x.Code == "CASH");
@@ -916,6 +925,7 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal("Paid", payment.Status);
         Assert.Equal(5_000L, payment.CashTenderedMinor);
         Assert.Equal(1_000L, payment.CashChangeMinor);
+        Assert.All(payment.Allocations, allocation => Assert.Null(allocation.ShiftId));
         var manualAllocation = Assert.Single(payment.Allocations,
             allocation => allocation.MethodCode == "WECHAT_MANUAL");
         Assert.Equal("ManualPendingReconciliation", manualAllocation.ConfirmationStatus);
@@ -960,6 +970,41 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal(6_000L, storeReport.Summary.StoredValueBonusMinor);
         Assert.Equal(36_000L, storeReport.Summary.StoredValueNetMinor);
 
+        var dailyCashier = await client.GetFromJsonAsync<DailyCashierReportDto>(
+            $"/api/v1/reports/daily-cashier?storeId={storeId}");
+        Assert.Equal(reportDate, dailyCashier!.Date);
+        Assert.Equal("Asia/Shanghai", dailyCashier.TimeZoneId);
+        Assert.Equal(1, dailyCashier.Summary.ConsumptionOrderCount);
+        Assert.Equal(15_000L, dailyCashier.Summary.ConsumptionMinor);
+        Assert.Equal(1_000L, dailyCashier.Summary.ConsumptionRefundMinor);
+        Assert.Equal(14_000L, dailyCashier.Summary.NetRevenueMinor);
+        Assert.Equal(1, dailyCashier.Summary.TopupCount);
+        Assert.Equal(50_000L, dailyCashier.Summary.TopupMinor);
+        Assert.Equal(20_000L, dailyCashier.Summary.TopupRefundMinor);
+        Assert.Equal(30_000L, dailyCashier.Summary.NetTopupMinor);
+        Assert.Equal(10_000L, dailyCashier.Summary.BonusMinor);
+        Assert.Equal(4_000L, dailyCashier.Summary.RevokedBonusMinor);
+        Assert.Equal(11_000L, dailyCashier.Summary.PendingReconciliationMinor);
+        var dailyCash = Assert.Single(dailyCashier.Channels, x => x.Code == "CASH");
+        Assert.Equal(4_000L, dailyCash.ConsumptionMinor);
+        Assert.Equal(1_000L, dailyCash.ConsumptionRefundMinor);
+        Assert.Equal(50_000L, dailyCash.TopupMinor);
+        Assert.Equal(20_000L, dailyCash.TopupRefundMinor);
+        Assert.Equal(11_000L, Assert.Single(dailyCashier.Channels, x => x.Code == "WECHAT").ConsumptionMinor);
+        Assert.Equal(0L, Assert.Single(dailyCashier.Channels, x => x.Code == "ALIPAY").ConsumptionMinor);
+        Assert.Equal(0L, Assert.Single(dailyCashier.Channels, x => x.Code == "GROUP_BUY").ConsumptionMinor);
+        Assert.Equal(dailyCashier.Summary.ConsumptionMinor, dailyCashier.Channels.Sum(x => x.ConsumptionMinor));
+        var emptyDay = await client.GetFromJsonAsync<DailyCashierReportDto>(
+            $"/api/v1/reports/daily-cashier?storeId={storeId}&date={reportDate.AddDays(-2):yyyy-MM-dd}");
+        Assert.Equal(0, emptyDay!.Summary.ConsumptionOrderCount);
+        Assert.Equal(0L, emptyDay.Summary.TopupMinor);
+        Assert.All(emptyDay.Channels, x => Assert.Equal(0L, x.ConsumptionMinor + x.TopupMinor + x.ConsumptionRefundMinor + x.TopupRefundMinor));
+        using (var futureDay = await client.GetAsync(
+            $"/api/v1/reports/daily-cashier?storeId={storeId}&date={reportDate.AddDays(1):yyyy-MM-dd}"))
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, futureDay.StatusCode);
+        using (var inaccessibleDay = await client.GetAsync($"/api/v1/reports/daily-cashier?storeId={Guid.NewGuid()}"))
+            Assert.Equal(HttpStatusCode.Forbidden, inaccessibleDay.StatusCode);
+
         var storeOverview = await client.GetFromJsonAsync<BrandStoreFinancialOverviewDto>(
             $"/api/v1/reports/store-overview?fromDate={reportDate:yyyy-MM-dd}" +
             $"&toDate={reportDate:yyyy-MM-dd}");
@@ -986,40 +1031,10 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         Assert.Equal(24_000L, dashboard.Trend.Single(x => x.Date == reportDate).NetRevenueMinor);
         Assert.Equal(2, dashboard.Stores.Count);
 
-        var autoClosedSecondStoreShift = await PostAsync<CashierShiftDto>(client,
-            $"/api/v1/payments/shifts/{secondStoreShift.Id}/submit", new
-            {
-                storeId = secondStore.Id, expectedVersion = secondStoreShift.Version,
-                submittedCashMinor = 10_000L, note = "无差额自动关班回归", commandId = Guid.NewGuid(),
-            });
-        Assert.Equal("Closed", autoClosedSecondStoreShift.Status);
-        Assert.Equal(10_000L, autoClosedSecondStoreShift.ExpectedCashMinor);
-        Assert.Equal(0L, autoClosedSecondStoreShift.CashDifferenceMinor);
-        Assert.Equal(0L, autoClosedSecondStoreShift.PendingReconciliationMinor);
-        Assert.NotNull(autoClosedSecondStoreShift.ClosedAtUtc);
-        Assert.Null(autoClosedSecondStoreShift.ReviewedBy);
-
-        var submittedPrimaryShift = await PostAsync<CashierShiftDto>(client,
-            $"/api/v1/payments/shifts/{primaryShift.Id}/submit", new
-            {
-                storeId, expectedVersion = primaryShift.Version, submittedCashMinor = 38_000L,
-                note = "人工收款交班回归", commandId = Guid.NewGuid(),
-            });
-        Assert.Equal("ReviewPending", submittedPrimaryShift.Status);
-        Assert.Equal(38_000L, submittedPrimaryShift.ExpectedCashMinor);
-        Assert.Equal(0L, submittedPrimaryShift.CashDifferenceMinor);
-        Assert.Equal(11_000L, submittedPrimaryShift.PendingReconciliationMinor);
-
-        var ownerSelfReviewedShift = await PostAsync<CashierShiftDto>(client,
-            $"/api/v1/payments/shifts/{submittedPrimaryShift.Id}/review", new
-            {
-                storeId, expectedVersion = submittedPrimaryShift.Version,
-                reason = "最高权限确认外部待核对款项并完成关班", commandId = Guid.NewGuid(),
-            });
-        Assert.Equal("Closed", ownerSelfReviewedShift.Status);
-        Assert.Equal(login.Id, ownerSelfReviewedShift.ReviewedBy);
-        Assert.Equal("最高权限确认外部待核对款项并完成关班", ownerSelfReviewedShift.ReviewReason);
-        Assert.Equal(11_000L, ownerSelfReviewedShift.PendingReconciliationMinor);
+        var shifts = await client.GetFromJsonAsync<PageResponse<CashierShiftReviewDto>>(
+            $"/api/v1/payments/shifts?storeId={storeId}&page=1&pageSize=20");
+        Assert.Empty(shifts!.Items);
+        Assert.Equal(0, dashboard.OpenShiftCount);
 
         var redeemedPass = await PostAsync<ServicePassDto>(client,
             $"/api/v1/membership-benefits/service-passes/{issuedPass.Id}/redeem", new
@@ -1393,11 +1408,26 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
     internal const string PlatformChangedPassword = "Platform_Changed!456";
     internal const string MerchantInitialPassword = "Merchant_Initial!123";
 
-    private readonly PostgreSqlContainer database = new PostgreSqlBuilder("postgres:18.4-alpine")
-        .WithDatabase("erp_integration")
-        .WithUsername("erp_test")
-        .WithPassword("Integration_Test!42")
-        .Build();
+    private readonly PostgreSqlContainer? database;
+    private readonly string? externalConnectionString;
+    private string ConnectionString => externalConnectionString ?? database!.GetConnectionString();
+
+    public RealApiPostgreSqlFixture()
+    {
+        externalConnectionString = Environment.GetEnvironmentVariable("ERP_TEST_POSTGRES_CONNECTION_STRING");
+        if (string.IsNullOrWhiteSpace(externalConnectionString))
+        {
+            externalConnectionString = null;
+            database = new PostgreSqlBuilder("postgres:18.4-alpine")
+                .WithDatabase("erp_integration").WithUsername("erp_test")
+                .WithPassword("Integration_Test!42").Build();
+            return;
+        }
+        var configuration = new NpgsqlConnectionStringBuilder(externalConnectionString);
+        if (configuration.Host is not ("localhost" or "127.0.0.1" or "::1") ||
+            configuration.Database?.StartsWith("erp_test_", StringComparison.Ordinal) != true)
+            throw new InvalidOperationException("External integration databases must be local and named erp_test_*. ");
+    }
     private readonly string temporaryRoot = Path.Combine(Path.GetTempPath(), "erp-real-api-tests",
         Guid.NewGuid().ToString("N"));
     private readonly Dictionary<string, string?> previousEnvironment = new(StringComparer.Ordinal);
@@ -1422,7 +1452,7 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
 
     public async Task<(long AmountMinor, int? RateBasisPoints)> GetCommissionSnapshotAsync(Guid lineId)
     {
-        await using var connection = new NpgsqlConnection(database.GetConnectionString());
+        await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
             "SELECT commission_amount_minor, commission_rate_basis_points FROM service_order_lines WHERE id = @id", connection);
@@ -1450,7 +1480,7 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
 
     public async Task<int> CountLegacyRunsAsync(string sourceSystem)
     {
-        await using var connection = new NpgsqlConnection(database.GetConnectionString());
+        await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
             "SELECT count(*) FROM legacy_migration_runs WHERE source_system=@source_system", connection);
@@ -1460,7 +1490,7 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
 
     public async Task<(long PrincipalMinor, long BonusMinor)> GetLegacyCustomerBalancesAsync(string sourceId)
     {
-        await using var connection = new NpgsqlConnection(database.GetConnectionString());
+        await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand("""
             SELECT COALESCE(sum(a.balance_units) FILTER (WHERE a.account_type='Principal'),0),
@@ -1478,7 +1508,7 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
 
     public async Task SetLegacyCustomerBalancesAsync(string sourceId, long principalMinor, long bonusMinor)
     {
-        await using var connection = new NpgsqlConnection(database.GetConnectionString());
+        await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand("""
             UPDATE member_accounts a
@@ -1505,7 +1535,7 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
 
     public async Task AssertLoginSecurityEventIsImmutableAsync(Guid eventId)
     {
-        await using var connection = new NpgsqlConnection(database.GetConnectionString());
+        await using var connection = new NpgsqlConnection(ConnectionString);
         await connection.OpenAsync();
         await using var command = new NpgsqlCommand(
             "UPDATE login_security_events SET result_code = result_code WHERE id = @id", connection);
@@ -1517,11 +1547,20 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         Directory.CreateDirectory(temporaryRoot);
-        await database.StartAsync();
-        await ApplyMigrationsAsync(database.GetConnectionString());
-        SetProcessConfiguration(database.GetConnectionString());
+        if (database is not null) await database.StartAsync();
+        if (externalConnectionString is not null)
+        {
+            await using var connection = new NpgsqlConnection(ConnectionString);
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand(
+                "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public')", connection);
+            if ((bool)(await command.ExecuteScalarAsync())!)
+                throw new InvalidOperationException("External integration databases must be empty; existing data is never reset.");
+        }
+        await ApplyMigrationsAsync(ConnectionString);
+        SetProcessConfiguration(ConnectionString);
 
-        factory = new ErpTestApplicationFactory(database.GetConnectionString(), temporaryRoot);
+        factory = new ErpTestApplicationFactory(ConnectionString, temporaryRoot);
         Client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
             AllowAutoRedirect = false,
@@ -1546,7 +1585,7 @@ public sealed class RealApiPostgreSqlFixture : IAsyncLifetime
         {
             try
             {
-                await database.DisposeAsync();
+                if (database is not null) await database.DisposeAsync();
                 if (Directory.Exists(temporaryRoot)) Directory.Delete(temporaryRoot, true);
             }
             finally

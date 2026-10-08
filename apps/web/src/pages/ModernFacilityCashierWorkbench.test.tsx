@@ -118,7 +118,7 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     expect(screen.getByText('¥30.00')).toBeTruthy()
     expect(await screen.findByText('CARD-001')).toBeTruthy()
     expect(await screen.findByText('金卡')).toBeTruthy()
-    expect(screen.getByRole('button', { name: /储值/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /储值$/ })).toBeTruthy()
     expect(screen.getByRole('button', { name: /护理记录/ })).toBeTruthy()
     expect(screen.getByText(/岁$/)).toBeTruthy()
     await waitFor(() => expect(screen.getByRole('button', { name: '确认关联本次消费' })).toBeTruthy())

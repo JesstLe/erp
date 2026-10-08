@@ -99,7 +99,7 @@ export function DashboardPage() {
         <Col xs={24} md={12} xl={6}>
           <Card className={`dashboard-kpi attention ${(data?.pendingReconciliationMinor ?? 0) === 0 ? 'is-clear' : ''}`} loading={overview.isLoading}>
             <Statistic title="当前待核对资金" value={(data?.pendingReconciliationMinor ?? 0) / 100} precision={2} prefix={<AlertOutlined />} />
-            <span>{data?.pendingReconciliationCount ?? 0} 笔待核对 · {data?.reviewPendingShiftCount ?? 0} 班待复核</span>
+            <span>{data?.pendingReconciliationCount ?? 0} 笔待核对</span>
           </Card>
         </Col>
       </Row>
@@ -108,7 +108,7 @@ export function DashboardPage() {
         <span><TeamOutlined /><b>{data?.activeMemberCount ?? 0}</b> 名有效会员</span>
         <span><TeamOutlined /><b>{data?.activeCustomerCount ?? 0}</b> 名有效顾客</span>
         <span><ClockCircleOutlined /><b>{data?.activeFacilityCount ?? 0}</b> 个设施使用中</span>
-        <span><ShopOutlined /><b>{data?.openShiftCount ?? 0}</b> 个营业班次</span>
+        <span><ShopOutlined /><b>{auth.user?.stores.length ?? 0}</b> 家可查看门店</span>
       </div>
 
       <Row gutter={[16, 16]}>
@@ -166,7 +166,7 @@ export function DashboardPage() {
                   <span>储值余额 <b>{money(store.storedValueBalanceMinor)}</b></span>
                 </div>
                 <div className="dashboard-track"><i style={{ width: `${Math.max(2, Math.max(0, store.monthRevenueMinor) / maxStoreRevenue * 100)}%` }} /></div>
-                {(store.pendingReconciliationCount > 0 || store.reviewPendingShiftCount > 0) && <Tag color="orange">待核对 {store.pendingReconciliationCount} 笔 · 待复核 {store.reviewPendingShiftCount} 班</Tag>}
+                {store.pendingReconciliationCount > 0 && <Tag color="orange">待核对 {store.pendingReconciliationCount} 笔</Tag>}
               </div>) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无门店经营数据" />}
             </div>
           </Card>

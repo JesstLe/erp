@@ -208,9 +208,6 @@ public sealed class PaymentAllocation : Entity
             reference?.Length is not (>= 4 and <= 100))
             throw new DomainRuleException("VALIDATION_FAILED", "人工登记外部收款必须填写4到100字的交易参考号");
         if (reference?.Length > 128) throw new DomainRuleException("VALIDATION_FAILED", "交易参考号最多128字");
-        if (category is PaymentMethodCategory.Cash or PaymentMethodCategory.ManualExternal or
-            PaymentMethodCategory.ChannelExternal && shiftId is null)
-            throw new DomainRuleException("SHIFT_NOT_OPEN", "现金或外部渠道收款必须归入当前班次");
         if ((category == PaymentMethodCategory.InternalAccount) != memberAccountId.HasValue)
             throw new DomainRuleException("VALIDATION_FAILED", "会员账户支付必须且只能关联一个会员账户");
         if ((category == PaymentMethodCategory.ChannelExternal) != channelProvider.HasValue)

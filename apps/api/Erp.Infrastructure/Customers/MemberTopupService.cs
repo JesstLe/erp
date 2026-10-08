@@ -98,16 +98,6 @@ internal sealed class MemberTopupService(ErpDbContext db, TimeProvider clock,
                 return await FailureAndRollback(transaction, "CHANNEL_TOPUP_NOT_AVAILABLE",
                     "微信或支付宝储值必须等待独立异步入账流程开放，不能先增加会员余额", cancellationToken);
 
-            CashierShift? shift = null;
-            if (methods.Values.Any(x => x.RequiresOpenShift))
-            {
-                shift = await db.CashierShifts.SingleOrDefaultAsync(x => x.TenantId == tenantId &&
-                    x.StoreId == command.StoreId && x.OperatorId == command.OperatorId &&
-                    x.Status == CashierShiftStatus.Open, cancellationToken);
-                if (shift is null)
-                    return await FailureAndRollback(transaction, "SHIFT_NOT_OPEN", "请先开班，再办理会员储值", cancellationToken);
-            }
-
             var accounts = await db.MemberAccounts.Where(x => x.TenantId == tenantId && x.CardId == card.Id &&
                 (x.AccountType == MemberAccountType.Principal || x.AccountType == MemberAccountType.Bonus))
                 .ToDictionaryAsync(x => x.AccountType, cancellationToken);
@@ -121,7 +111,7 @@ internal sealed class MemberTopupService(ErpDbContext db, TimeProvider clock,
             {
                 var method = methods[line.MethodId];
                 return new PaymentAllocationDraft(method.Id, method.Code, method.Name, method.Category,
-                    line.AmountMinor, line.ExternalReference, method.RequiresOpenShift ? shift?.Id : null,
+                    line.AmountMinor, line.ExternalReference, null,
                     ChannelProvider: method.ChannelProvider);
             }).ToList();
             var payment = new Payment(tenantId, command.StoreId, PaymentBusinessType.MemberTopup, topup.Id,
