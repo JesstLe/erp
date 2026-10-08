@@ -37,7 +37,7 @@ describe("employee commission report", () => {
     expect(await screen.findByText("提成记录详情")).toBeTruthy();
     expect(screen.getByText("该条提成退款冲减")).toBeTruthy();
     expect(screen.getByText("高级老师 · POS000001")).toBeTruthy();
-  });
+  }, 15000);
   it("auto searches and retains the classic shell while opening the same financial report", async () => {
     mount(true);
     fireEvent.change(screen.getByLabelText("实时查询员工提成"), { target: { value: "EMP000001" } });

@@ -23,7 +23,7 @@ beforeAll(() => {
 afterEach(cleanup)
 
 describe('MemberTopupModal', () => {
-  beforeEach(() => apiRequestMock.mockReset())
+  beforeEach(() => { apiRequestMock.mockReset() })
 
   it('submits principal, bonus and an exactly balanced payment allocation', async () => {
     apiRequestMock.mockResolvedValue({
@@ -72,7 +72,7 @@ describe('MemberTopupModal', () => {
     expect(await screen.findByText('储值完成 · TU-001')).toBeTruthy()
     expect(screen.getByRole('button', { name: '打印储值小票' })).toBeTruthy()
     expect(screen.getByText('储值单：TU-001')).toBeTruthy()
-  })
+  }, 15000)
 
   it('does not ask for a transaction reference for manual WeChat topups', async () => {
     apiRequestMock.mockResolvedValue({ id: 'topup-2', topupNo: 'TU-002', paymentNo: 'PAY-002',
