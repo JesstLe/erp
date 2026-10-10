@@ -7,7 +7,7 @@ public sealed record MemberVerificationChallengeDto(Guid Id, Guid OrderId, Guid 
     DateTimeOffset ExpiresAtUtc, string? DevelopmentCode);
 
 public sealed record IssueMemberVerificationCommand(Guid StoreId, Guid OrderId, long MemberAmountMinor,
-    string FullMobile, Guid OperatorId);
+    string? FullMobile, Guid OperatorId);
 
 public sealed record VerifyMemberChallengeCommand(Guid StoreId, Guid ChallengeId, string Code,
     Guid OperatorId);

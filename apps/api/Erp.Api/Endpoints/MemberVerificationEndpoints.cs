@@ -20,7 +20,7 @@ public static class MemberVerificationEndpoints
             if (!HasStore(current, request.StoreId)) return Results.Forbid();
             return EndpointResults.From(await verification.IssueAsync(current.TenantId,
                 new IssueMemberVerificationCommand(request.StoreId, request.OrderId,
-                    request.MemberAmountMinor, request.FullMobile ?? string.Empty, current.Id),
+                    request.MemberAmountMinor, request.FullMobile, current.Id),
                 cancellationToken));
         });
 

@@ -23,6 +23,15 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
 {
     private static readonly FacilitySessionStatus[] OpenSessionStatuses = [FacilitySessionStatus.Active, FacilitySessionStatus.Paused];
 
+    private IQueryable<FacilitySession> OccupyingSessions(Guid tenantId, Guid storeId) =>
+        db.FacilitySessions.Where(session => session.TenantId == tenantId && session.StoreId == storeId &&
+            (OpenSessionStatuses.Contains(session.Status) ||
+             (session.Status == FacilitySessionStatus.Ended && session.EndReason == FacilitySessionEndReason.Completed &&
+              db.Visits.Any(visit => visit.Id == session.VisitId && visit.Status == VisitStatus.ServiceEnded) &&
+              // Historical unpaid visits must not reclaim a facility that was subsequently used.
+              !db.FacilitySessions.Any(next => next.FacilityId == session.FacilityId &&
+                  next.StartedAtUtc > session.StartedAtUtc))));
+
     public async Task<Result<FacilityBoardDto>> GetBoardAsync(Guid tenantId, Guid storeId, CancellationToken cancellationToken)
     {
         var now = clock.GetUtcNow();
@@ -34,8 +43,7 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
             .OrderBy(x => x.SortOrder).ThenBy(x => x.DisplayName).ToListAsync(cancellationToken);
         var typeNames = await db.FacilityTypes.AsNoTracking().Where(x => x.TenantId == tenantId)
             .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
-        var sessions = await db.FacilitySessions.AsNoTracking().Include(x => x.Pauses)
-            .Where(x => x.TenantId == tenantId && x.StoreId == storeId && OpenSessionStatuses.Contains(x.Status))
+        var sessions = await OccupyingSessions(tenantId, storeId).AsNoTracking().Include(x => x.Pauses)
             .ToListAsync(cancellationToken);
         var sessionByFacility = sessions.ToDictionary(x => x.FacilityId);
         var visitIds = sessions.Select(x => x.VisitId).Distinct().ToList();
@@ -102,8 +110,7 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
             .OrderBy(x => x.SortOrder).ThenBy(x => x.DisplayName).ToListAsync(cancellationToken);
         var types = await db.FacilityTypes.AsNoTracking().Where(x => x.TenantId == tenantId)
             .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
-        var openFacilityIds = await db.FacilitySessions.AsNoTracking().Where(x => x.TenantId == tenantId &&
-                x.StoreId == storeId && OpenSessionStatuses.Contains(x.Status))
+        var openFacilityIds = await OccupyingSessions(tenantId, storeId).AsNoTracking()
             .Select(x => x.FacilityId).ToHashSetAsync(cancellationToken);
         var managers = await ManagerNamesByStoreAsync(tenantId, cancellationToken);
         var projected = groups.Select(group => new FacilityConfigurationGroupDto(group.Id, group.DisplayName,
@@ -222,8 +229,8 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
         var typeId = await ResolveTypeIdAsync(tenantId, command.FacilityTypeId, cancellationToken);
         if (!groupValid || !typeId.HasValue)
             return ResultFactory.Failure<FacilityConfigurationItemDto>("VALIDATION_FAILED", "所属服务区或设施类型无效");
-        var hasOpenSession = await db.FacilitySessions.AnyAsync(x => x.FacilityId == facility.Id &&
-            OpenSessionStatuses.Contains(x.Status), cancellationToken);
+        var hasOpenSession = await OccupyingSessions(tenantId, command.StoreId)
+            .AnyAsync(x => x.FacilityId == facility.Id, cancellationToken);
         if (hasOpenSession && command.LifecycleStatus != FacilityLifecycleStatus.Enabled)
             return ResultFactory.Failure<FacilityConfigurationItemDto>("FACILITY_IN_USE", "服务位正在使用，不能维护或停用");
         var previous = ConfigurationState(facility);
@@ -259,7 +266,7 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
                 var facility = await db.Facilities.SingleOrDefaultAsync(x => x.Id == command.FacilityId && x.TenantId == tenantId && x.StoreId == command.StoreId, cancellationToken);
                 if (facility is null) return ResultFactory.Failure<Guid>("FACILITY_NOT_FOUND", "设施不存在");
                 if (facility.LifecycleStatus != FacilityLifecycleStatus.Enabled ||
-                    await db.FacilitySessions.AnyAsync(x => x.FacilityId == facility.Id && OpenSessionStatuses.Contains(x.Status), cancellationToken) ||
+                    await OccupyingSessions(tenantId, command.StoreId).AnyAsync(x => x.FacilityId == facility.Id, cancellationToken) ||
                     await db.FacilityCleaningTasks.AnyAsync(x => x.FacilityId == facility.Id && x.Status == CleaningTaskStatus.Pending, cancellationToken))
                     return ResultFactory.Failure<Guid>("FACILITY_NOT_AVAILABLE", "设施当前不可用，请刷新看板");
 
@@ -334,7 +341,7 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
                 if (session is null) return ResultFactory.Failure<Guid>("FACILITY_SESSION_NOT_FOUND", "设施使用记录不存在");
                 var target = await db.Facilities.SingleOrDefaultAsync(x => x.Id == command.TargetFacilityId && x.TenantId == tenantId && x.StoreId == command.StoreId, cancellationToken);
                 if (target is null || target.LifecycleStatus != FacilityLifecycleStatus.Enabled ||
-                    await db.FacilitySessions.AnyAsync(x => x.FacilityId == command.TargetFacilityId && OpenSessionStatuses.Contains(x.Status), cancellationToken) ||
+                    await OccupyingSessions(tenantId, command.StoreId).AnyAsync(x => x.FacilityId == command.TargetFacilityId, cancellationToken) ||
                     await db.FacilityCleaningTasks.AnyAsync(x => x.FacilityId == command.TargetFacilityId && x.Status == CleaningTaskStatus.Pending, cancellationToken))
                     return ResultFactory.Failure<Guid>("FACILITY_NOT_AVAILABLE", "目标设施当前不可用，原设施继续计时");
                 var oldFacility = await db.Facilities.SingleAsync(x => x.Id == session.FacilityId, cancellationToken);
@@ -354,6 +361,8 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
         ExecuteAsync(tenantId, storeId, commandId, operatorId, $"CLEAN|{storeId}|{facilityId}", facilityId,
             async now =>
             {
+                if (await OccupyingSessions(tenantId, storeId).AnyAsync(x => x.FacilityId == facilityId, cancellationToken))
+                    return ResultFactory.Failure<Guid>("FACILITY_IN_USE", "设施仍在服务或等待结账，不能释放设施");
                 var task = await db.FacilityCleaningTasks.SingleOrDefaultAsync(x => x.TenantId == tenantId && x.StoreId == storeId &&
                     x.FacilityId == facilityId && x.Status == CleaningTaskStatus.Pending, cancellationToken);
                 if (task is null) return ResultFactory.Failure<Guid>("CLEANING_TASK_NOT_FOUND", "没有待完成的清洁任务");
@@ -465,6 +474,7 @@ public sealed class FacilityService(ErpDbContext db, TimeProvider clock, IHttpCo
             FacilityLifecycleStatus.Disabled => "DISABLED",
             _ when session?.Status == FacilitySessionStatus.Active => "IN_USE",
             _ when session?.Status == FacilitySessionStatus.Paused => "PAUSED",
+            _ when session?.Status == FacilitySessionStatus.Ended && visit?.Status == VisitStatus.ServiceEnded => "AWAITING_PAYMENT",
             _ when cleaningRequired => "CLEANING_REQUIRED",
             _ => "AVAILABLE",
         };

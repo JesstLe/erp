@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ModernFacilityCashierWorkbench } from './ModernFacilityCashierWorkbench'
+import { ClassicCashierFacilitiesPage } from '../classic/ClassicCashierFacilitiesPage'
 import { buildManualPaymentReference, groupBuyPlatforms } from './modernFacilityCashierPayments'
 
 const apiRequestMock = vi.hoisted(() => vi.fn())
@@ -132,6 +133,11 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
   })
 
   it('shows payment splits and visibly inherits the selected member and card into settlement', async () => {
+    const order = {
+      id: 'order-1', orderNo: 'SO-001', visitId: 'visit-1', status: 'Draft', version: 1,
+      customerId: 'customer-1', referenceTotalMinor: 5_000, receivableMinor: 5_000,
+      lines: [{ id: 'line-1', lineType: 'Product', productItemId: 'product-1', itemCode: 'P001', itemName: '护理用品', unitName: '件', quantity: 1, referencePriceMinor: 5_000, enteredPriceMinor: 5_000, lineAmountMinor: 5_000 }],
+    }
     apiRequestMock.mockImplementation((path: string) => {
       if (path === '/api/v1/catalog/price-books') return Promise.resolve([])
       if (path === '/api/v1/catalog/service-items') return Promise.resolve([])
@@ -140,20 +146,21 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
       if (path.startsWith('/api/v1/cashier/service-employees')) return Promise.resolve([])
       if (path.startsWith('/api/v1/payments/methods')) return Promise.resolve([
         { id: 'cash', code: 'CASH', name: '现金', category: 'Cash', isEnabled: true },
+        { id: 'principal', code: 'MEMBER_PRINCIPAL', name: '会员储值本金', category: 'InternalAccount', internalAccountType: 'Principal' },
         { id: 'group-buy', code: 'GROUP_BUY_MANUAL', name: '团购平台核销', category: 'ManualExternal', isEnabled: true },
       ])
       if (path === '/api/v1/customers/cashier-search') return Promise.resolve({ items: [{ id: 'customer-1', displayName: '王女士', mobile: '13615345138', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', activeCardCount: 1, principalBalanceMinor: 20_000, bonusBalanceMinor: 0, createdAtUtc: '2026-01-01T00:00:00Z' }], total: 1, page: 1, pageSize: 30 })
       if (path.startsWith('/api/v1/customers/customer-1?')) return Promise.resolve({ id: 'customer-1', displayName: '王女士', maskedMobile: '136****5138', gender: 'Unknown', status: 'Active', homeStoreId: 'store-1', homeStoreName: '测试门店', version: 1, cards: [{ id: 'card-1', cardTypeName: '储值卡', maskedCardNo: 'CARD-001', status: 'Active', validFrom: '2026-01-01', accounts: [{ id: 'account-1', accountType: 'Principal', balanceUnits: 20_000, status: 'Active' }] }], mergedAliases: [] })
-      if (path === '/api/v1/cashier/visits/visit-1/draft') return Promise.resolve({
-        id: 'order-1', orderNo: 'SO-001', visitId: 'visit-1', status: 'Draft', version: 1,
-        customerId: 'customer-1',
-        referenceTotalMinor: 5_000, receivableMinor: 5_000,
-        lines: [{ id: 'line-1', lineType: 'Product', productItemId: 'product-1', itemCode: 'P001', itemName: '护理用品', unitName: '件', quantity: 1, referencePriceMinor: 5_000, enteredPriceMinor: 5_000, lineAmountMinor: 5_000 }],
-      })
+      if (path === '/api/v1/cashier/visits/visit-1/draft') return Promise.resolve(order)
+      if (path === '/api/v1/cashier/orders/order-1/draft') return Promise.resolve({ ...order, version: 2 })
+      if (path === '/api/v1/cashier/orders/order-1/confirm') return Promise.resolve({ ...order, status: 'PendingPayment', version: 3 })
+      if (path === '/api/v1/facilities/sessions/session-1/end') return Promise.resolve({ ...facility, status: 'AWAITING_PAYMENT', sessionId: 'session-1', visitId: 'visit-1' })
+      if (path === '/api/v1/payments/orders/order-1/settle') return Promise.resolve({ id: 'payment-1', paymentNo: 'PM001', status: 'Paid', receivableMinor: 5_000, paidMinor: 5_000, allocations: [] })
       return Promise.reject(new Error(`unexpected request ${path}`))
     })
     const runningFacility = { ...facility, status: 'IN_USE', sessionId: 'session-1', visitId: 'visit-1', visitNo: 'V001', startedAtUtc: '2026-01-01T00:00:00Z' }
-    render(<MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ModernFacilityCashierWorkbench facility={runningFacility} availableFacilities={[]} onFacilityChanged={vi.fn()} onExit={vi.fn()} onCompleted={vi.fn()} /></QueryClientProvider></MemoryRouter>)
+    const facilityChanged = vi.fn()
+    render(<MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ModernFacilityCashierWorkbench facility={runningFacility} availableFacilities={[]} onFacilityChanged={facilityChanged} onExit={vi.fn()} onCompleted={vi.fn()} /></QueryClientProvider></MemoryRouter>)
 
     await screen.findByText(/1\. 护理用品/)
     await screen.findByText('会员：王女士')
@@ -162,9 +169,64 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     expect(await screen.findByText('收银结算')).toBeTruthy()
     expect(screen.getByText('CARD-001 · 储值卡')).toBeTruthy()
     expect(screen.getByText('已沿用主单会员：王女士')).toBeTruthy()
+    expect(screen.getByText('会员储值本金')).toBeTruthy()
+    expect(screen.queryByPlaceholderText('扣卡时核对完整手机号')).toBeNull()
+    expect(screen.getByText('使用已关联会员，无需重复输入手机号')).toBeTruthy()
     expect(screen.queryByText(/显示团购|更多支付/)).toBeNull()
     expect(screen.getByText('团购支付')).toBeTruthy()
     expect(screen.getByText('美团')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: '确认收款' }))
+    await screen.findByText('结算完成')
+    expect(facilityChanged).toHaveBeenCalledWith(expect.objectContaining({ status: 'AWAITING_PAYMENT', sessionId: 'session-1', visitId: 'visit-1' }))
+    const paymentRequest = apiRequestMock.mock.calls.find(([path]) => path === '/api/v1/payments/orders/order-1/settle')
+    const body = JSON.parse(paymentRequest?.[1].body)
+    expect(body.verifiedMobile).toBeUndefined()
+    expect(body.allocations).toEqual([{ methodId: 'principal', amountMinor: 5_000, externalReference: null, memberAccountId: 'account-1' }])
+  })
+
+  it('restores the classic bill, keeps its facility occupied after end, and retries payment using the same order', async () => {
+    const base = apiRequestMock.getMockImplementation()
+    const running = { ...facility, status: 'IN_USE', sessionId: 'session-1', visitId: 'visit-1' }
+    const order = { id: 'order-1', orderNo: 'SO1', visitId: 'visit-1', customerId: 'customer-1', status: 'Draft', version: 1, receivableMinor: 6_000, lines: [{ id: 'line-1', lineType: 'Product', productItemId: 'product-1', itemCode: 'P1', itemName: '护理用品', quantity: 1, referencePriceMinor: 6_000, enteredPriceMinor: 6_000 }] }
+    let paymentAttempts = 0
+    apiRequestMock.mockImplementation((path: string, options?: unknown) => {
+      if (path.startsWith('/api/v1/facilities/board')) return Promise.resolve({ serverNowUtc: new Date().toISOString(), groups: [{ id: 'group-1', displayName: '服务区', facilities: [running] }] })
+      if (path === '/api/v1/customers/search') return Promise.resolve({ items: [], total: 0 })
+      if (path.startsWith('/api/v1/payments/methods')) return Promise.resolve([
+        { id: 'cash', code: 'CASH', name: '现金', category: 'Cash' },
+        { id: 'principal', code: 'MEMBER_PRINCIPAL', name: '会员储值本金', category: 'InternalAccount' },
+        { id: 'bonus', code: 'MEMBER_BONUS', name: '会员奖励金', category: 'InternalAccount' },
+      ])
+      if (path.startsWith('/api/v1/customers/customer-1?')) return Promise.resolve({ id: 'customer-1', cards: [{ id: 'card-1', cardTypeName: '储值卡', maskedCardNo: 'CARD001', status: 'Active', validFrom: '2026-01-01', accounts: [{ id: 'p', accountType: 'Principal', status: 'Active', balanceUnits: 5_000 }, { id: 'b', accountType: 'Bonus', status: 'Active', balanceUnits: 2_000 }] }] })
+      if (path === '/api/v1/cashier/visits/visit-1/draft') return Promise.resolve(order)
+      if (path === '/api/v1/cashier/orders/order-1/draft') return Promise.resolve({ ...order, version: 2 })
+      if (path === '/api/v1/facilities/sessions/session-1/end') return Promise.resolve({ ...running, status: 'AWAITING_PAYMENT' })
+      if (path === '/api/v1/cashier/orders/order-1/confirm') return Promise.resolve({ ...order, version: 3, status: 'PendingPayment' })
+      if (path === '/api/v1/payments/orders/order-1/settle') {
+        paymentAttempts += 1
+        return paymentAttempts === 1 ? Promise.reject(new Error('Temporary payment failure')) : Promise.resolve({ id: 'payment-1', status: 'Paid' })
+      }
+      return base?.(path, options)
+    })
+    render(<MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ClassicCashierFacilitiesPage /></QueryClientProvider></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /一号服务位/ }))
+    await screen.findByText(/1\. 护理用品/)
+    fireEvent.click(screen.getByRole('button', { name: /结束.*服务/s }))
+    await waitFor(() => expect((screen.getByRole('button', { name: /结束.*服务/s }) as HTMLButtonElement).disabled).toBe(true))
+    fireEvent.click(screen.getByRole('button', { name: '结算' }))
+    await screen.findByText('会员储值本金')
+    expect(screen.queryByLabelText('会员完整手机号')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '确认收款' }))
+    await waitFor(() => expect(paymentAttempts).toBe(1))
+    await waitFor(() => expect((screen.getByRole('button', { name: /确认收款/ }) as HTMLButtonElement).className.includes('loading')).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: /确认收款/ }))
+    await waitFor(() => expect(paymentAttempts).toBe(2))
+    expect(apiRequestMock.mock.calls.filter(([path]) => path.endsWith('/session-1/end'))).toHaveLength(1)
+    expect(apiRequestMock.mock.calls.filter(([path]) => path.endsWith('/order-1/confirm'))).toHaveLength(1)
+    const request = apiRequestMock.mock.calls.find(([path]) => path === '/api/v1/payments/orders/order-1/settle')
+    const body = JSON.parse(request?.[1].body)
+    expect(body.verifiedMobile).toBeUndefined()
+    expect(body.allocations.map((line: { methodId: string; amountMinor: number }) => [line.methodId, line.amountMinor])).toEqual([['principal', 5_000], ['bonus', 1_000]])
   })
 
 })

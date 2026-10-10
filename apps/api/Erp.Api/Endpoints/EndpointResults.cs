@@ -22,6 +22,7 @@ internal static class EndpointResults
             "POSITION_NOT_FOUND" => StatusCodes.Status404NotFound,
             "INVALID_SERVICE_ITEM" => StatusCodes.Status422UnprocessableEntity,
             "POSITION_COMMISSION_CONFLICT" => StatusCodes.Status409Conflict,
+            "FACILITY_IN_USE" => StatusCodes.Status409Conflict,
             "VALIDATION_FAILED" or "FILE_TOO_LARGE" or "FILE_TYPE_NOT_ALLOWED" or "DUPLICATE_CODE" or "DUPLICATE_FACILITY_GROUP" or "DUPLICATE_FACILITY_TYPE" or "DUPLICATE_FACILITY_CODE" or "DUPLICATE_MEMBER_CARD_TYPE" or "DUPLICATE_SUPPLIER_CODE" => StatusCodes.Status422UnprocessableEntity,
             "INVALID_CREDENTIALS" or "UNAUTHORIZED" => StatusCodes.Status401Unauthorized,
             "ACCOUNT_LOCKED" => StatusCodes.Status423Locked,

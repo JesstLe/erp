@@ -740,9 +740,18 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
                 storeId, commandId = Guid.NewGuid(),
             });
         Assert.Equal(order.Id, restoredDraft.Id);
+        var cleaningFacility = await PostAsync<FacilityBoardItemDto>(client, "/api/v1/facilities", new
+        {
+            storeId, groupId = group.Id, facilityTypeId = type.Id, displayName = "需清洁服务位",
+            sortOrder = 20, defaultCleaningMinutes = 5, allowReservation = true,
+        });
+        var cleaningStart = await PostAsync<FacilityBoardItemDto>(client, "/api/v1/facilities/sessions/start", new
+        {
+            storeId, facilityId = cleaningFacility.Id, customerId = customer.Id, commandId = Guid.NewGuid(),
+        });
         var sourceOrder = await PostAsync<ServiceOrderDto>(client, "/api/v1/cashier/orders", new
         {
-            storeId, visitId = (Guid?)null, customerId = customer.Id, note = "自动回归待合并产品单",
+            storeId, visitId = cleaningStart.VisitId, customerId = customer.Id, note = "自动回归待合并产品单",
             lines = new object[]
             {
                 new { lineType = "PRODUCT", serviceItemId = (Guid?)null, productItemId = product.Id,
@@ -784,11 +793,28 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             });
         Assert.Equal(order.OrderNo, prebill.OrderNo);
         Assert.Equal(2, prebill.Lines.Count);
-        _ = await PostAsync<FacilityBoardItemDto>(client,
+        var endedFacility = await PostAsync<FacilityBoardItemDto>(client,
             $"/api/v1/facilities/sessions/{started.SessionId}/end", new
             {
                 storeId, commandId = Guid.NewGuid(),
             });
+        Assert.Equal("AWAITING_PAYMENT", endedFacility.Status);
+        Assert.Equal(started.VisitId, endedFacility.VisitId);
+        Assert.Equal(started.SessionId, endedFacility.SessionId);
+        var waitingBoard = await client.GetFromJsonAsync<FacilityBoardDto>($"/api/v1/facilities/board?storeId={storeId}");
+        Assert.Equal("AWAITING_PAYMENT", waitingBoard!.Groups.SelectMany(x => x.Facilities).Single(x => x.Id == facility.Id).Status);
+        var cleaningEnd = await PostAsync<FacilityBoardItemDto>(client,
+            $"/api/v1/facilities/sessions/{cleaningStart.SessionId}/end", new { storeId, commandId = Guid.NewGuid() });
+        Assert.Equal("AWAITING_PAYMENT", cleaningEnd.Status);
+        using (var blockedStart = await SendAsync(client, HttpMethod.Post, "/api/v1/facilities/sessions/start",
+                   new { storeId, facilityId = facility.Id, commandId = Guid.NewGuid() }))
+            Assert.Equal(HttpStatusCode.Conflict, blockedStart.StatusCode);
+        using (var blockedRelease = await SendAsync(client, HttpMethod.Post, $"/api/v1/facilities/{cleaningFacility.Id}/cleaning/complete",
+                   new { storeId, commandId = Guid.NewGuid() }))
+        {
+            using var releaseBody = await JsonDocument.ParseAsync(await blockedRelease.Content.ReadAsStreamAsync());
+            Assert.Equal("FACILITY_IN_USE", releaseBody.RootElement.GetProperty("error").GetProperty("code").GetString());
+        }
         var confirmed = await PostAsync<ServiceOrderDto>(client,
             $"/api/v1/cashier/orders/{order.Id}/confirm", new
             {
@@ -870,13 +896,34 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             });
         var principalMethod = Assert.Single(secondStoreMethods, x => x.Code == "MEMBER_PRINCIPAL");
         var principalAccount = Assert.Single(accountsAfterTopupRefund, x => x.AccountType == "Principal");
+        using (var mismatch = await SendAsync(client, HttpMethod.Post,
+                   $"/api/v1/payments/orders/{crossStoreOrder.Id}/settle", new
+                   {
+                       storeId = secondStore.Id, expectedVersion = crossStoreOrder.Version,
+                       allocations = new[] { new { methodId = principalMethod.Id, amountMinor = 10_000L,
+                           memberAccountId = principalAccount.Id } },
+                       verifiedMobile = "13800138000", commandId = Guid.NewGuid(),
+                   }))
+        {
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, mismatch.StatusCode);
+            using var mismatchBody = await JsonDocument.ParseAsync(await mismatch.Content.ReadAsStreamAsync());
+            Assert.Equal("MEMBER_MOBILE_MISMATCH", mismatchBody.RootElement.GetProperty("error").GetProperty("code").GetString());
+        }
+        using (var foreignAccount = await SendAsync(client, HttpMethod.Post,
+                   $"/api/v1/payments/orders/{crossStoreOrder.Id}/settle", new
+                   {
+                       storeId = secondStore.Id, expectedVersion = crossStoreOrder.Version,
+                       allocations = new[] { new { methodId = principalMethod.Id, amountMinor = 10_000L,
+                           memberAccountId = Guid.NewGuid() } }, commandId = Guid.NewGuid(),
+                   }))
+            Assert.Equal(HttpStatusCode.NotFound, foreignAccount.StatusCode);
         var crossStorePayment = await PostAsync<PaymentDto>(client,
             $"/api/v1/payments/orders/{crossStoreOrder.Id}/settle", new
             {
                 storeId = secondStore.Id, expectedVersion = crossStoreOrder.Version,
                 allocations = new[] { new { methodId = principalMethod.Id, amountMinor = 10_000L,
                     externalReference = (string?)null, memberAccountId = (Guid?)principalAccount.Id } },
-                cashTenderedMinor = (long?)null, verifiedMobile = "13900139000",
+                cashTenderedMinor = (long?)null, verifiedMobile = (string?)null,
                 verificationChallengeId = (Guid?)null, commandId = Guid.NewGuid(),
             });
         Assert.Equal("Paid", crossStorePayment.Status);
@@ -923,6 +970,14 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             verificationChallengeId = (Guid?)null, commandId = Guid.NewGuid(),
         });
         Assert.Equal("Paid", payment.Status);
+        var settledBoard = await client.GetFromJsonAsync<FacilityBoardDto>($"/api/v1/facilities/board?storeId={storeId}");
+        var releasedFacility = settledBoard!.Groups.SelectMany(x => x.Facilities).Single(x => x.Id == facility.Id);
+        Assert.Equal("AVAILABLE", releasedFacility.Status);
+        Assert.Null(releasedFacility.VisitId);
+        Assert.Equal("CLEANING_REQUIRED", settledBoard.Groups.SelectMany(x => x.Facilities).Single(x => x.Id == cleaningFacility.Id).Status);
+        var cleaned = await PostAsync<FacilityBoardItemDto>(client,
+            $"/api/v1/facilities/{cleaningFacility.Id}/cleaning/complete", new { storeId, commandId = Guid.NewGuid() });
+        Assert.Equal("AVAILABLE", cleaned.Status);
         Assert.Equal(5_000L, payment.CashTenderedMinor);
         Assert.Equal(1_000L, payment.CashChangeMinor);
         Assert.All(payment.Allocations, allocation => Assert.Null(allocation.ShiftId));
