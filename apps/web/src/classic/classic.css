@@ -188,7 +188,7 @@
 .classic-cashier-loading { min-height: 480px; display: grid; place-items: center; }
 .classic-room-page,
 .classic-sell-page { min-height: calc(100vh - 110px); display: flex; flex-direction: column; background: #fff; }
-.classic-sell-page { height: calc(100vh - 110px); height: calc(100dvh - 110px); min-height: 520px; overflow: hidden; }
+.classic-sell-page { height: var(--cashier-workspace-height, calc(100dvh - 110px)); min-height: 0; overflow: hidden; container: classic-cashier / inline-size; }
 .classic-room-toolbar { min-height: 48px; display: flex; align-items: center; gap: 12px; padding: 5px 8px; border-bottom: 1px solid #d6d6d6; background: #fafafa; }
 .classic-room-toolbar > strong { color: #3996df; font-size: 17px; }
 .classic-room-toolbar > span { color: #8a9198; font-size: 12px; }
@@ -209,6 +209,7 @@
 .classic-room-card.is-available { background: #63bd6d; }
 .classic-room-card.is-in-use { background: #559fe0; }
 .classic-room-card.is-paused { background: #e2a443; }
+.classic-room-card.is-awaiting-payment { background: #c18a30; }
 .classic-room-card.is-cleaning { background: #936bc1; }
 .classic-room-card.is-disabled { background: #a4a9ae; }
 .classic-room-card:hover:not(:disabled) { filter: brightness(.94); transform: translateY(-1px); }
@@ -234,7 +235,7 @@
 .classic-sell-tabs > button.active { background: #4c9cdf; }
 .classic-sell-tabs > button.is-settle { min-width: 64px; margin-left: auto; background: #ef5b62; font-size: 14px; }
 .classic-sell-tabs > button.is-settle:hover { background: #dc434b; }
-.classic-sell-body { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: minmax(330px, 42%) minmax(430px, 58%); grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+.classic-sell-body { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: minmax(0, 42%) minmax(0, 58%); grid-template-rows: minmax(0, 1fr); overflow: hidden; }
 .classic-bill-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid #ddd; background: #fafafa; }
 .classic-bill-summary { height: 42px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid #ddd; background: #f3f3f3; color: #78818a; font-size: 12px; }
 .classic-bill-summary b { margin-left: auto; color: #e45259; font-size: 17px; }
@@ -242,6 +243,18 @@
 .classic-bill-lines { flex: 1; min-height: 0; padding: 7px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .classic-bill-lines,
 .classic-catalog-grid { scrollbar-color: #9aa8b5 #eef2f4; }
+.classic-bill-lines::-webkit-scrollbar,
+.classic-catalog-grid::-webkit-scrollbar,
+.classic-member-results::-webkit-scrollbar,
+.classic-main-order::-webkit-scrollbar { width: 8px; }
+.classic-bill-lines::-webkit-scrollbar-thumb,
+.classic-catalog-grid::-webkit-scrollbar-thumb,
+.classic-member-results::-webkit-scrollbar-thumb,
+.classic-main-order::-webkit-scrollbar-thumb { border: 2px solid #eef2f4; border-radius: 8px; background: #9aa8b5; }
+.classic-bill-lines::-webkit-scrollbar-track,
+.classic-catalog-grid::-webkit-scrollbar-track,
+.classic-member-results::-webkit-scrollbar-track,
+.classic-main-order::-webkit-scrollbar-track { background: #eef2f4; }
 .classic-sell-tabs,
 .classic-sell-actions,
 .classic-bill-summary,
@@ -260,7 +273,7 @@
 .classic-catalog-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: #fff; }
 .classic-catalog-search { min-height: 44px; display: grid; grid-template-columns: 145px minmax(220px, 1fr); gap: 6px; padding: 6px; border-bottom: 1px solid #ddd; }
 .classic-member-search .classic-catalog-search { grid-template-columns: 1fr; }
-.classic-catalog-grid { flex: 1; min-height: 0; align-content: start; display: grid; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 4px; padding: 6px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.classic-catalog-grid { flex: 1 1 0; min-height: 0; align-content: start; grid-auto-rows: max-content; display: grid; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 4px; padding: 6px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .classic-catalog-grid button { min-height: 82px; display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 7px; border: 0; background: #579ee0; color: #fff; text-align: left; cursor: pointer; }
 .classic-catalog-grid button:hover { background: #398bd5; }
 .classic-catalog-grid button small { color: rgba(255,255,255,.82); font-size: 10px; }
@@ -278,7 +291,7 @@
 .classic-member-results button:hover,
 .classic-member-results button.active { border-color: #4e9edf; background: #eef7ff; }
 .classic-sell-actions { min-height: 64px; margin-top: auto; display: flex; align-items: stretch; gap: 3px; padding: 4px; border-top: 1px solid #d4d4d4; background: #f3f3f3; overflow-x: auto; }
-.classic-sell-actions button { flex: 0 0 66px; display: grid; grid-template-columns: 20px 1fr; grid-template-rows: 1fr 1fr; align-items: center; padding: 6px; border: 0; background: #909090; color: #fff; cursor: pointer; }
+.classic-sell-actions button { flex: 0 0 86px; display: inline-flex; align-items: center; justify-content: center; gap: 3px; padding: 6px; border: 0; background: #909090; color: #fff; white-space: nowrap; cursor: pointer; }
 .classic-sell-actions button > .anticon { grid-row: 1 / 3; }
 .classic-sell-actions button span:not(.anticon) { text-align: left; }
 .classic-sell-actions button:hover:not(:disabled) { background: #4f9dde; }
@@ -468,6 +481,14 @@
   .classic-metrics article:nth-child(-n+2) { border-bottom: 1px solid #eee; }
 }
 
+@container classic-cashier (max-width: 900px) {
+  .classic-catalog-search { grid-template-columns: minmax(0, 1fr); }
+}
+@container classic-cashier (max-width: 720px) {
+  .classic-sell-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
+  .classic-bill-pane { border-right: 0; border-bottom: 1px solid #ddd; }
+  .classic-catalog-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+}
 @media (max-width: 640px) {
   .classic-shell,
   .classic-shell.is-collapsed { grid-template-columns: 1fr; padding-bottom: 58px; }

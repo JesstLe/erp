@@ -701,11 +701,9 @@ export function CashierPage() {
     mutationFn: ({
       orderId,
       memberAmountMinor,
-      fullMobile,
     }: {
       orderId: string;
       memberAmountMinor: number;
-      fullMobile: string;
     }) =>
       apiRequest<MemberVerification>("/api/v1/member-verifications", {
         method: "POST",
@@ -713,7 +711,6 @@ export function CashierPage() {
           storeId,
           orderId,
           memberAmountMinor,
-          fullMobile,
         }),
       }),
     onSuccess: (result) => {
@@ -1077,7 +1074,6 @@ export function CashierPage() {
     settleAllocations,
     paymentMethods.data ?? [],
   );
-  const verifiedMobile = Form.useWatch("verifiedMobile", settleForm);
   const memberAmountMinor = settleAllocations.reduce(
     (sum, line) =>
       paymentMethods.data?.find((method) => method.id === line?.methodId)
@@ -2741,38 +2737,20 @@ export function CashierPage() {
               <Alert
                 type="info"
                 showIcon
-                title={`本次使用会员资金 ${money(memberAmountMinor)}；扣款前必须核对完整手机号。`}
+                title={`本次使用会员资金 ${money(memberAmountMinor)}；使用消费单已关联会员，无需重复输入手机号。`}
                 className="modal-alert"
               />
-              <Form.Item
-                name="verifiedMobile"
-                label="会员完整手机号"
-                rules={[
-                  { required: true, message: "请输入完整手机号进行核对" },
-                  {
-                    pattern: /^1[3-9]\d{9}$/,
-                    message: "请输入有效的中国大陆手机号",
-                  },
-                ]}
-              >
-                <Input
-                  maxLength={11}
-                  inputMode="numeric"
-                  onChange={() => setMemberVerification(undefined)}
-                />
-              </Form.Item>
               {memberAmountMinor >= 50000 && (
                 <>
                   <Space align="end" className="full-width">
                     <Button
                       loading={issueVerification.isPending}
-                      disabled={!verifiedMobile || !settleOrder}
+                      disabled={!settleOrder?.customerId}
                       onClick={() =>
                         settleOrder &&
                         issueVerification.mutate({
                           orderId: settleOrder.id,
                           memberAmountMinor,
-                          fullMobile: verifiedMobile!,
                         })
                       }
                     >

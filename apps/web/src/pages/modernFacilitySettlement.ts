@@ -40,6 +40,20 @@ function activeAccounts(card: MemberCard | undefined) {
   return card?.accounts.filter((account) => account.status.toUpperCase() === 'ACTIVE') ?? []
 }
 
+export function validSettlementCards(cards: MemberCard[], today = new Date().toLocaleDateString('sv-SE')) {
+  return cards.filter((card) => card.status.toUpperCase() === 'ACTIVE' && card.validFrom <= today &&
+    (!card.validTo || card.validTo >= today))
+}
+
+export function defaultSettlementMethod(methods: PaymentMethod[], cards: MemberCard[]) {
+  if (validSettlementCards(cards).some((card) => activeAccounts(card).some((account) => account.accountType === 'Principal'))) {
+    const principal = methods.find((method) => method.code === 'MEMBER_PRINCIPAL')
+    if (principal) return principal
+  }
+  return methods.find((method) => method.code === 'CASH') ??
+    methods.find((method) => !method.channelProvider && method.code !== 'GROUP_BUY_MANUAL' && method.category !== 'InternalAccount')
+}
+
 function referenceFor(method: PaymentMethod, explicitReference: string | undefined,
   groupBuyPlatform: string | undefined, fallbackReference: string) {
   if (method.category !== 'ManualExternal') return null
@@ -132,17 +146,20 @@ export function buildSettlementAllocations(input: {
 
   const appendMember = (amountMinor: number) => {
     if (amountMinor <= 0) return
-    const selectedCard = cards.find((card) => card.id === values.memberCardId) ??
-      (cards.filter((card) => card.status.toUpperCase() === 'ACTIVE').length === 1
-        ? cards.find((card) => card.status.toUpperCase() === 'ACTIVE') : undefined)
+    const validCards = validSettlementCards(cards)
+    const selectedCard = values.memberCardId ? validCards.find((card) => card.id === values.memberCardId)
+      : validCards.length === 1 ? validCards[0] : undefined
     if (!selectedCard) throw new Error('请选择本次扣款使用的会员卡')
-    if (!values.verifiedMobile?.trim()) throw new Error('使用会员卡扣款时必须核对完整手机号')
     const accounts = activeAccounts(selectedCard)
     const principal = accounts.find((account) => account.accountType === 'Principal')
     const bonus = accounts.find((account) => account.accountType === 'Bonus')
-    const principalAmount = Math.min(principal?.balanceUnits ?? 0, amountMinor)
+    const principalMethod = methodByCode.get('MEMBER_PRINCIPAL')
+    const bonusMethod = methodByCode.get('MEMBER_BONUS')
+    const principalUsed = principalMethod ? allocations.get(principalMethod.id)?.amountMinor ?? 0 : 0
+    const bonusUsed = bonusMethod ? allocations.get(bonusMethod.id)?.amountMinor ?? 0 : 0
+    const principalAmount = Math.min(Math.max(0, (principal?.balanceUnits ?? 0) - principalUsed), amountMinor)
     const bonusAmount = amountMinor - principalAmount
-    if (bonusAmount > (bonus?.balanceUnits ?? 0)) throw new Error('所选会员卡余额不足')
+    if (bonusAmount > (bonus?.balanceUnits ?? 0) - bonusUsed) throw new Error('所选会员卡余额不足，请调整储值卡付款金额并选择其他方式支付剩余应收')
     if (principalAmount > 0) {
       const method = methodByCode.get('MEMBER_PRINCIPAL')
       if (!method || !principal) throw new Error('会员储值本金支付方式不可用')

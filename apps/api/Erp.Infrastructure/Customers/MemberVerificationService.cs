@@ -60,10 +60,10 @@ internal sealed class MemberVerificationService(ErpDbContext db, CustomerPrivacy
                 "生产验证码发送渠道尚未配置");
         if (command.MemberAmountMinor < 50_000)
             return ResultFactory.Failure<MemberVerificationChallengeDto>("VALIDATION_FAILED",
-                "低于500元的会员扣款只需核对完整手机号，无需发送验证码");
+                "低于500元的会员扣款使用已关联会员，无需发送验证码");
 
-        byte[] mobileHash;
-        try { mobileHash = privacy.Hash(command.FullMobile); }
+        byte[]? mobileHash = null;
+        try { if (!string.IsNullOrWhiteSpace(command.FullMobile)) mobileHash = privacy.Hash(command.FullMobile); }
         catch (ArgumentException exception)
         {
             return ResultFactory.Failure<MemberVerificationChallengeDto>("VALIDATION_FAILED", exception.Message);
@@ -85,7 +85,10 @@ internal sealed class MemberVerificationService(ErpDbContext db, CustomerPrivacy
             var customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == order.CustomerId &&
                 x.TenantId == tenantId && x.Status == CustomerStatus.Active,
                 cancellationToken);
-            if (customer is null || !CryptographicOperations.FixedTimeEquals(customer.MobileLookupHash, mobileHash))
+            if (customer is null)
+                return await FailureAndRollback(transaction, "MEMBER_CUSTOMER_REQUIRED",
+                    "消费单关联的会员不存在或已停用", cancellationToken);
+            if (mobileHash is not null && !CryptographicOperations.FixedTimeEquals(customer.MobileLookupHash, mobileHash))
                 return await FailureAndRollback(transaction, "MEMBER_MOBILE_MISMATCH",
                     "完整手机号与当前会员不一致", cancellationToken);
 

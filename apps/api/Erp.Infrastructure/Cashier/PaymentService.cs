@@ -354,13 +354,13 @@ internal sealed class PaymentService(ErpDbContext db, CustomerPrivacyService pri
                 if (order.CustomerId is null)
                     return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_CUSTOMER_REQUIRED",
                         "消费单必须关联有效会员后才能使用会员账户", cancellationToken);
-                if (mobileIdentity is null)
-                    return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_MOBILE_REQUIRED",
-                        "使用会员账户前必须核对完整手机号", cancellationToken);
                 var customer = await db.Customers.SingleOrDefaultAsync(x => x.Id == order.CustomerId &&
                     x.TenantId == tenantId &&
                     x.Status == CustomerStatus.Active, cancellationToken);
-                if (customer is null || !CryptographicOperations.FixedTimeEquals(customer.MobileLookupHash,
+                if (customer is null)
+                    return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_CUSTOMER_REQUIRED",
+                        "消费单关联的会员不存在或已停用", cancellationToken);
+                if (mobileIdentity is not null && !CryptographicOperations.FixedTimeEquals(customer.MobileLookupHash,
                     Convert.FromHexString(mobileIdentity)))
                     return await FailureAndRollback<PaymentDto>(transaction, "MEMBER_MOBILE_MISMATCH",
                         "完整手机号与消费单会员不一致", cancellationToken);
