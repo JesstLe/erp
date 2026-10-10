@@ -354,7 +354,37 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
   const assignEmployee = async (employeeId: string) => { const employee = employees.data?.find((item) => item.id === employeeId); const next = lines.map((line) => line.lineType === 'Service' ? { ...line, employeeId, employeeName: employee?.displayName } : line); setEmployeeOpen(false); await persistLines(next) }
   const assignConsultant = async (employeeId?: string) => { setConsultantEmployeeId(employeeId); setConsultantOpen(false); if (!isBeforeStart) await saveDraft.mutateAsync({ consultantEmployeeId: employeeId }) }
   const applyDiscount = async (values: DiscountValues) => { const next = applyClassicOrderDiscount(lines, values.percent, values.reason); setDiscountOpen(false); discountForm.resetFields(); await persistLines(next); message.success('整单折扣已保存，并已按权限策略完成授权判断') }
-  const clearDraft = () => modal.confirm({ title: '删除当前账单内容？', content: isBeforeStart ? '已选择的项目、产品、员工、顾问和主单信息会被清空；设施仍保持空闲。' : '项目、产品、员工、顾问和主单信息会被清空；设施计时与接待记录不会删除，操作会保留审计记录。', okText: '确认删除', okButtonProps: { danger: true }, onOk: async () => { setLocalLines([]); setCustomerId(undefined); setConsultantEmployeeId(undefined); setNote(''); setSourceChannel(''); setManualTicketNo(''); setMaleGuestCount(0); setMaleAgeBand(undefined); setFemaleGuestCount(0); setFemaleAgeBand(undefined); if (!isBeforeStart) await saveDraft.mutateAsync({ lines: [], customerId: undefined, consultantEmployeeId: undefined, note: '', sourceChannel: '', manualTicketNo: '', maleGuestCount: 0, maleAgeBand: undefined, femaleGuestCount: 0, femaleAgeBand: undefined }) } })
+  const clearDraft = async () => {
+    const cancelCommandId = commandId()
+    await modal.confirm({
+      title: isBeforeStart ? '清空当前账单内容？' : '取消本次消费并释放设施？',
+      content: isBeforeStart ? '已选择的项目、产品、员工、顾问和主单信息会被清空；设施仍保持空闲。'
+        : '将作废未收款账单、停止计时并取消本单关联的接待。合并账单的关联接待也会一起取消。原账单和取消记录会保留；未设置清洁要求的设施立即恢复可用。',
+      okText: isBeforeStart ? '确认清空' : '确认取消并释放', okButtonProps: { danger: true },
+      onOk: async () => {
+        if (!isBeforeStart) {
+          await draftSaveQueue.current.idle()
+          const order = queryClient.getQueryData<ServiceOrder>(orderKey) ?? draft.data
+          if (!storeId || !order) throw new Error('消费单草稿尚未加载')
+          try {
+            const cancelled = await apiRequest<ServiceOrder>(`/api/v1/cashier/orders/${order.id}/void`, {
+              method: 'POST', body: JSON.stringify({ storeId, expectedVersion: order.version,
+                reason: '顾客取消本次消费', cancelReception: true, commandId: cancelCommandId }),
+            })
+            queryClient.setQueryData(orderKey, cancelled)
+            await queryClient.invalidateQueries({ queryKey: ['cashier-orders', storeId] })
+            await onCompleted()
+            message.success('本次消费已取消，设施接待已释放')
+            onExit()
+          } catch (error) { message.error(requestError(error)); throw error }
+          return
+        }
+        setLocalLines([]); setCustomerId(undefined); setConsultantEmployeeId(undefined); setNote('')
+        setSourceChannel(''); setManualTicketNo(''); setMaleGuestCount(0); setMaleAgeBand(undefined)
+        setFemaleGuestCount(0); setFemaleAgeBand(undefined)
+      },
+    })
+  }
 
   const mergeMutation = useMutation({ mutationFn: async () => { await draftSaveQueue.current.idle(); const target = queryClient.getQueryData<ServiceOrder>(orderKey) ?? draft.data; const source = mergeCandidates.data?.find((item) => item.id === mergeOrderId); if (!storeId || !target || !source) throw new Error('请选择待合并账单'); return apiRequest<ServiceOrder>(`/api/v1/cashier/orders/${target.id}/merge`, { method: 'POST', body: JSON.stringify({ storeId, sourceOrderId: source.id, expectedTargetVersion: target.version, expectedSourceVersion: source.version, commandId: commandId() }) }) }, onSuccess: (order) => { queryClient.setQueryData(orderKey, order); setLocalLines(fromOrder(order)); setCustomerId(order.customerId); setMergeOpen(false); setMergeOrderId(undefined); queryClient.invalidateQueries({ queryKey: ['cashier-orders', storeId] }); message.success('账单已合并，关联接待将在同一笔收款完成') }, onError: (error) => message.error(requestError(error)) })
   const prebillMutation = useMutation({ mutationFn: async () => { const order = queryClient.getQueryData<ServiceOrder>(orderKey) ?? draft.data; if (!storeId || !order) throw new Error('消费单草稿尚未加载'); await persistCurrentLines(); const latest = queryClient.getQueryData<ServiceOrder>(orderKey) ?? order; return apiRequest<ServiceOrderPrebill>(`/api/v1/cashier/orders/${latest.id}/prebill`, { method: 'POST', body: JSON.stringify({ storeId, expectedVersion: latest.version, commandId: commandId() }) }) }, onSuccess: setPrebill, onError: (error) => message.error(requestError(error)) })
@@ -484,7 +514,7 @@ export function ModernFacilityCashierWorkbench({ facility, availableFacilities, 
       <button type="button" disabled={isBeforeStart || serviceEnded} onClick={() => setSwitchOpen(true)}>更换房台</button>
       <button type="button" disabled={isBeforeStart || !editable} onClick={() => setMergeOpen(true)}>合并账单</button>
       <button type="button" disabled={isBeforeStart} onClick={() => prebillMutation.mutate()}>预结小票</button>
-      <button type="button" disabled={!editable} onClick={clearDraft}>删除账单</button>
+      <button type="button" disabled={!isBeforeStart && !['Draft', 'PendingPayment'].includes(draft.data?.status ?? '')} onClick={clearDraft}>删除账单</button>
       {!serviceEnded && facility.status === 'IN_USE' && <button type="button" onClick={() => facilityOperation('pause')}>暂停计时</button>}
       {!serviceEnded && facility.status === 'PAUSED' && <button type="button" onClick={() => facilityOperation('resume')}>继续计时</button>}
       <button type="button" disabled={isBeforeStart || serviceEnded} onClick={() => facilityOperation('end')}>结束服务</button>

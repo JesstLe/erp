@@ -57,4 +57,13 @@ public sealed class Visit : Entity
         Status = VisitStatus.Completed;
         Touch();
     }
+
+    public void Cancel(DateTimeOffset now)
+    {
+        if (Status is not (VisitStatus.InService or VisitStatus.ServiceEnded))
+            throw new DomainRuleException("STATE_TRANSITION_NOT_ALLOWED", "当前接待不能取消");
+        Status = VisitStatus.Cancelled;
+        ServiceEndedAtUtc ??= now;
+        Touch();
+    }
 }

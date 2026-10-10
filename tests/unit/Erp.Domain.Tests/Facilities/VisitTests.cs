@@ -33,4 +33,30 @@ public sealed class VisitTests
 
         Assert.Equal("VALIDATION_FAILED", exception.Code);
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CancellationClosesUnsettledReceptionAndPreservesOriginalEndTime(bool alreadyEnded)
+    {
+        var visit = new Visit(TenantId, StoreId, "VCANCEL", null, null, ArrivedAt);
+        if (alreadyEnded) visit.EndService(ArrivedAt.AddMinutes(5));
+
+        visit.Cancel(ArrivedAt.AddMinutes(10));
+
+        Assert.Equal(VisitStatus.Cancelled, visit.Status);
+        Assert.Equal(ArrivedAt.AddMinutes(alreadyEnded ? 5 : 10), visit.ServiceEndedAtUtc);
+        Assert.Throws<DomainRuleException>(() => visit.Complete());
+    }
+
+    [Fact]
+    public void CompletedReceptionCannotBeCancelled()
+    {
+        var visit = new Visit(TenantId, StoreId, "VPAID", null, null, ArrivedAt);
+        visit.EndService(ArrivedAt.AddMinutes(5));
+        visit.Complete();
+
+        Assert.Throws<DomainRuleException>(() => visit.Cancel(ArrivedAt.AddMinutes(10)));
+        Assert.Equal(VisitStatus.Completed, visit.Status);
+    }
 }

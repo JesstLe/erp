@@ -88,6 +88,7 @@ function draftLines(order: ServiceOrder): ClassicCashierDraftLine[] {
 export function ClassicCashierFacilitiesPage() {
   const auth = useAuth(); const storeId = auth.store?.id; const navigate = useNavigate(); const queryClient = useQueryClient()
   const { can } = useAuthorization(); const canCheckout = can(Permission.CashierCheckout)
+  const [modal, modalContextHolder] = Modal.useModal()
   const [tick, setTick] = useState(Date.now()); const [statusFilter, setStatusFilter] = useState<string>(''); const [compact, setCompact] = useState(false)
   const [selected, setSelected] = useState<FacilityBoardItem>(); const [tab, setTab] = useState<WorkbenchTab>('service'); const [catalogSearch, setCatalogSearch] = useState('')
   const workspaceRef = useCashierWorkspaceHeight(Boolean(selected))
@@ -181,7 +182,22 @@ export function ClassicCashierFacilitiesPage() {
     setLines((current) => current.map((line) => line.lineType === 'Service' ? { ...line, employeeId, employeeName: employee?.displayName } : line)); setEmployeeOpen(false)
   }
   const applyDiscount = (values: DiscountValues) => { setLines((current) => applyClassicOrderDiscount(current, values.percent, values.reason)); setDiscountOpen(false); discountForm.resetFields(); message.success('整单折扣已应用，提交时仍按权限策略校验') }
-  const clearDraft = () => Modal.confirm({ title: '清空当前账单？', content: '仅清空当前未提交的账单内容，不影响设施计时和历史账单。', okText: '确认清空', okButtonProps: { danger: true }, onOk: () => setLines([]) })
+  const clearDraft = async () => {
+    const cancelCommandId = commandId()
+    await modal.confirm({ title: '取消本次消费并释放设施？', content: '将作废未收款账单并取消关联接待，停止计时。原账单和取消记录会保留；未设置清洁要求的设施立即恢复可用。',
+      okText: '确认取消并释放', okButtonProps: { danger: true }, onOk: async () => {
+        if (!storeId || !currentOrder) throw new Error('消费单草稿尚未加载')
+        try {
+          await apiRequest<ServiceOrder>(`/api/v1/cashier/orders/${currentOrder.id}/void`, { method: 'POST', body: JSON.stringify({
+            storeId, expectedVersion: currentOrder.version, reason: '顾客取消本次消费', cancelReception: true, commandId: cancelCommandId,
+          }) })
+          setLines([]); setCurrentOrder(undefined); setSelected(undefined)
+          await Promise.all([refreshBoard(), queryClient.invalidateQueries({ queryKey: ['cashier-orders', storeId] })])
+          message.success('本次消费已取消，设施接待已释放')
+        } catch (error) { message.error(requestError(error)); throw error }
+      },
+    })
+  }
 
   const settleMutation = useMutation({
     mutationFn: async (values: SettleValues) => {
@@ -230,6 +246,7 @@ export function ClassicCashierFacilitiesPage() {
   if (board.error) return <Alert type="error" showIcon title={requestError(board.error)} />
 
   if (!selected) return <div className="classic-room-page">
+    {modalContextHolder}
     <header className="classic-room-toolbar">
       <strong>前台收银</strong><span>当前门店：{auth.store?.name}</span>
       <div className="classic-room-statuses">
@@ -254,6 +271,7 @@ export function ClassicCashierFacilitiesPage() {
   const chosenMethod = paymentMethods.data?.find((item) => item.id === chosenMethodId)
 
   return <div ref={workspaceRef} className="classic-sell-page">
+    {modalContextHolder}
     <header className="classic-sell-tabs">
       <div className="classic-sell-room"><b>{selected.displayName}</b><span>{selected.code} · {duration(liveSeconds)}</span></div>
       <button type="button" className={tab === 'main' ? 'active' : ''} onClick={() => setTab('main')}><FileTextOutlined /><span>主单信息</span></button>
@@ -280,7 +298,7 @@ export function ClassicCashierFacilitiesPage() {
       </section>
     </div>
     <footer className="classic-sell-actions">
-      <button type="button" disabled={!editable} onClick={() => setEmployeeOpen(true)}><TeamOutlined />整单<span>员工</span></button><button type="button" disabled title="该操作暂不可用"><UserOutlined />整单<span>顾问</span></button><button type="button" disabled={!editable} onClick={() => { discountForm.setFieldsValue({ percent: 100, reason: '' }); setDiscountOpen(true) }}>整单<span>折扣</span></button><button type="button" disabled={selected.status === 'AWAITING_PAYMENT'} onClick={() => setSwitchOpen(true)}><SwapOutlined />更换<span>房台</span></button><button type="button" disabled title="该操作暂不可用">合并<span>账单</span></button><button type="button" onClick={() => setPreviewOpen(true)}><PrinterOutlined />预结<span>小票</span></button><button type="button" disabled={!editable} onClick={clearDraft}><DeleteOutlined />删除<span>账单</span></button>
+      <button type="button" disabled={!editable} onClick={() => setEmployeeOpen(true)}><TeamOutlined />整单<span>员工</span></button><button type="button" disabled title="该操作暂不可用"><UserOutlined />整单<span>顾问</span></button><button type="button" disabled={!editable} onClick={() => { discountForm.setFieldsValue({ percent: 100, reason: '' }); setDiscountOpen(true) }}>整单<span>折扣</span></button><button type="button" disabled={selected.status === 'AWAITING_PAYMENT'} onClick={() => setSwitchOpen(true)}><SwapOutlined />更换<span>房台</span></button><button type="button" disabled title="该操作暂不可用">合并<span>账单</span></button><button type="button" onClick={() => setPreviewOpen(true)}><PrinterOutlined />预结<span>小票</span></button><button type="button" disabled={!canCheckout || !currentOrder || !['Draft', 'PendingPayment'].includes(currentOrder.status)} onClick={clearDraft}><DeleteOutlined />删除<span>账单</span></button>
       {selected.status === 'IN_USE' && <button type="button" onClick={() => facilityOperation('pause')}><PauseCircleOutlined />暂停<span>计时</span></button>}{selected.status === 'PAUSED' && <button type="button" onClick={() => facilityOperation('resume')}><PlayCircleOutlined />继续<span>计时</span></button>}<button type="button" disabled={selected.status === 'AWAITING_PAYMENT'} onClick={() => facilityOperation('end')}>结束<span>服务</span></button><button type="button" className="is-return" onClick={() => setSelected(undefined)}>返回<span>房台</span></button>
     </footer>
 

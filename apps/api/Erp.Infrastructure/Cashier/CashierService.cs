@@ -694,7 +694,8 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
         var reason = command.Reason?.Trim();
         if (reason?.Length is not (>= 2 and <= 500))
             return ResultFactory.Failure<ServiceOrderDto>("VALIDATION_FAILED", "作废原因必须为2到500字");
-        var requestHash = RequestHash($"ORDER_VOID|{command.StoreId}|{command.OrderId}|{command.ExpectedVersion}|{reason}");
+        var requestHash = RequestHash($"ORDER_VOID|{command.StoreId}|{command.OrderId}|{command.ExpectedVersion}|{reason}" +
+            (command.CancelReception ? "|CANCEL_RECEPTION" : string.Empty));
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable,
             cancellationToken);
         var replay = await ReplayAsync(tenantId, command.CommandId, requestHash,
@@ -713,11 +714,19 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
                     cancellationToken);
             var previous = order.Status.ToString();
             var now = clock.GetUtcNow();
+            if (command.CancelReception && await db.Payments.AnyAsync(x => x.TenantId == tenantId &&
+                    x.BusinessType == PaymentBusinessType.ServiceOrder && x.BusinessId == order.Id &&
+                    x.Status != PaymentStatus.Cancelled, cancellationToken))
+                return await FailureAndRollback(transaction, "PAYMENT_ALREADY_EXISTS",
+                    "账单已有收款或正在支付，请先处理支付结果，不能取消接待", cancellationToken);
+            // Validate before releasing reservations or changing any linked reception.
+            order.Void();
+            if (command.CancelReception)
+                await CancelOrderReceptionsAsync(order, command, now, cancellationToken);
             await inventory.ReleaseOrderAsync(order, now, cancellationToken);
             var approval = await db.PriceOverrideApprovals.SingleOrDefaultAsync(x =>
                 x.ServiceOrderId == order.Id && x.TenantId == tenantId, cancellationToken);
             approval?.Cancel(now);
-            order.Void();
             AddReceipt(tenantId, command.CommandId, command.OperatorId, requestHash, order.Id, now);
             AddAudit(tenantId, command.StoreId, command.OperatorId, "service_order.void", "ServiceOrder",
                 order.Id, previous, order.Status.ToString(), command.CommandId, now, reason);
@@ -734,6 +743,44 @@ internal sealed class CashierService(ErpDbContext db, InventoryPostingService in
         {
             await RollbackIfActiveAsync(transaction, cancellationToken);
             return ResultFactory.Failure<ServiceOrderDto>("VERSION_CONFLICT", "消费单或库存状态已变化，请刷新后重试");
+        }
+    }
+
+    private async Task CancelOrderReceptionsAsync(ServiceOrder order, VoidServiceOrderCommand command,
+        DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var visitIds = await db.ServiceOrderVisitLinks.Where(x => x.OrderId == order.Id && x.TenantId == order.TenantId)
+            .Select(x => x.VisitId).ToListAsync(cancellationToken);
+        if (visitIds.Count == 0) visitIds.Add(order.VisitId);
+        if (await db.ServiceOrders.AnyAsync(x => x.Id != order.Id && x.TenantId == order.TenantId &&
+                x.Status != ServiceOrderStatus.Voided && (visitIds.Contains(x.VisitId) ||
+                    db.ServiceOrderVisitLinks.Any(link => link.OrderId == x.Id && visitIds.Contains(link.VisitId))), cancellationToken))
+            throw new DomainRuleException("VISIT_NOT_READY", "关联接待仍有其他有效账单，请从主账单处理取消");
+        var visits = await db.Visits.Where(x => x.TenantId == order.TenantId && x.StoreId == order.StoreId &&
+            visitIds.Contains(x.Id)).ToListAsync(cancellationToken);
+        if (visits.Count != visitIds.Distinct().Count())
+            throw new DomainRuleException("VISIT_NOT_READY", "账单关联的接待记录不完整");
+        var sessions = await db.FacilitySessions.Include(x => x.Pauses).Where(x => x.TenantId == order.TenantId &&
+            x.StoreId == order.StoreId && visitIds.Contains(x.VisitId) &&
+            (x.Status == FacilitySessionStatus.Active || x.Status == FacilitySessionStatus.Paused)).ToListAsync(cancellationToken);
+        var facilityIds = sessions.Select(x => x.FacilityId).Distinct().ToList();
+        var facilities = await db.Facilities.Where(x => facilityIds.Contains(x.Id)).ToDictionaryAsync(x => x.Id, cancellationToken);
+        foreach (var session in sessions)
+        {
+            var previous = session.Status.ToString();
+            session.End(now, FacilitySessionEndReason.Completed);
+            if (facilities[session.FacilityId].DefaultCleaningMinutes > 0)
+                db.FacilityCleaningTasks.Add(new FacilityCleaningTask(order.TenantId, order.StoreId, session.FacilityId,
+                    session.Id, now.AddMinutes(facilities[session.FacilityId].DefaultCleaningMinutes)));
+            AddAudit(order.TenantId, order.StoreId, command.OperatorId, "facility.session.cancel_reception", "FacilitySession",
+                session.Id, previous, session.Status.ToString(), command.CommandId, now, command.Reason);
+        }
+        foreach (var visit in visits)
+        {
+            var previous = visit.Status.ToString();
+            visit.Cancel(now);
+            AddAudit(order.TenantId, order.StoreId, command.OperatorId, "visit.cancel", "Visit", visit.Id,
+                previous, visit.Status.ToString(), command.CommandId, now, command.Reason);
         }
     }
 
