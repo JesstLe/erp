@@ -150,7 +150,7 @@ public static class CashierEndpoints
             if (!HasStore(current, request.StoreId)) return Results.Forbid();
             return EndpointResults.From(await cashier.VoidOrderAsync(current.TenantId,
                 new VoidServiceOrderCommand(request.StoreId, orderId, request.ExpectedVersion, request.Reason,
-                    request.CommandId, current.Id), cancellationToken));
+                    request.CommandId, current.Id, request.CancelReception), cancellationToken));
         });
 
         group.MapPost("/orders/{orderId:guid}/confirm", async (Guid orderId, ConfirmOrderRequest request,
@@ -245,7 +245,8 @@ public static class CashierEndpoints
         uint ExpectedSourceVersion, Guid CommandId);
     private sealed record PrebillRequest(Guid StoreId, uint ExpectedVersion, Guid CommandId);
     private sealed record ConfirmOrderRequest(Guid StoreId, uint ExpectedVersion, Guid CommandId);
-    private sealed record VoidOrderRequest(Guid StoreId, uint ExpectedVersion, string Reason, Guid CommandId);
+    private sealed record VoidOrderRequest(Guid StoreId, uint ExpectedVersion, string Reason, Guid CommandId,
+        bool CancelReception = false);
     private sealed record UpdatePricePolicyRequest(Guid StoreId, int ManagerLineDiscountBasisPoints,
         long ManagerOrderDiscountMinor, bool AllowManagerPriceIncrease, uint ExpectedVersion, Guid CommandId);
     private sealed record DecidePriceApprovalRequest(Guid StoreId, uint ExpectedVersion, string? Note,

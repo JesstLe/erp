@@ -55,7 +55,7 @@ public sealed record ServiceOrderPrebillDto(Guid Id, string PrebillNo, Guid Orde
 public sealed record ConfirmServiceOrderCommand(Guid StoreId, Guid OrderId, uint ExpectedVersion,
     Guid CommandId, Guid OperatorId);
 public sealed record VoidServiceOrderCommand(Guid StoreId, Guid OrderId, uint ExpectedVersion,
-    string Reason, Guid CommandId, Guid OperatorId);
+    string Reason, Guid CommandId, Guid OperatorId, bool CancelReception = false);
 public sealed record UpdatePriceOverridePolicyCommand(Guid StoreId, int ManagerLineDiscountBasisPoints,
     long ManagerOrderDiscountMinor, bool AllowManagerPriceIncrease, uint ExpectedVersion,
     Guid CommandId, Guid OperatorId);

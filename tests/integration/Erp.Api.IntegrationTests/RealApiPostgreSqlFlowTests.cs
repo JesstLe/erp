@@ -1215,6 +1215,10 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
             $"/api/v1/inventory/balances?storeId={secondStore.Id}"))!.Single(x =>
                 x.ProductItemId == product.Id);
         Assert.Equal(2, destinationBalance.OnHandQuantity);
+        var paidOrderForCancellation = await client.GetFromJsonAsync<ServiceOrderDto>(
+            $"/api/v1/cashier/orders/{order.Id}?storeId={storeId}");
+        await AssertReceptionCancellationAsync(client, storeId, facility.Id, cleaningFacility.Id,
+            product.Id, employee.Id, paidOrderForCancellation!);
         using (var deleteReferencedPublished = await SendAsync(client, HttpMethod.Delete,
                    $"/api/v1/catalog/price-books/{copiedPriceBook.Id}", new
                    {
@@ -1229,6 +1233,128 @@ public sealed class RealApiPostgreSqlFlowTests(RealApiPostgreSqlFixture fixture)
         var invalidOrderPage = await client.GetAsync(
             $"/api/v1/cashier/orders?storeId={storeId}&page=1&pageSize=101");
         Assert.Equal(HttpStatusCode.UnprocessableEntity, invalidOrderPage.StatusCode);
+    }
+
+    private static async Task AssertReceptionCancellationAsync(HttpClient client, Guid storeId,
+        Guid facilityId, Guid cleaningFacilityId, Guid productId, Guid employeeId, ServiceOrderDto paidOrder)
+    {
+        async Task<FacilityBoardItemDto> Board(Guid id)
+        {
+            var board = await client.GetFromJsonAsync<FacilityBoardDto>($"/api/v1/facilities/board?storeId={storeId}");
+            return board!.Groups.SelectMany(x => x.Facilities).Single(x => x.Id == id);
+        }
+        async Task<FacilityBoardItemDto> Start(Guid id) =>
+            await PostAsync<FacilityBoardItemDto>(client, "/api/v1/facilities/sessions/start",
+                new { storeId, facilityId = id, commandId = Guid.NewGuid() });
+        async Task<ServiceOrderDto> Draft(FacilityBoardItemDto session) =>
+            await PostAsync<ServiceOrderDto>(client, $"/api/v1/cashier/visits/{session.VisitId}/draft",
+                new { storeId, commandId = Guid.NewGuid() });
+        async Task<ServiceOrderDto> Cancel(ServiceOrderDto draft) =>
+            await PostAsync<ServiceOrderDto>(client, $"/api/v1/cashier/orders/{draft.Id}/void",
+                new { storeId, expectedVersion = draft.Version, reason = "顾客取消本次消费",
+                    cancelReception = true, commandId = Guid.NewGuid() });
+
+        foreach (var state in new[] { "active", "paused", "ended" })
+        {
+            var started = await Start(facilityId);
+            var draft = await Draft(started);
+            // Reproduce selecting a product then removing the last line before deleting the bill.
+            draft = await PutAsync<ServiceOrderDto>(client, $"/api/v1/cashier/orders/{draft.Id}/draft", new
+            {
+                storeId, expectedVersion = draft.Version, commandId = Guid.NewGuid(),
+                lines = new object[] { new { lineType = "PRODUCT", productItemId = productId,
+                    serviceEmployeeId = employeeId, quantity = 1, enteredPriceMinor = 5_000L } },
+            });
+            draft = await PutAsync<ServiceOrderDto>(client, $"/api/v1/cashier/orders/{draft.Id}/draft", new
+            {
+                storeId, expectedVersion = draft.Version, commandId = Guid.NewGuid(), lines = Array.Empty<object>(),
+            });
+            if (state != "active")
+                await PostAsync<FacilityBoardItemDto>(client,
+                    $"/api/v1/facilities/sessions/{started.SessionId}/{(state == "paused" ? "pause" : "end")}",
+                    new { storeId, commandId = Guid.NewGuid() });
+            using (var stale = await SendAsync(client, HttpMethod.Post, $"/api/v1/cashier/orders/{draft.Id}/void",
+                new { storeId, expectedVersion = draft.Version - 1, reason = "顾客取消本次消费",
+                    cancelReception = true, commandId = Guid.NewGuid() }))
+            {
+                Assert.Contains("VERSION_CONFLICT", await stale.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+                Assert.Equal(started.VisitId, (await Board(facilityId)).VisitId);
+            }
+            var request = new { storeId, expectedVersion = draft.Version, reason = "顾客取消本次消费",
+                cancelReception = true, commandId = Guid.NewGuid() };
+            var cancelled = await PostAsync<ServiceOrderDto>(client, $"/api/v1/cashier/orders/{draft.Id}/void", request);
+            Assert.Equal("Voided", cancelled.Status);
+            Assert.Empty(cancelled.Lines);
+            Assert.Equal("AVAILABLE", (await Board(facilityId)).Status);
+            Assert.Null((await Board(facilityId)).VisitId);
+            // A replay must not cancel the next customer's reception on the same facility.
+            var next = await Start(facilityId);
+            var replay = await PostAsync<ServiceOrderDto>(client, $"/api/v1/cashier/orders/{draft.Id}/void", request);
+            Assert.Equal(cancelled.Id, replay.Id);
+            Assert.Equal(next.VisitId, (await Board(facilityId)).VisitId);
+            await Cancel(await Draft(next));
+        }
+
+        // Ordinary bill voiding keeps the reception so the operator can create a replacement bill.
+        var ordinary = await Start(facilityId);
+        var ordinaryDraft = await Draft(ordinary);
+        await PostAsync<ServiceOrderDto>(client, $"/api/v1/cashier/orders/{ordinaryDraft.Id}/void",
+            new { storeId, expectedVersion = ordinaryDraft.Version, reason = "重新录入账单", commandId = Guid.NewGuid() });
+        Assert.Equal(ordinary.VisitId, (await Board(facilityId)).VisitId);
+        await Cancel(await Draft(ordinary));
+
+        // Cancelling a confirmed product bill releases its inventory reservation without a sale.
+        var balances = await client.GetFromJsonAsync<IReadOnlyList<InventoryBalanceDto>>($"/api/v1/inventory/balances?storeId={storeId}");
+        var before = balances!.Single(x => x.ProductItemId == productId);
+        var reservedSession = await Start(facilityId);
+        var reservedOrder = await PostAsync<ServiceOrderDto>(client, "/api/v1/cashier/orders", new
+        {
+            storeId, visitId = reservedSession.VisitId, note = "取消库存预占回归", commandId = Guid.NewGuid(),
+            lines = new object[] { new { lineType = "PRODUCT", productItemId = productId,
+                serviceEmployeeId = employeeId, quantity = 1, enteredPriceMinor = 5_000L } },
+        });
+        await PostAsync<FacilityBoardItemDto>(client, $"/api/v1/facilities/sessions/{reservedSession.SessionId}/end",
+            new { storeId, commandId = Guid.NewGuid() });
+        reservedOrder = await PostAsync<ServiceOrderDto>(client, $"/api/v1/cashier/orders/{reservedOrder.Id}/confirm",
+            new { storeId, expectedVersion = reservedOrder.Version, commandId = Guid.NewGuid() });
+        Assert.Equal("PendingPayment", reservedOrder.Status);
+        var reservedBalances = await client.GetFromJsonAsync<IReadOnlyList<InventoryBalanceDto>>($"/api/v1/inventory/balances?storeId={storeId}");
+        Assert.Equal(before.ReservedQuantity + 1, reservedBalances!.Single(x => x.ProductItemId == productId).ReservedQuantity);
+        await Cancel(reservedOrder);
+        Assert.Equal("AVAILABLE", (await Board(facilityId)).Status);
+        var afterBalances = await client.GetFromJsonAsync<IReadOnlyList<InventoryBalanceDto>>($"/api/v1/inventory/balances?storeId={storeId}");
+        var after = afterBalances!.Single(x => x.ProductItemId == productId);
+        Assert.Equal(before.ReservedQuantity, after.ReservedQuantity);
+        Assert.Equal(before.OnHandQuantity, after.OnHandQuantity);
+
+        // Merge cancellation follows every linked visit, preserving configured cleaning behavior.
+        var first = await Start(facilityId);
+        var second = await Start(cleaningFacilityId);
+        var target = await Draft(first);
+        var source = await Draft(second);
+        target = await PostAsync<ServiceOrderDto>(client, $"/api/v1/cashier/orders/{target.Id}/merge", new
+        {
+            storeId, sourceOrderId = source.Id, expectedTargetVersion = target.Version,
+            expectedSourceVersion = source.Version, commandId = Guid.NewGuid(),
+        });
+        using (var wrongBill = await SendAsync(client, HttpMethod.Post, $"/api/v1/cashier/orders/{source.Id}/void",
+            new { storeId, expectedVersion = source.Version, reason = "错误账单取消回归",
+                cancelReception = true, commandId = Guid.NewGuid() }))
+            Assert.False(wrongBill.IsSuccessStatusCode);
+        Assert.Equal(second.VisitId, (await Board(cleaningFacilityId)).VisitId);
+        await Cancel(target);
+        Assert.Equal("AVAILABLE", (await Board(facilityId)).Status);
+        Assert.Equal("CLEANING_REQUIRED", (await Board(cleaningFacilityId)).Status);
+        await PostAsync<FacilityBoardItemDto>(client, $"/api/v1/facilities/{cleaningFacilityId}/cleaning/complete",
+            new { storeId, commandId = Guid.NewGuid() });
+
+        using var paidCancellation = await SendAsync(client, HttpMethod.Post, $"/api/v1/cashier/orders/{paidOrder.Id}/void",
+            new { storeId, expectedVersion = paidOrder.Version, reason = "已付款账单不能取消",
+                cancelReception = true, commandId = Guid.NewGuid() });
+        Assert.Contains("PAYMENT_ALREADY_EXISTS", await paidCancellation.Content.ReadAsStringAsync(), StringComparison.Ordinal);
+        var retained = await client.GetFromJsonAsync<ServiceOrderDto>($"/api/v1/cashier/orders/{paidOrder.Id}?storeId={storeId}");
+        Assert.Equal(paidOrder.Status, retained!.Status);
+        Assert.Equal(paidOrder.ReceivableMinor, retained.ReceivableMinor);
     }
 
     [Fact]

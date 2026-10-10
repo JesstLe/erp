@@ -184,6 +184,82 @@ describe('ModernFacilityCashierWorkbench before timing starts', () => {
     expect(body.allocations).toEqual([{ methodId: 'principal', amountMinor: 5_000, externalReference: null, memberAccountId: 'account-1' }])
   })
 
+  it.each(['IN_USE', 'PAUSED', 'AWAITING_PAYMENT'])('cancels an empty %s reception through one atomic request and exits only on success', async (status) => {
+    const base = apiRequestMock.getMockImplementation()
+    const order = { id: 'order-1', visitId: 'visit-1', orderNo: 'SO1', status: 'Draft', version: 9, receivableMinor: 0, lines: [] }
+    let finishCancel: (value: unknown) => void = () => {}
+    let failCancel: (error: Error) => void = () => {}
+    apiRequestMock.mockImplementation((path: string, options?: unknown) => {
+      if (path === '/api/v1/cashier/visits/visit-1/draft') return Promise.resolve(order)
+      if (path === '/api/v1/cashier/orders/order-1/void') return new Promise((resolve, reject) => { finishCancel = resolve; failCancel = reject })
+      return base?.(path, options)
+    })
+    const onExit = vi.fn()
+    const onCompleted = vi.fn()
+    const running = { ...facility, status, sessionId: 'session-1', visitId: 'visit-1' }
+    render(<MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ModernFacilityCashierWorkbench facility={running} availableFacilities={[]} onFacilityChanged={vi.fn()} onExit={onExit} onCompleted={onCompleted} /></QueryClientProvider></MemoryRouter>)
+    await waitFor(() => expect((screen.getByRole('button', { name: '删除账单' }) as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByRole('button', { name: '删除账单' }))
+    await screen.findAllByText('取消本次消费并释放设施？')
+    fireEvent.click(screen.getByRole('button', { name: '确认取消并释放' }))
+    await waitFor(() => expect(apiRequestMock.mock.calls.some(([path]) => path.endsWith('/order-1/void'))).toBe(true))
+    expect(onExit).not.toHaveBeenCalled()
+    const request = apiRequestMock.mock.calls.find(([path]) => path.endsWith('/order-1/void'))
+    expect(JSON.parse(request?.[1].body)).toMatchObject({ expectedVersion: 9, cancelReception: true, reason: '顾客取消本次消费' })
+    expect(apiRequestMock.mock.calls.some(([path]) => path.endsWith('/session-1/end'))).toBe(false)
+    if (status === 'PAUSED') {
+      failCancel(new Error('取消请求未成功，请重试'))
+      await screen.findByText('取消请求未成功，请重试')
+      await waitFor(() => expect(screen.getByRole('button', { name: '确认取消并释放' }).className.includes('loading')).toBe(false))
+      expect(onExit).not.toHaveBeenCalled()
+      expect(onCompleted).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole('button', { name: '确认取消并释放' }))
+      await waitFor(() => expect(apiRequestMock.mock.calls.filter(([path]) => path.endsWith('/order-1/void'))).toHaveLength(2))
+      const retry = apiRequestMock.mock.calls.filter(([path]) => path.endsWith('/order-1/void'))[1]
+      expect(JSON.parse(retry[1].body)).toEqual(JSON.parse(request?.[1].body))
+    }
+    finishCancel({ ...order, status: 'Voided', version: 10 })
+    await waitFor(() => expect(onExit).toHaveBeenCalledTimes(1))
+    expect(onCompleted).toHaveBeenCalledTimes(1)
+  })
+
+  it('clears an unstarted local bill without cancelling a reception', async () => {
+    const onExit = vi.fn()
+    render(<MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ModernFacilityCashierWorkbench facility={facility} availableFacilities={[]} onFacilityChanged={vi.fn()} onExit={onExit} onCompleted={vi.fn()} /></QueryClientProvider></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /基础服务/ }))
+    await screen.findByText(/1\. 基础服务/)
+    fireEvent.click(screen.getByRole('button', { name: '删除账单' }))
+    fireEvent.click(await screen.findByRole('button', { name: '确认清空' }))
+    await waitFor(() => expect(screen.queryByText(/1\. 基础服务/)).toBeNull())
+    expect(apiRequestMock.mock.calls.some(([path]) => path.endsWith('/void') || path.endsWith('/start'))).toBe(false)
+    expect(onExit).not.toHaveBeenCalled()
+  })
+
+  it('cancels a classic pending-payment bill and returns to the refreshed facility board', async () => {
+    const base = apiRequestMock.getMockImplementation()
+    const running = { ...facility, status: 'AWAITING_PAYMENT', sessionId: 'session-1', visitId: 'visit-1' }
+    const order = { id: 'order-1', visitId: 'visit-1', orderNo: 'SO1', status: 'PendingPayment', version: 7, receivableMinor: 0, lines: [] }
+    let cancelled = false
+    apiRequestMock.mockImplementation((path: string, options?: unknown) => {
+      if (path.startsWith('/api/v1/facilities/board')) return Promise.resolve({ serverNowUtc: new Date().toISOString(), groups: [{ id: 'g', displayName: '服务区', facilities: [cancelled ? facility : running] }] })
+      if (path === '/api/v1/customers/search') return Promise.resolve({ items: [], total: 0 })
+      if (path === '/api/v1/cashier/visits/visit-1/draft') return Promise.resolve(order)
+      if (path === '/api/v1/cashier/orders/order-1/void') { cancelled = true; return Promise.resolve({ ...order, status: 'Voided', version: 8 }) }
+      return base?.(path, options)
+    })
+    render(<MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ClassicCashierFacilitiesPage /></QueryClientProvider></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /一号服务位/ }))
+    const deleteBill = await screen.findByRole('button', { name: /删除.*账单/s })
+    expect((deleteBill as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(deleteBill)
+    fireEvent.click(await screen.findByRole('button', { name: '确认取消并释放' }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: /删除.*账单/s })).toBeNull())
+    const request = apiRequestMock.mock.calls.find(([path]) => path.endsWith('/order-1/void'))
+    expect(JSON.parse(request?.[1].body)).toMatchObject({ expectedVersion: 7, cancelReception: true })
+    expect(cancelled).toBe(true)
+    expect(screen.getByRole('button', { name: /一号服务位/ }).textContent).toContain('空闲')
+  })
+
   it('restores the classic bill, keeps its facility occupied after end, and retries payment using the same order', async () => {
     const base = apiRequestMock.getMockImplementation()
     const running = { ...facility, status: 'IN_USE', sessionId: 'session-1', visitId: 'visit-1' }
