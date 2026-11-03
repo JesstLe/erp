@@ -1,6 +1,8 @@
 <Project>
   <PropertyGroup>
     <LangVersion>latestMajor</LangVersion>
+    <Copyright>Copyright (c) 2026 Jessy Le</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
